@@ -1,0 +1,69 @@
+syntax = "proto3";
+package stateset.product;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string sku = 4;
+  common.Money price = 5;
+  int32 stock_quantity = 6;
+  string category = 7;
+  repeated string tags = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message CreateProductRequest {
+  Product product = 1;
+}
+
+message CreateProductResponse {
+  string product_id = 1;
+}
+
+message GetProductRequest {
+  string product_id = 1;
+}
+
+message GetProductResponse {
+  Product product = 1;
+}
+
+message UpdateProductRequest {
+  Product product = 1;
+}
+
+message UpdateProductResponse {
+  Product product = 1;
+}
+
+message DeleteProductRequest {
+  string product_id = 1;
+}
+
+message DeleteProductResponse {
+  bool success = 1;
+}
+
+message ListProductsRequest {
+  string category = 1;
+  repeated string tags = 2;
+  common.Pagination pagination = 3;
+}
+
+message ListProductsResponse {
+  repeated Product products = 1;
+  common.PaginatedResponse pagination = 2;
+}
+
+service ProductService {
+  rpc CreateProduct (CreateProductRequest) returns (CreateProductResponse);
+  rpc GetProduct (GetProductRequest) returns (GetProductResponse);
+  rpc UpdateProduct (UpdateProductRequest) returns (UpdateProductResponse);
+  rpc DeleteProduct (DeleteProductRequest) returns (DeleteProductResponse);
+  rpc ListProducts (ListProductsRequest) returns (ListProductsResponse);
+}

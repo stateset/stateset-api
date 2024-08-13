@@ -13,8 +13,6 @@ pub mod exchange_order_command;
 pub mod split_order_command;
 pub mod merge_orders_command;
 pub mod update_shipping_address_command;
-pub mod resend_order_confirmation_command;
-pub mod update_payment_method_command;
 pub mod refund_order_command;
 
 // Re-export commands for easier access
@@ -33,6 +31,4 @@ pub use exchange_order_command::ExchangeOrderCommand;
 pub use split_order_command::SplitOrderCommand;
 pub use merge_orders_command::MergeOrdersCommand;
 pub use update_shipping_address_command::UpdateShippingAddressCommand;
-pub use resend_order_confirmation_command::ResendOrderConfirmationCommand;
-pub use update_payment_method_command::UpdatePaymentMethodCommand;
 pub use refund_order_command::RefundOrderCommand;

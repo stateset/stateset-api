@@ -17,13 +17,13 @@ message Address {
   string postal_code = 6;
 }
 
-message Pagination {
-  int32 page = 1;
-  int32 page_size = 2;
-}
-
-message PaginatedResponse {
-  int32 total_items = 1;
-  int32 total_pages = 2;
-  int32 current_page = 3;
-}
+message PaginationRequest {
+    int32 page = 1;
+    int32 per_page = 2;
+  }
+  
+  message PaginationResponse {
+    int32 total_items = 1;
+    int32 total_pages = 2;
+    int32 current_page = 3;
+  }

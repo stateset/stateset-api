@@ -7,7 +7,9 @@ pub struct InventoryItem {
     pub quantity: i32,
     #[prost(string, tag = "3")]
     pub warehouse_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "4")]
+    #[prost(string, tag = "4")]
+    pub location: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
     pub last_updated: ::core::option::Option<::prost_types::Timestamp>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -19,6 +21,8 @@ pub struct UpdateInventoryRequest {
     pub quantity_change: i32,
     #[prost(string, tag = "3")]
     pub warehouse_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub reason: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -61,6 +65,24 @@ pub struct ListInventoryResponse {
     pub items: ::prost::alloc::vec::Vec<InventoryItem>,
     #[prost(message, optional, tag = "2")]
     pub pagination: ::core::option::Option<super::common::PaginatedResponse>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReserveInventoryRequest {
+    #[prost(string, tag = "1")]
+    pub product_id: ::prost::alloc::string::String,
+    #[prost(int32, tag = "2")]
+    pub quantity: i32,
+    #[prost(string, tag = "3")]
+    pub order_id: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReserveInventoryResponse {
+    #[prost(bool, tag = "1")]
+    pub success: bool,
+    #[prost(string, tag = "2")]
+    pub reservation_id: ::prost::alloc::string::String,
 }
 /// Generated client implementations.
 pub mod inventory_service_client {
@@ -188,6 +210,25 @@ pub mod inventory_service_client {
             );
             self.inner.unary(request.into_request(), path, codec).await
         }
+        pub async fn reserve_inventory(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ReserveInventoryRequest>,
+        ) -> Result<tonic::Response<super::ReserveInventoryResponse>, tonic::Status> {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/stateset.inventory.InventoryService/ReserveInventory",
+            );
+            self.inner.unary(request.into_request(), path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -209,6 +250,10 @@ pub mod inventory_service_server {
             &self,
             request: tonic::Request<super::ListInventoryRequest>,
         ) -> Result<tonic::Response<super::ListInventoryResponse>, tonic::Status>;
+        async fn reserve_inventory(
+            &self,
+            request: tonic::Request<super::ReserveInventoryRequest>,
+        ) -> Result<tonic::Response<super::ReserveInventoryResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct InventoryServiceServer<T: InventoryService> {
@@ -378,6 +423,46 @@ pub mod inventory_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = ListInventorySvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/stateset.inventory.InventoryService/ReserveInventory" => {
+                    #[allow(non_camel_case_types)]
+                    struct ReserveInventorySvc<T: InventoryService>(pub Arc<T>);
+                    impl<
+                        T: InventoryService,
+                    > tonic::server::UnaryService<super::ReserveInventoryRequest>
+                    for ReserveInventorySvc<T> {
+                        type Response = super::ReserveInventoryResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ReserveInventoryRequest>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move {
+                                (*inner).reserve_inventory(request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = ReserveInventorySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

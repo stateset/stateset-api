@@ -55,12 +55,12 @@ message ListOrdersRequest {
   google.protobuf.Timestamp start_date = 2;
   google.protobuf.Timestamp end_date = 3;
   string status = 4;
-  common.Pagination pagination = 5;
+  common.PaginationRequest pagination = 5;
 }
 
 message ListOrdersResponse {
   repeated Order orders = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 service OrderService {

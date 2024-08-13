@@ -39,12 +39,12 @@ message UpdateCustomerResponse {
 }
 
 message ListCustomersRequest {
-  common.Pagination pagination = 1;
+  common.PaginationRequest pagination = 1;
 }
 
 message ListCustomersResponse {
   repeated Customer customers = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 service CustomerService {

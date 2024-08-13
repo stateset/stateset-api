@@ -44,12 +44,12 @@ message ListWarrantiesRequest {
   string product_id = 2;
   string order_id = 3;
   string status = 4;
-  common.Pagination pagination = 5;
+  common.PaginationRequest pagination = 5;
 }
 
 message ListWarrantiesResponse {
   repeated Warranty warranties = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 service WarrantyService {

@@ -2,14 +2,14 @@ use actix_web::{web, App, HttpServer, middleware};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use redis::Client as RedisClient;
-use slog::{Drain, Logger};
+use slog::{Drain, Logger, o};
 use lapin::{Connection, ConnectionProperties};
 use prometheus::{Registry, IntCounterVec};
 use opentelemetry::global;
 use opentelemetry_jaeger::new_pipeline;
 use dotenv::dotenv;
 use config::{Config, Environment, File};
-use futures::future::join_all;
+use tonic::transport::Server as TonicServer;
 use tonic_web::GrpcWebLayer;
 
 mod services;
@@ -24,12 +24,11 @@ mod cache;
 mod rate_limiter;
 mod message_queue;
 mod circuit_breaker;
-mod metrics;
 mod tracing;
-mod graphql;
-mod feature_flags;
-mod ml;
 mod health;
+mod db;
+mod proto;
+mod auth;
 
 use services::order_service::OrderServiceImpl;
 use services::inventory_service::InventoryServiceImpl;
@@ -47,7 +46,7 @@ use proto::work_order_service_server::WorkOrderServiceServer;
 #[derive(Clone)]
 struct AppState {
     config: Arc<AppConfig>,
-    db_pool: Arc<DbPool>,
+    db_pool: Arc<db::DbPool>,
     redis_client: Arc<RedisClient>,
     event_sender: broadcast::Sender<events::Event>,
     logger: Logger,
@@ -80,7 +79,7 @@ struct AppConfig {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    let config = Arc::new(load_configuration()?);
+    let config = Arc::new(load_configuration().expect("Failed to load configuration"));
     let log = setup_logger(&config.log_level);
     slog::info!(log, "Starting Stateset API"; "environment" => &config.environment);
 
@@ -88,13 +87,13 @@ async fn main() -> std::io::Result<()> {
     let db_pool = Arc::new(db::establish_connection(&config.database_url));
 
     // Redis client setup
-    let redis_client = Arc::new(RedisClient::open(&config.redis_url)?);
+    let redis_client = Arc::new(RedisClient::open(&config.redis_url).expect("Failed to connect to Redis"));
 
     // RabbitMQ connection setup
     let rabbit_conn = Connection::connect(&config.rabbitmq_url, ConnectionProperties::default())
-        .await?
+        .await.expect("Failed to connect to RabbitMQ")
         .create_channel()
-        .await?;
+        .await.expect("Failed to create RabbitMQ channel");
 
     // Metrics and tracing setup
     let registry = setup_metrics();
@@ -123,22 +122,16 @@ async fn main() -> std::io::Result<()> {
     tokio::spawn(events::process_events(event_sender.subscribe(), services.clone(), log.clone()));
 
     // gRPC server setup
-    let order_service = OrderServiceImpl::new(db_pool.clone());
-    let inventory_service = InventoryServiceImpl::new(db_pool.clone());
-    let return_service = ReturnServiceImpl::new(db_pool.clone());
-    let warranty_service = WarrantyServiceImpl::new(db_pool.clone());
-    let shipment_service = ShipmentServiceImpl::new(db_pool.clone());
-    let work_order_service = WorkOrderServiceImpl::new(db_pool.clone());
-
-    // gRPC server setup
-    let grpc_addr = "[::1]:50051".parse().unwrap();
+    let grpc_addr = "[::1]:50051".parse().expect("Failed to parse gRPC address");
     let grpc_server = TonicServer::builder()
-        .add_service(OrderServiceServer::new(order_service))
-        .add_service(InventoryServiceServer::new(inventory_service))
-        .add_service(ReturnServiceServer::new(return_service))
-        .add_service(WarrantyServiceServer::new(warranty_service))
-        .add_service(ShipmentServiceServer::new(shipment_service))
-        .add_service(WorkOrderServiceServer::new(work_order_service))
+        .accept_http1(true)
+        .layer(GrpcWebLayer::new())
+        .add_service(OrderServiceServer::new(OrderServiceImpl::new(db_pool.clone())))
+        .add_service(InventoryServiceServer::new(InventoryServiceImpl::new(db_pool.clone())))
+        .add_service(ReturnServiceServer::new(ReturnServiceImpl::new(db_pool.clone())))
+        .add_service(WarrantyServiceServer::new(WarrantyServiceImpl::new(db_pool.clone())))
+        .add_service(ShipmentServiceServer::new(ShipmentServiceImpl::new(db_pool.clone())))
+        .add_service(WorkOrderServiceServer::new(WorkOrderServiceImpl::new(db_pool.clone())))
         .serve(grpc_addr);
 
     // Start the gRPC server in a separate task
@@ -157,13 +150,14 @@ async fn main() -> std::io::Result<()> {
             .wrap(tracing::TracingMiddleware::new())
             .wrap(metrics::PrometheusMetrics::new(registry.clone()))
             .wrap(middleware::DefaultHeaders::new()
-                .header("X-Version", env!("CARGO_PKG_VERSION"))
-                .header("X-Environment", &state.config.environment))
+                .add(("X-Version", env!("CARGO_PKG_VERSION")))
+                .add(("X-Environment", state.config.environment.clone())))
             .wrap(middleware::Compress::default())
-            .wrap(middleware::NormalizePath::new(middleware::TrailingSlash::Trim))
+            .wrap(middleware::NormalizePath::trim())
             .configure(configure_routes)
             .service(web::resource("/health").to(health::health_check))
             .service(web::resource("/proto").to(handle_proto_request))
+    })
     .bind(format!("{}:{}", config.host, config.port))?
     .run();
 
@@ -183,8 +177,7 @@ async fn main() -> std::io::Result<()> {
 
     slog::info!(log, "Shutting down");
     Ok(())
-
-})}
+}
 
 fn load_configuration() -> Result<AppConfig, config::ConfigError> {
     let mut config = Config::default();
@@ -197,8 +190,8 @@ fn setup_logger(log_level: &str) -> Logger {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
-    let drain = slog::LevelFilter::new(drain, slog::Level::from_str(log_level).unwrap()).fuse();
-    slog::Logger::root(drain, slog::o!())
+    let drain = slog::LevelFilter::new(drain, log_level.parse().unwrap()).fuse();
+    slog::Logger::root(drain, o!())
 }
 
 fn setup_metrics() -> Registry {
@@ -221,7 +214,7 @@ fn setup_tracing(jaeger_endpoint: &str) {
 }
 
 async fn initialize_services(
-    db_pool: Arc<DbPool>,
+    db_pool: Arc<db::DbPool>,
     redis_client: Arc<RedisClient>,
     rabbit_channel: lapin::Channel,
     event_sender: broadcast::Sender<events::Event>,
@@ -321,7 +314,6 @@ async fn handle_proto_request(
 }
 
 fn configure_routes(cfg: &mut web::ServiceConfig) {
-    
     cfg.service(
         web::scope("/orders")
             .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))

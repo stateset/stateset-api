@@ -1,5 +1,5 @@
 syntax = "proto3";
-package stateset.return;
+package stateset.return_order;
 
 import "google/protobuf/timestamp.proto";
 import "common.proto";
@@ -54,12 +54,12 @@ message ListReturnsRequest {
   string status = 3;
   google.protobuf.Timestamp start_date = 4;
   google.protobuf.Timestamp end_date = 5;
-  common.Pagination pagination = 6;
+  common.PaginationRequest pagination = 6;
 }
 
 message ListReturnsResponse {
   repeated Return returns = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 service ReturnService {

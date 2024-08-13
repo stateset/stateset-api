@@ -37,12 +37,12 @@ message GetInventoryResponse {
 message ListInventoryRequest {
   repeated string product_ids = 1;
   string warehouse_id = 2;
-  common.Pagination pagination = 3;
+  common.PaginationRequest pagination = 3;
 }
 
 message ListInventoryResponse {
   repeated InventoryItem items = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 message ReserveInventoryRequest {

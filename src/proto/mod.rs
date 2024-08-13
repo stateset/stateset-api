@@ -1,15 +1,31 @@
 pub mod common {
-    tonic::include_proto!("stateset.common");
+    include!(concat!(env!("OUT_DIR"), "/stateset.common.rs"));
 }
 
 pub mod order {
-    tonic::include_proto!("stateset.order");
+    include!(concat!(env!("OUT_DIR"), "/stateset.order.rs"));
 }
 
 pub mod inventory {
-    tonic::include_proto!("stateset.inventory");
+    include!(concat!(env!("OUT_DIR"), "/stateset.inventory.rs"));
 }
 
-pub mod customer {
-    tonic::include_proto!("stateset.customer");
+pub mod return_order {
+    include!(concat!(env!("OUT_DIR"), "/stateset.return_order.rs"));
+}
+
+pub mod warranty {
+    include!(concat!(env!("OUT_DIR"), "/stateset.warranty.rs"));
+}
+
+pub mod shipment {
+    include!(concat!(env!("OUT_DIR"), "/stateset.shipment.rs"));
+}
+
+pub mod work_order {
+    include!(concat!(env!("OUT_DIR"), "/stateset.work_order.rs"));
+}
+
+pub mod billofmaterials {
+    include!(concat!(env!("OUT_DIR"), "/stateset.billofmaterials.rs"));
 }

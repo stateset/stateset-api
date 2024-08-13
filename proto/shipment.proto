@@ -52,12 +52,12 @@ message ListShipmentsRequest {
   string status = 2;
   google.protobuf.Timestamp start_date = 3;
   google.protobuf.Timestamp end_date = 4;
-  common.Pagination pagination = 5;
+  common.PaginationRequest pagination = 5;
 }
 
 message ListShipmentsResponse {
   repeated Shipment shipments = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 service ShipmentService {
