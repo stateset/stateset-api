@@ -108,6 +108,6 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 ## Acknowledgments
 
 - [Actix-web](https://actix.rs/) for the web framework
-- [SQLx](https://github.com/launchbadge/sqlx) for the async database operations
+- [Diesel](https://diesel.rs) for ORM and Query Builder
 - [Tonic](https://github.com/hyperium/tonic) for gRPC support
 - All other open-source libraries used in this project
