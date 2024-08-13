@@ -143,16 +143,3 @@ impl WorkOrderService {
         Ok(())
     }
 }
-
-// Add this struct definition if it's not already defined elsewhere
-#[derive(Debug)]
-pub struct WorkOrderSearchParams {
-    pub title: Option<String>,
-    pub status: Option<WorkOrderStatus>,
-    pub priority: Option<i32>,
-    pub assigned_to: Option<i32>,
-    pub due_date_from: Option<NaiveDateTime>,
-    pub due_date_to: Option<NaiveDateTime>,
-    pub limit: i64,
-    pub offset: i64,
-}

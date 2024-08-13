@@ -1,8 +1,18 @@
+use async_trait::async_trait;
+use serde::{Serialize, Deserialize};
+use std::sync::Arc;
+use crate::{errors::ServiceError, db::DbPool, models::{OrderItem}};
+use crate::events::{Event, EventSender};
+use validator::Validate;
+use tracing::{info, error, instrument};
+use diesel::prelude::*;
+use prometheus::IntCounter;
+
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct PackOrderCommand {
     pub order_id: i32,
     #[validate(length(min = 1))]
-    pub packed_items: Vec<PackedItem>, // Items that have been packed
+    pub packed_items: Vec<PackedItem>,
 }
 
 #[async_trait]

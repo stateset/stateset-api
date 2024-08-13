@@ -1,11 +1,10 @@
-use super::inventory::InventoryService;
-use super::shipments::ShipmentService;
+use crate::inventory::InventoryService;
+use crate::shipments::ShipmentService;
 use crate::models::{Order, OrderItem, OrderStatus, OrderNote, OrderHistory, NewOrder};
 use crate::db::DbPool;
 use crate::cache::Cache;
 use crate::errors::{ApiError, OrderError};
 use crate::events::{EventSender, Event};
-use crate::analytics::AnalyticsService;
 use async_trait::async_trait;
 use uuid::Uuid;
 use futures::future::try_join_all;
@@ -19,7 +18,6 @@ pub struct OrderService {
     cache: Arc<dyn Cache>,
     inventory_service: Arc<InventoryService>,
     shipment_service: Arc<ShipmentService>,
-    analytics_service: Arc<AnalyticsService>,
     event_sender: EventSender,
 }
 
@@ -29,7 +27,6 @@ impl OrderService {
         cache: Arc<dyn Cache>,
         inventory_service: Arc<InventoryService>,
         shipment_service: Arc<ShipmentService>,
-        analytics_service: Arc<AnalyticsService>,
         event_sender: EventSender,
     ) -> Self {
         Self {
@@ -77,7 +74,6 @@ impl OrderService {
 
         self.cache_order(order.clone()).await?;
         self.event_sender.send(Event::OrderCreated(order.id)).await.map_err(|e| OrderError::EventError(e.to_string()))?;
-        self.analytics_service.record_new_order(&order).await.map_err(|e| OrderError::AnalyticsError(e.to_string()))?;
 
         Ok(order)
     }
@@ -117,7 +113,6 @@ impl OrderService {
 
         self.cache_order(order.clone()).await?;
         self.event_sender.send(Event::OrderUpdated(id)).await.map_err(|e| OrderError::EventError(e.to_string()))?;
-        self.analytics_service.update_order_stats(&order).await.map_err(|e| OrderError::AnalyticsError(e.to_string()))?;
 
         Ok(order)
     }

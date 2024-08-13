@@ -23,7 +23,7 @@ impl RateLimiter {
     }
 
     pub async fn is_rate_limited(&self, key: &str) -> Result<bool, redis::RedisError> {
-        let mut conn = self.redis.get_async_connection().await?;
+        let mut conn = self.redis.get_connection().await?;
         let full_key = format!("{}:{}", self.key_prefix, key);
 
         let current: Option<usize> = conn.get(&full_key).await?;

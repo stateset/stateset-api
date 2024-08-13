@@ -1,7 +1,6 @@
 use diesel::prelude::*;
 use crate::db::DbPool;
 use crate::models::product_category::{ProductCategory, ProductCategoryAssociation};
-use crate::models::product::Product;
 use crate::errors::ServiceError;
 use crate::schema::{product_categories, product_category_associations, products};
 
@@ -43,15 +42,4 @@ pub async fn list_categories(pool: &DbPool) -> Result<Vec<ProductCategory>, Serv
     let categories = product_categories::table
         .load::<ProductCategory>(&conn)?;
     Ok(categories)
-}
-
-pub async fn get_category_products(pool: &DbPool, category_id: i32, pagination: PaginationParams) -> Result<Vec<Product>, ServiceError> {
-    let conn = pool.get()?;
-    let products = Product::belonging_to(&ProductCategory::find(category_id))
-        .inner_join(product_category_associations::table)
-        .select(products::all_columns)
-        .limit(pagination.limit)
-        .offset(pagination.offset)
-        .load::<Product>(&conn)?;
-    Ok(products)
 }

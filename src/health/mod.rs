@@ -1,5 +1,7 @@
 use actix_web::{web, HttpResponse};
 use crate::AppState;
+use redis::{Commands, ConnectionLike};
+use std::time::Duration;
 
 pub async fn health_check(state: web::Data<AppState>) -> HttpResponse {
     let db_status = check_database(&state.db_pool).await;

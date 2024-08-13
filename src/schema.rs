@@ -142,6 +142,29 @@ table! {
     }
 }
 
+
+table! {
+    work_orders (id) {
+        id -> Uuid,
+        order_id -> Uuid,
+        status -> Varchar,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+table! {
+    product_categories (id) {
+        id -> Integer,
+        name -> Varchar,
+        description -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+
+
 joinable!(orders -> users (user_id));
 joinable!(order_items -> orders (order_id));
 joinable!(order_items -> products (product_id));
@@ -153,7 +176,8 @@ joinable!(warranties -> users (user_id));
 joinable!(warranties -> products (product_id));
 joinable!(warranties -> orders (order_id));
 joinable!(warranty_claims -> warranties (warranty_id));
-allow_tables_to_appear_in_same_query!(warranties, warranty_claims);
+joinable!(work_orders -> orders (order_id));
+allow_tables_to_appear_in_same_query!(warranties, warranty_claims, work_orders);
 joinable!(shipments -> orders (order_id));
 joinable!(inventory_transactions -> products (product_id));
 
@@ -167,5 +191,6 @@ allow_tables_to_appear_in_same_query!(
     warranties,
     warranty_claims,
     shipments,
-    inventory_transactions
+    inventory_transactions,
+    work_orders
 );

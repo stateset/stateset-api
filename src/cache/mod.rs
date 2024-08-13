@@ -78,13 +78,6 @@ impl Cache for InMemoryCache {
     }
 }
 
-#[async_trait]
-pub trait Cache {
-    async fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>, errors::ServiceError>;
-    async fn set<T: Serialize>(&self, key: &str, value: &T, expiration: Option<Duration>) -> Result<(), errors::ServiceError>;
-    async fn delete(&self, key: &str) -> Result<(), errors::ServiceError>;
-}
-
 pub struct RedisCache {
     client: Arc<RedisClient>,
 }

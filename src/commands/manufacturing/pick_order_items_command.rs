@@ -1,8 +1,18 @@
+use async_trait::async_trait;
+use serde::{Serialize, Deserialize};
+use std::sync::Arc;
+use crate::{errors::ServiceError, db::DbPool, models::{OrderItem}};
+use crate::events::{Event, EventSender};
+use validator::Validate;
+use tracing::{info, error, instrument};
+use diesel::prelude::*;
+use prometheus::IntCounter;
+
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct PickOrderItemsCommand {
     pub order_id: i32,
     #[validate(length(min = 1))]
-    pub items_to_pick: Vec<PickedItem>, // Items to pick from inventory
+    pub items_to_pick: Vec<PickedItem>,
 }
 
 #[async_trait]
