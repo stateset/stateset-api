@@ -1,0 +1,70 @@
+syntax = "proto3";
+package stateset.return;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message Return {
+  string id = 1;
+  string order_id = 2;
+  string customer_id = 3;
+  repeated ReturnItem items = 4;
+  string status = 5;
+  string reason = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message ReturnItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  string reason = 3;
+}
+
+message CreateReturnRequest {
+  Return return = 1;
+}
+
+message CreateReturnResponse {
+  string return_id = 1;
+  string status = 2;
+}
+
+message GetReturnRequest {
+  string return_id = 1;
+}
+
+message GetReturnResponse {
+  Return return = 1;
+}
+
+message UpdateReturnStatusRequest {
+  string return_id = 1;
+  string new_status = 2;
+}
+
+message UpdateReturnStatusResponse {
+  string return_id = 1;
+  string status = 2;
+}
+
+message ListReturnsRequest {
+  string customer_id = 1;
+  string order_id = 2;
+  string status = 3;
+  google.protobuf.Timestamp start_date = 4;
+  google.protobuf.Timestamp end_date = 5;
+  common.Pagination pagination = 6;
+}
+
+message ListReturnsResponse {
+  repeated Return returns = 1;
+  common.PaginatedResponse pagination = 2;
+}
+
+service ReturnService {
+  rpc CreateReturn (CreateReturnRequest) returns (CreateReturnResponse);
+  rpc GetReturn (GetReturnRequest) returns (GetReturnResponse);
+  rpc UpdateReturnStatus (UpdateReturnStatusRequest) returns (UpdateReturnStatusResponse);
+  rpc ListReturns (ListReturnsRequest) returns (ListReturnsResponse);
+}

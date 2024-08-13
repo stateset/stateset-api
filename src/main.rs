@@ -10,6 +10,7 @@ use opentelemetry_jaeger::new_pipeline;
 use dotenv::dotenv;
 use config::{Config, Environment, File};
 use futures::future::join_all;
+use tonic_web::GrpcWebLayer;
 
 mod services;
 mod models;
@@ -29,6 +30,19 @@ mod graphql;
 mod feature_flags;
 mod ml;
 mod health;
+
+use services::order_service::OrderServiceImpl;
+use services::inventory_service::InventoryServiceImpl;
+use services::return_service::ReturnServiceImpl;
+use services::warranty_service::WarrantyServiceImpl;
+use services::shipment_service::ShipmentServiceImpl;
+use services::work_order_service::WorkOrderServiceImpl;
+use proto::order_service_server::OrderServiceServer;
+use proto::inventory_service_server::InventoryServiceServer;
+use proto::return_service_server::ReturnServiceServer;
+use proto::warranty_service_server::WarrantyServiceServer;
+use proto::shipment_service_server::ShipmentServiceServer;
+use proto::work_order_service_server::WorkOrderServiceServer;
 
 #[derive(Clone)]
 struct AppState {
@@ -108,6 +122,32 @@ async fn main() -> std::io::Result<()> {
     // Spawn event processing in a separate task
     tokio::spawn(events::process_events(event_sender.subscribe(), services.clone(), log.clone()));
 
+    // gRPC server setup
+    let order_service = OrderServiceImpl::new(db_pool.clone());
+    let inventory_service = InventoryServiceImpl::new(db_pool.clone());
+    let return_service = ReturnServiceImpl::new(db_pool.clone());
+    let warranty_service = WarrantyServiceImpl::new(db_pool.clone());
+    let shipment_service = ShipmentServiceImpl::new(db_pool.clone());
+    let work_order_service = WorkOrderServiceImpl::new(db_pool.clone());
+
+    // gRPC server setup
+    let grpc_addr = "[::1]:50051".parse().unwrap();
+    let grpc_server = TonicServer::builder()
+        .add_service(OrderServiceServer::new(order_service))
+        .add_service(InventoryServiceServer::new(inventory_service))
+        .add_service(ReturnServiceServer::new(return_service))
+        .add_service(WarrantyServiceServer::new(warranty_service))
+        .add_service(ShipmentServiceServer::new(shipment_service))
+        .add_service(WorkOrderServiceServer::new(work_order_service))
+        .serve(grpc_addr);
+
+    // Start the gRPC server in a separate task
+    tokio::spawn(async move {
+        if let Err(e) = grpc_server.await {
+            eprintln!("gRPC server error: {}", e);
+        }
+    });
+
     // Start the HTTP server
     let server = HttpServer::new(move || {
         App::new()
@@ -123,11 +163,12 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::NormalizePath::new(middleware::TrailingSlash::Trim))
             .configure(configure_routes)
             .service(web::resource("/health").to(health::health_check))
-    })
+            .service(web::resource("/proto").to(handle_proto_request))
     .bind(format!("{}:{}", config.host, config.port))?
     .run();
 
-    slog::info!(log, "Server running"; "address" => format!("{}:{}", config.host, config.port));
+    slog::info!(log, "HTTP server running"; "address" => format!("{}:{}", config.host, config.port));
+    slog::info!(log, "gRPC server running"; "address" => grpc_addr.to_string());
 
     // Graceful shutdown handling
     let srv = server.handle();
@@ -142,7 +183,8 @@ async fn main() -> std::io::Result<()> {
 
     slog::info!(log, "Shutting down");
     Ok(())
-}
+
+})}
 
 fn load_configuration() -> Result<AppConfig, config::ConfigError> {
     let mut config = Config::default();
@@ -256,7 +298,30 @@ async fn initialize_services(
     }
 }
 
+async fn handle_proto_request(
+    state: web::Data<AppState>,
+    payload: web::Bytes
+) -> Result<web::Bytes, actix_web::Error> {
+    // Deserialize the incoming protobuf message
+    let request = proto::SomeRequest::decode(payload.as_ref())
+        .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
+
+    // Process the request (this is where you'd add your business logic)
+    let response = proto::SomeResponse {
+        // Fill in the response fields based on your logic
+        message: format!("Processed request with id: {}", request.id),
+    };
+
+    // Serialize the response back to protobuf
+    let mut buf = Vec::new();
+    response.encode(&mut buf)
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    Ok(web::Bytes::from(buf))
+}
+
 fn configure_routes(cfg: &mut web::ServiceConfig) {
+    
     cfg.service(
         web::scope("/orders")
             .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
@@ -297,5 +362,12 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
             .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
             .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
             .configure(handlers::work_orders::configure_routes)
+    );
+
+    cfg.service(
+        web::resource("/proto_endpoint")
+            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
+            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
+            .route(web::post().to(handle_proto_request))
     );
 }
