@@ -78,7 +78,7 @@ The API will be available at `http://localhost:8080` by default.
 
 ## API Documentation
 
-API documentation is available at `/docs` when running the server in development mode.
+API documentation is available at `https://docs.stateset.com/api-reference/authentication`
 
 ## Testing
 
