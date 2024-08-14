@@ -126,3 +126,47 @@ async fn complete_work_order(
     let result = command.execute(db_pool.get_ref().clone()).await?;
     Ok(HttpResponse::Ok().json(result))
 }
+
+#[post("/{id}/issue")]
+async fn issue_work_order(
+    db_pool: web::Data<Arc<DbPool>>,
+    work_order_id: web::Path<i32>,
+    _user: AuthenticatedUser,
+) -> Result<HttpResponse, ServiceError> {
+    let command = IssueWorkOrderCommand {
+        work_order_id: *work_order_id,
+    };
+
+    let result = command.execute(db_pool.get_ref()).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
+#[post("/{id}/pick")]
+async fn pick_work_order(
+    db_pool: web::Data<Arc<DbPool>>,
+    work_order_id: web::Path<i32>,
+    _user: AuthenticatedUser,
+) -> Result<HttpResponse, ServiceError> {
+    let command = PickWorkOrderCommand {
+        work_order_id: *work_order_id,
+    };
+
+    let result = command.execute(db_pool.get_ref()).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
+
+
+#[post("/{id}/yield")]
+async fn yield_work_order(
+    db_pool: web::Data<Arc<DbPool>>,
+    work_order_id: web::Path<i32>,
+    _user: AuthenticatedUser,
+) -> Result<HttpResponse, ServiceError> {
+    let command = YieldWorkOrderCommand {
+        work_order_id: *work_order_id,
+    };
+
+    let result = command.execute(db_pool.get_ref()).await?;
+    Ok(HttpResponse::Ok().json(result))
+}

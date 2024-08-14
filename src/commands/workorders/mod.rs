@@ -9,6 +9,9 @@ pub mod assign_work_order;
 pub mod unassign_work_order;
 pub mod start_work_order;
 pub mod complete_work_order;
+pub mod pick_work_order;
+pub mod yield_work_order;
+pub mod issue_work_order;
 
 pub use create_work_order::CreateWorkOrder;
 pub use update_work_order::UpdateWorkOrder;
@@ -21,3 +24,6 @@ pub use assign_work_order::AssignWorkOrder;
 pub use unassign_work_order::UnassignWorkOrder;
 pub use start_work_order::StartWorkOrder;
 pub use complete_work_order::CompleteWorkOrder;
+pub use pick_work_order::PickWorkOrder;
+pub use yield_work_order::YieldWorkOrder;
+pub use issue_work_order::IssueWorkOrder;
