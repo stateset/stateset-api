@@ -357,6 +357,27 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
     );
 
     cfg.service(
+        web::scope("/billofmaterials")
+            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
+            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
+            .configure(handlers::billofmaterials::configure_routes)
+    );
+
+    cfg.service(
+        web::scope("/manufacturing")
+            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
+            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
+            .configure(handlers::manufacturing::configure_routes)
+    );
+
+    cfg.service(
+        web::scope("/suppliers")
+            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
+            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
+            .configure(handlers::suppliers::configure_routes)
+    );
+
+    cfg.service(
         web::resource("/proto_endpoint")
             .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
             .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))

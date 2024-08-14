@@ -3,3 +3,8 @@ pub mod orders;
 pub mod returns;
 pub mod shipments;
 pub mod manufacturing;
+pub mod billofmaterials;
+pub mod warehouse;
+pub mod workorders;
+pub mod customers;
+pub mod suppliers;
