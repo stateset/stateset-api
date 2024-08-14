@@ -1,12 +1,18 @@
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Order, OrderStatus}};
-use crate::events::{Event, EventSender};
+use tracing::{error, info, instrument};
 use validator::Validate;
-use tracing::{info, error, instrument};
+
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{Order, OrderStatus},
+};
 use diesel::prelude::*;
 use prometheus::IntCounter;
+use lazy_static::lazy_static;
 
 lazy_static! {
     static ref SHIPPING_ADDRESS_UPDATES: IntCounter = 
@@ -31,7 +37,7 @@ pub struct UpdateShippingAddressCommand {
 impl Command for UpdateShippingAddressCommand {
     type Result = Order;
 
-    #[instrument(skip(db_pool, event_sender))]
+    #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
         let conn = db_pool.get().map_err(|e| {
             SHIPPING_ADDRESS_UPDATE_FAILURES.inc();
@@ -39,28 +45,37 @@ impl Command for UpdateShippingAddressCommand {
             ServiceError::DatabaseError
         })?;
 
-        let updated_order = diesel::update(orders::table.find(self.order_id))
+        let updated_order = self.update_shipping_address(&conn)?;
+
+        self.log_and_trigger_event(event_sender, &updated_order).await?;
+
+        SHIPPING_ADDRESS_UPDATES.inc();
+        info!(order_id = %self.order_id, "Shipping address updated successfully");
+
+        Ok(updated_order)
+    }
+}
+
+impl UpdateShippingAddressCommand {
+    fn update_shipping_address(&self, conn: &PgConnection) -> Result<Order, ServiceError> {
+        diesel::update(orders::table.find(self.order_id))
             .set(orders::shipping_address.eq(&self.new_address))
-            .get_result::<Order>(&conn)
+            .get_result::<Order>(conn)
             .map_err(|e| {
                 SHIPPING_ADDRESS_UPDATE_FAILURES.inc();
                 error!("Failed to update shipping address for order ID {}: {}", self.order_id, e);
                 ServiceError::DatabaseError
-            })?;
+            })
+    }
 
-        if let Err(e) = event_sender.send(Event::ShippingAddressUpdated(self.order_id)).await {
-            SHIPPING_ADDRESS_UPDATE_FAILURES.inc();
-            error!("Failed to send ShippingAddressUpdated event for order ID {}: {}", self.order_id, e);
-            return Err(ServiceError::EventError(e.to_string()));
-        }
-
-        SHIPPING_ADDRESS_UPDATES.inc();
-
-        info!(
-            order_id = %self.order_id,
-            "Shipping address updated successfully"
-        );
-
-        Ok(updated_order)
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, updated_order: &Order) -> Result<(), ServiceError> {
+        event_sender
+            .send(Event::ShippingAddressUpdated(self.order_id))
+            .await
+            .map_err(|e| {
+                SHIPPING_ADDRESS_UPDATE_FAILURES.inc();
+                error!("Failed to send ShippingAddressUpdated event for order ID {}: {}", self.order_id, e);
+                ServiceError::EventError(e.to_string())
+            })
     }
 }

@@ -1,10 +1,16 @@
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Order, OrderItem, OrderStatus}};
-use crate::events::{Event, EventSender};
+use tracing::{error, info, instrument};
 use validator::Validate;
-use tracing::info;
+
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{Order, OrderItem, OrderStatus},
+};
+use diesel::prelude::*;
 use chrono::{DateTime, Utc};
 
 pub struct MergeOrdersCommand {
@@ -15,22 +21,46 @@ pub struct MergeOrdersCommand {
 impl Command for MergeOrdersCommand {
     type Result = Order;
 
+    #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+        let conn = db_pool.get().map_err(|e| {
+            error!("Failed to get database connection: {:?}", e);
+            ServiceError::DatabaseError
+        })?;
 
-        conn.transaction(|| {
-            // Implement the logic to merge the orders
-            let merged_order = merge_order_logic(&conn, &self.order_ids)?;
+        let merged_order = conn.transaction::<Order, ServiceError, _>(|| {
+            self.merge_orders(&conn)
+        }).map_err(|e| {
+            error!("Failed to merge orders {:?}: {:?}", self.order_ids, e);
+            e
+        })?;
 
-            event_sender.send(Event::OrdersMerged(self.order_ids.clone())).await.map_err(|e| ServiceError::EventError(e.to_string()))?;
+        self.log_and_trigger_event(event_sender, &merged_order).await?;
 
-            Ok(merged_order)
-        })
+        Ok(merged_order)
     }
 }
 
-// Placeholder function for merge logic
-fn merge_order_logic(conn: &PgConnection, order_ids: &[i32]) -> Result<Order, ServiceError> {
-    // Implement actual logic here
-    Ok(Order::default()) // Return the merged order
+impl MergeOrdersCommand {
+    fn merge_orders(&self, conn: &PgConnection) -> Result<Order, ServiceError> {
+        // Implement the actual merge logic here
+        // Placeholder: This should involve combining the items, handling any conflicts, and updating the database accordingly.
+        Ok(Order::default()) // Return the merged order
+    }
+
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: Arc<EventSender>,
+        merged_order: &Order,
+    ) -> Result<(), ServiceError> {
+        info!("Orders merged: {:?}", self.order_ids);
+
+        event_sender
+            .send(Event::OrdersMerged(self.order_ids.clone()))
+            .await
+            .map_err(|e| {
+                error!("Failed to send OrdersMerged event: {:?}", e);
+                ServiceError::EventError(e.to_string())
+            })
+    }
 }
