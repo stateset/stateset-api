@@ -1,0 +1,95 @@
+syntax = "proto3";
+package stateset.supplier;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message Supplier {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  string phone = 4;
+  common.Address address = 5;
+  string tax_id = 6;
+  string payment_terms = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message SupplierProduct {
+  string supplier_id = 1;
+  string product_id = 2;
+  double price = 3;
+  int32 lead_time_days = 4;
+}
+
+message CreateSupplierRequest {
+  Supplier supplier = 1;
+}
+
+message CreateSupplierResponse {
+  string supplier_id = 1;
+}
+
+message GetSupplierRequest {
+  string supplier_id = 1;
+}
+
+message GetSupplierResponse {
+  Supplier supplier = 1;
+}
+
+message UpdateSupplierRequest {
+  Supplier supplier = 1;
+}
+
+message UpdateSupplierResponse {
+  Supplier supplier = 1;
+}
+
+message ListSuppliersRequest {
+  common.PaginationRequest pagination = 1;
+}
+
+message ListSuppliersResponse {
+  repeated Supplier suppliers = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+message AddSupplierProductRequest {
+  SupplierProduct supplier_product = 1;
+}
+
+message AddSupplierProductResponse {
+  string supplier_id = 1;
+  string product_id = 2;
+}
+
+message RemoveSupplierProductRequest {
+  string supplier_id = 1;
+  string product_id = 2;
+}
+
+message RemoveSupplierProductResponse {
+  bool success = 1;
+}
+
+message ListSupplierProductsRequest {
+  string supplier_id = 1;
+  common.PaginationRequest pagination = 2;
+}
+
+message ListSupplierProductsResponse {
+  repeated SupplierProduct supplier_products = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+service SupplierService {
+  rpc CreateSupplier (CreateSupplierRequest) returns (CreateSupplierResponse);
+  rpc GetSupplier (GetSupplierRequest) returns (GetSupplierResponse);
+  rpc UpdateSupplier (UpdateSupplierRequest) returns (UpdateSupplierResponse);
+  rpc ListSuppliers (ListSuppliersRequest) returns (ListSuppliersResponse);
+  rpc AddSupplierProduct (AddSupplierProductRequest) returns (AddSupplierProductResponse);
+  rpc RemoveSupplierProduct (RemoveSupplierProductRequest) returns (RemoveSupplierProductResponse);
+  rpc ListSupplierProducts (ListSupplierProductsRequest) returns (ListSupplierProductsResponse);
+}

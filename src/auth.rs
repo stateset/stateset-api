@@ -3,14 +3,32 @@ use actix_web_httpauth::extractors::bearer::BearerAuth;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::future::{ready, Ready};
+use std::pin::Pin;
+use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
+/// Claims structure for JWT
 #[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String,
-    exp: usize,
-    role: String,
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
+    pub role: String,
 }
 
+/// Custom error type for authentication errors
+#[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("Invalid token")]
+    InvalidToken,
+    #[error("Expired token")]
+    ExpiredToken,
+    #[error("Insufficient permissions")]
+    InsufficientPermissions,
+    #[error("JWT error: {0}")]
+    JWTError(#[from] jsonwebtoken::errors::Error),
+}
+
+/// Authentication middleware
 pub struct AuthMiddleware {
     allowed_roles: Vec<String>,
 }
@@ -53,7 +71,7 @@ where
 {
     type Response = actix_web::dev::ServiceResponse<B>;
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>>>>;
 
     actix_web::dev::forward_ready!(service);
 
@@ -63,24 +81,105 @@ where
             .and_then(|h| h.strip_prefix("Bearer "))
             .map(|s| s.to_string());
 
-        if let Some(token) = bearer_token {
-            let secret = req.app_data::<web::Data<AppConfig>>().unwrap().jwt_secret.as_bytes();
-            match decode::<Claims>(&token, &DecodingKey::from_secret(secret), &Validation::default()) {
-                Ok(token_data) => {
-                    if self.allowed_roles.contains(&token_data.claims.role) {
-                        let fut = self.service.call(req);
-                        return Box::pin(async move {
-                            let res = fut.await?;
-                            Ok(res)
-                        });
-                    }
-                }
-                Err(_) => {}
-            }
-        }
+        let allowed_roles = self.allowed_roles.clone();
+        let fut = self.service.call(req);
 
         Box::pin(async move {
-            Err(actix_web::error::ErrorUnauthorized("Invalid token or insufficient permissions"))
+            if let Some(token) = bearer_token {
+                match validate_token(&token, &allowed_roles) {
+                    Ok(claims) => {
+                        fut.await
+                    }
+                    Err(e) => Err(actix_web::error::ErrorUnauthorized(e))
+                }
+            } else {
+                Err(actix_web::error::ErrorUnauthorized("No authorization token provided"))
+            }
         })
+    }
+}
+
+/// Generates a JWT token
+pub fn generate_token(user_id: &str, role: &str, secret: &[u8], expiration: i64) -> Result<String, AuthError> {
+    let exp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs() as usize + expiration as usize;
+
+    let claims = Claims {
+        sub: user_id.to_owned(),
+        exp,
+        role: role.to_owned(),
+    };
+
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(secret))
+        .map_err(AuthError::JWTError)
+}
+
+/// Validates a JWT token
+pub fn validate_token(token: &str, allowed_roles: &[String]) -> Result<Claims, AuthError> {
+    let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let key = DecodingKey::from_secret(secret.as_bytes());
+    let validation = Validation::default();
+
+    let token_data = decode::<Claims>(token, &key, &validation)
+        .map_err(|e| match e.kind() {
+            jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
+            _ => AuthError::InvalidToken,
+        })?;
+
+    if !allowed_roles.contains(&token_data.claims.role) {
+        return Err(AuthError::InsufficientPermissions);
+    }
+
+    Ok(token_data.claims)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_generate_and_validate_token() {
+        std::env::set_var("JWT_SECRET", "test_secret");
+        let user_id = "123";
+        let role = "user";
+        let secret = "test_secret".as_bytes();
+        let expiration = 3600; // 1 hour
+
+        let token = generate_token(user_id, role, secret, expiration).unwrap();
+        let claims = validate_token(&token, &["user".to_string()]).unwrap();
+
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.role, role);
+    }
+
+    #[test]
+    fn test_expired_token() {
+        std::env::set_var("JWT_SECRET", "test_secret");
+        let user_id = "123";
+        let role = "user";
+        let secret = "test_secret".as_bytes();
+        let expiration = -1; // Expired token
+
+        let token = generate_token(user_id, role, secret, expiration).unwrap();
+        let result = validate_token(&token, &["user".to_string()]);
+
+        assert!(matches!(result, Err(AuthError::ExpiredToken)));
+    }
+
+    #[test]
+    fn test_insufficient_permissions() {
+        std::env::set_var("JWT_SECRET", "test_secret");
+        let user_id = "123";
+        let role = "user";
+        let secret = "test_secret".as_bytes();
+        let expiration = 3600;
+
+        let token = generate_token(user_id, role, secret, expiration).unwrap();
+        let result = validate_token(&token, &["admin".to_string()]);
+
+        assert!(matches!(result, Err(AuthError::InsufficientPermissions)));
     }
 }

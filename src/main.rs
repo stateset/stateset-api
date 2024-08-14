@@ -1,17 +1,11 @@
 use actix_web::{web, App, HttpServer, middleware};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use redis::Client as RedisClient;
-use slog::{Drain, Logger, o};
-use lapin::{Connection, ConnectionProperties};
-use prometheus::{Registry, IntCounterVec};
-use opentelemetry::global;
-use opentelemetry_jaeger::new_pipeline;
+use slog::{info, o, Drain, Logger};
 use dotenv::dotenv;
-use config::{Config, Environment, File};
-use tonic::transport::Server as TonicServer;
-use tonic_web::GrpcWebLayer;
+use opentelemetry::global;
 
+mod config;
 mod services;
 mod models;
 mod handlers;
@@ -29,25 +23,16 @@ mod health;
 mod db;
 mod proto;
 mod auth;
+mod grpc_server;
 
-use services::order_service::OrderServiceImpl;
-use services::inventory_service::InventoryServiceImpl;
-use services::return_service::ReturnServiceImpl;
-use services::warranty_service::WarrantyServiceImpl;
-use services::shipment_service::ShipmentServiceImpl;
-use services::work_order_service::WorkOrderServiceImpl;
-use proto::order_service_server::OrderServiceServer;
-use proto::inventory_service_server::InventoryServiceServer;
-use proto::return_service_server::ReturnServiceServer;
-use proto::warranty_service_server::WarrantyServiceServer;
-use proto::shipment_service_server::ShipmentServiceServer;
-use proto::work_order_service_server::WorkOrderServiceServer;
+use config::AppConfig;
+use errors::AppError;
 
 #[derive(Clone)]
 struct AppState {
     config: Arc<AppConfig>,
     db_pool: Arc<db::DbPool>,
-    redis_client: Arc<RedisClient>,
+    redis_client: Arc<redis::Client>,
     event_sender: broadcast::Sender<events::Event>,
     logger: Logger,
     services: Services,
@@ -63,165 +48,112 @@ struct Services {
     work_order_service: Arc<services::work_orders::WorkOrderService>,
 }
 
-#[derive(serde::Deserialize)]
-struct AppConfig {
-    database_url: String,
-    redis_url: String,
-    rabbitmq_url: String,
-    jaeger_endpoint: String,
-    host: String,
-    port: u16,
-    log_level: String,
-    environment: String,
-    api_version: String,
-}
-
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), AppError> {
     dotenv().ok();
-    let config = Arc::new(load_configuration().expect("Failed to load configuration"));
-    let log = setup_logger(&config.log_level);
-    slog::info!(log, "Starting Stateset API"; "environment" => &config.environment);
+    let config = Arc::new(config::load()?);
+    let log = setup_logger(&config);
 
-    // Database connection pool
-    let db_pool = Arc::new(db::establish_connection(&config.database_url));
+    info!(log, "Starting StateSet API"; 
+        "environment" => &config.environment,
+        "version" => env!("CARGO_PKG_VERSION")
+    );
 
-    // Redis client setup
-    let redis_client = Arc::new(RedisClient::open(&config.redis_url).expect("Failed to connect to Redis"));
+    let app_state = build_app_state(&config, &log).await?;
 
-    // RabbitMQ connection setup
-    let rabbit_conn = Connection::connect(&config.rabbitmq_url, ConnectionProperties::default())
-        .await.expect("Failed to connect to RabbitMQ")
-        .create_channel()
-        .await.expect("Failed to create RabbitMQ channel");
+    let schema = Arc::new(graphql::create_schema(
+        app_state.services.order_service.clone(),
+        app_state.services.inventory_service.clone(),
+    ));
 
-    // Metrics and tracing setup
-    let registry = setup_metrics();
-    setup_tracing(&config.jaeger_endpoint);
+    setup_telemetry(&config)?;
 
-    // Event broadcasting setup
-    let (event_sender, _) = broadcast::channel::<events::Event>(100);
+    // Spawn event processing
+    tokio::spawn(events::process_events(
+        app_state.event_sender.subscribe(),
+        app_state.services.clone(),
+        log.clone(),
+    ));
 
-    // Initialize services
-    let services = initialize_services(db_pool.clone(), redis_client.clone(), rabbit_conn, event_sender.clone(), log.clone()).await;
+    // Start gRPC server
+    #[cfg(feature = "grpc")]
+    let grpc_server = grpc_server::start(config.clone(), app_state.services.clone()).await?;
 
-    // Application state
-    let state = AppState {
-        config: config.clone(),
-        db_pool: db_pool.clone(),
-        redis_client: redis_client.clone(),
-        event_sender: event_sender.clone(),
-        logger: log.clone(),
-        services: services.clone()
-    };
-
-    // GraphQL schema setup
-    let schema = Arc::new(graphql::create_schema(services.order_service.clone(), services.inventory_service.clone()));
-
-    // Spawn event processing in a separate task
-    tokio::spawn(events::process_events(event_sender.subscribe(), services.clone(), log.clone()));
-
-    // gRPC server setup
-    let grpc_addr = "[::1]:50051".parse().expect("Failed to parse gRPC address");
-    let grpc_server = TonicServer::builder()
-        .accept_http1(true)
-        .layer(GrpcWebLayer::new())
-        .add_service(OrderServiceServer::new(OrderServiceImpl::new(db_pool.clone())))
-        .add_service(InventoryServiceServer::new(InventoryServiceImpl::new(db_pool.clone())))
-        .add_service(ReturnServiceServer::new(ReturnServiceImpl::new(db_pool.clone())))
-        .add_service(WarrantyServiceServer::new(WarrantyServiceImpl::new(db_pool.clone())))
-        .add_service(ShipmentServiceServer::new(ShipmentServiceImpl::new(db_pool.clone())))
-        .add_service(WorkOrderServiceServer::new(WorkOrderServiceImpl::new(db_pool.clone())))
-        .serve(grpc_addr);
-
-    // Start the gRPC server in a separate task
-    tokio::spawn(async move {
-        if let Err(e) = grpc_server.await {
-            eprintln!("gRPC server error: {}", e);
-        }
-    });
-
-    // Start the HTTP server
+    // Start HTTP server
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(state.clone()))
+            .app_data(web::Data::new(app_state.clone()))
             .app_data(web::Data::new(schema.clone()))
             .wrap(middleware::Logger::default())
             .wrap(tracing::TracingMiddleware::new())
-            .wrap(metrics::PrometheusMetrics::new(registry.clone()))
-            .wrap(middleware::DefaultHeaders::new()
-                .add(("X-Version", env!("CARGO_PKG_VERSION")))
-                .add(("X-Environment", state.config.environment.clone())))
+            .wrap(metrics::PrometheusMetrics::new())
             .wrap(middleware::Compress::default())
             .wrap(middleware::NormalizePath::trim())
             .configure(configure_routes)
             .service(web::resource("/health").to(health::health_check))
-            .service(web::resource("/proto").to(handle_proto_request))
     })
     .bind(format!("{}:{}", config.host, config.port))?
     .run();
 
-    slog::info!(log, "HTTP server running"; "address" => format!("{}:{}", config.host, config.port));
-    slog::info!(log, "gRPC server running"; "address" => grpc_addr.to_string());
+    info!(log, "HTTP server running"; 
+        "address" => format!("{}:{}", config.host, config.port)
+    );
 
     // Graceful shutdown handling
-    let srv = server.handle();
-    let graceful_shutdown = tokio::spawn(async move {
-        srv.stop(true).await;
-    });
+    let graceful_shutdown = shutdown_signal();
 
     tokio::select! {
         _ = server => {},
-        _ = graceful_shutdown => {},
+        _ = graceful_shutdown => {
+            info!(log, "Initiating graceful shutdown");
+        },
     }
 
-    slog::info!(log, "Shutting down");
+    info!(log, "Shutting down");
     Ok(())
 }
 
-fn load_configuration() -> Result<AppConfig, config::ConfigError> {
-    let mut config = Config::default();
-    config.merge(File::with_name("config/default"))?;
-    config.merge(Environment::with_prefix("APP"))?;
-    config.try_into()
-}
-
-fn setup_logger(log_level: &str) -> Logger {
+fn setup_logger(config: &AppConfig) -> Logger {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
-    let drain = slog::LevelFilter::new(drain, log_level.parse().unwrap()).fuse();
+    let drain = slog::LevelFilter::new(drain, config.log_level.parse().unwrap()).fuse();
     slog::Logger::root(drain, o!())
 }
 
-fn setup_metrics() -> Registry {
-    let registry = Registry::new();
-    let http_requests_total = IntCounterVec::new(
-        prometheus::opts!("http_requests_total", "Total number of HTTP requests"),
-        &["method", "path", "status"]
-    ).expect("Failed to create http_requests_total metric");
-    registry.register(Box::new(http_requests_total)).expect("Failed to register http_requests_total metric");
-    registry
-}
+async fn build_app_state(config: &Arc<AppConfig>, log: &Logger) -> Result<AppState, AppError> {
+    let db_pool = Arc::new(db::establish_connection(&config.database_url).await?);
+    let redis_client = Arc::new(redis::Client::open(&config.redis_url)?);
+    let rabbit_conn = message_queue::connect_rabbitmq(&config.rabbitmq_url).await?;
+    let (event_sender, _) = broadcast::channel::<events::Event>(100);
 
-fn setup_tracing(jaeger_endpoint: &str) {
-    let tracer = new_pipeline()
-        .with_service_name("stateset-api")
-        .with_endpoint(jaeger_endpoint)
-        .install_simple()
-        .expect("Failed to install Jaeger tracer");
-    global::set_tracer_provider(tracer);
+    let services = initialize_services(
+        db_pool.clone(),
+        redis_client.clone(),
+        rabbit_conn,
+        event_sender.clone(),
+        log.clone(),
+    ).await?;
+
+    Ok(AppState {
+        config: config.clone(),
+        db_pool,
+        redis_client,
+        event_sender,
+        logger: log.clone(),
+        services,
+    })
 }
 
 async fn initialize_services(
     db_pool: Arc<db::DbPool>,
-    redis_client: Arc<RedisClient>,
-    rabbit_channel: lapin::Channel,
+    redis_client: Arc<redis::Client>,
+    rabbit_conn: lapin::Connection,
     event_sender: broadcast::Sender<events::Event>,
     log: Logger,
-) -> Services {
+) -> Result<Services, AppError> {
     let rate_limiter = Arc::new(rate_limiter::RateLimiter::new(redis_client.clone(), "global", 1000, 60));
-    let message_queue = Arc::new(message_queue::RabbitMQ::new(rabbit_channel));
+    let message_queue = Arc::new(message_queue::RabbitMQ::new(rabbit_conn));
     let circuit_breaker = Arc::new(circuit_breaker::CircuitBreaker::new(5, std::time::Duration::from_secs(60)));
 
     let inventory_service = Arc::new(services::inventory::InventoryService::new(
@@ -313,6 +245,15 @@ async fn handle_proto_request(
     Ok(web::Bytes::from(buf))
 }
 
+fn setup_telemetry(config: &AppConfig) -> Result<(), AppError> {
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("stateset-api")
+        .with_endpoint(&config.jaeger_endpoint)
+        .install_simple()?;
+    global::set_tracer_provider(tracer);
+    Ok(())
+}
+
 fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/orders")
@@ -383,4 +324,28 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
             .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
             .route(web::post().to(handle_proto_request))
     );
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
