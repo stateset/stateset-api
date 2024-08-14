@@ -5,6 +5,7 @@ use validator::Validate;
 use tracing::{info, error, instrument};
 use diesel::prelude::*;
 use async_trait::async_trait;
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RejectReturnCommand {
@@ -14,9 +15,17 @@ pub struct RejectReturnCommand {
     pub reason: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RejectReturnResult {
+    pub id: String,
+    pub object: String,
+    pub rejected: bool,
+    pub reason: String,
+}
+
 #[async_trait]
 impl Command for RejectReturnCommand {
-    type Result = Return;
+    type Result = RejectReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -34,7 +43,12 @@ impl Command for RejectReturnCommand {
 
         self.log_and_trigger_event(event_sender, &rejected_return).await?;
 
-        Ok(rejected_return)
+        Ok(RejectReturnResult {
+            id: rejected_return.id.to_string(),
+            object: "return".to_string(),
+            rejected: true,
+            reason: self.reason.clone(),
+        })
     }
 }
 

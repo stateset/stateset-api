@@ -3,15 +3,23 @@ use crate::{errors::ServiceError, db::DbPool, models::{Return, ReturnStatus}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
 use diesel::prelude::*;
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompleteReturnCommand {
     pub return_id: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompleteReturnResult {
+    pub id: String,
+    pub object: String,
+    pub completed: bool,
+}
+
 #[async_trait::async_trait]
 impl Command for CompleteReturnCommand {
-    type Result = Return;
+    type Result = CompleteReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -29,7 +37,11 @@ impl Command for CompleteReturnCommand {
 
         self.log_and_trigger_event(event_sender, &completed_return).await?;
 
-        Ok(completed_return)
+        Ok(CompleteReturnResult {
+            id: completed_return.id.to_string(),
+            object: "return".to_string(),
+            completed: true,
+        })
     }
 }
 

@@ -5,15 +5,23 @@ use validator::Validate;
 use tracing::{info, error, instrument};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ApproveReturnCommand {
     pub return_id: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApproveReturnResult {
+    pub id: String,
+    pub object: String,
+    pub approved: bool,
+}
+
 #[async_trait::async_trait]
 impl Command for ApproveReturnCommand {
-    type Result = Return;
+    type Result = ApproveReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -31,7 +39,11 @@ impl Command for ApproveReturnCommand {
 
         self.log_and_trigger_event(event_sender, &approved_return).await?;
 
-        Ok(approved_return)
+        Ok(ApproveReturnResult {
+            id: approved_return.id.to_string(),
+            object: "return".to_string(),
+            approved: true,
+        })
     }
 }
 

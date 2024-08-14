@@ -270,7 +270,7 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
     );
 
     cfg.service(
-        web::scope("/returns")
+        web::scope("/return")
             .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
             .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
             .configure(handlers::returns::configure_routes)

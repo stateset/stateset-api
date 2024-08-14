@@ -5,6 +5,7 @@ use validator::Validate;
 use tracing::{error, info, instrument};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct CancelReturnCommand {
@@ -14,9 +15,17 @@ pub struct CancelReturnCommand {
     pub reason: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CancelReturnResult {
+    pub id: String,
+    pub object: String,
+    pub cancelled: bool,
+    pub reason: String,
+}
+
 #[async_trait::async_trait]
 impl Command for CancelReturnCommand {
-    type Result = Return;
+    type Result = CancelReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -34,7 +43,12 @@ impl Command for CancelReturnCommand {
 
         self.log_and_trigger_event(event_sender, &cancelled_return).await?;
 
-        Ok(cancelled_return)
+        Ok(CancelReturnResult {
+            id: cancelled_return.id.to_string(),
+            object: "return".to_string(),
+            cancelled: true,
+            reason: self.reason.clone(),
+        })
     }
 }
 
