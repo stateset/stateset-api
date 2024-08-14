@@ -11,9 +11,12 @@ pub mod release_order_from_hold_command;
 pub mod return_order_command;
 pub mod exchange_order_command;
 pub mod split_order_command;
+pub mod tag_order_command;
 pub mod merge_orders_command;
 pub mod update_shipping_address_command;
 pub mod refund_order_command;
+pub mod update_order_status_command;
+
 
 // Re-export commands for easier access
 pub use create_order_command::CreateOrderCommand;
@@ -29,6 +32,8 @@ pub use release_order_from_hold_command::ReleaseOrderFromHoldCommand;
 pub use return_order_command::ReturnOrderCommand;
 pub use exchange_order_command::ExchangeOrderCommand;
 pub use split_order_command::SplitOrderCommand;
+pub use tag_order_command::TagOrderCommand;
 pub use merge_orders_command::MergeOrdersCommand;
 pub use update_shipping_address_command::UpdateShippingAddressCommand;
 pub use refund_order_command::RefundOrderCommand;
+pub use update_order_status_command::UpdateOrderStatusCommand;
