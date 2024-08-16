@@ -1,7 +1,16 @@
 use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use sea_orm::*;
+use sea_orm::{
+    QuerySelect,
+    QueryOrder,
+    QueryFilter,
+    EntityTrait,
+    RelationTrait,
+    query::*,
+    Expr,
+    Function::*,
+};
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
 
@@ -32,13 +41,13 @@ pub struct GetInventoryItemQuery {
 
 #[async_trait]
 impl Query for GetInventoryItemQuery {
-    type Result = inventory_item_entity::Model;
+    type Result = InventoryItem;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        inventory_item_entity::Entity::find()
-            .filter(inventory_item_entity::Column::ProductId.eq(self.product_id))
+        InventoryItem::find()
+            .filter(InventoryItem::Column::ProductId.eq(self.product_id))
             .one(&db)
             .await
             .map_err(|_| ServiceError::NotFound)?
@@ -55,21 +64,21 @@ pub struct GetLowStockItemsQuery {
 
 #[async_trait]
 impl Query for GetLowStockItemsQuery {
-    type Result = Vec<(product_entity::Model, inventory_item_entity::Model)>;
+    type Result = Vec<(Product, InventoryItem)>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        product_entity::Entity::find()
+        Product::find()
             .join_rev(
                 JoinType::InnerJoin,
-                inventory_item_entity::Entity::belongs_to(product_entity::Entity)
-                    .from(inventory_item_entity::Column::ProductId)
-                    .to(product_entity::Column::Id)
+                InventoryItem::belongs_to(Product)
+                    .from(InventoryItem::Column::ProductId)
+                    .to(Product::Column::Id)
                     .into(),
             )
-            .filter(inventory_item_entity::Column::Quantity.le(self.threshold))
-            .order_by_asc(inventory_item_entity::Column::Quantity)
+            .filter(InventoryItem::Column::Quantity.le(self.threshold))
+            .order_by_asc(InventoryItem::Column::Quantity)
             .limit(self.limit)
             .offset(self.offset)
             .all(&db)
@@ -94,13 +103,13 @@ impl Query for GetInventoryValueQuery {
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        let result = inventory_item_entity::Entity::find()
+        let result = InventoryItem::find()
             .select_only()
             .column_as(
-                sum(inventory_item_entity::Column::Quantity.cast::<f64>() * inventory_item_entity::Column::UnitCost),
+                sum(InventoryItem::Column::Quantity.cast::<f64>() * InventoryItem::Column::UnitCost),
                 "total_value",
             )
-            .column_as(count(inventory_item_entity::Column::Id), "total_items")
+            .column_as(count(InventoryItem::Column::Id), "total_items")
             .into_tuple()
             .one(&db)
             .await
@@ -124,15 +133,15 @@ pub struct GetInventoryMovementsQuery {
 
 #[async_trait]
 impl Query for GetInventoryMovementsQuery {
-    type Result = Vec<inventory_movement_entity::Model>;
+    type Result = Vec<InventoryMovement>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        inventory_movement_entity::Entity::find()
-            .filter(inventory_movement_entity::Column::ProductId.eq(self.product_id))
-            .filter(inventory_movement_entity::Column::Timestamp.between(self.start_date, self.end_date))
-            .order_by_desc(inventory_movement_entity::Column::Timestamp)
+        InventoryMovement::find()
+            .filter(InventoryMovement::Column::ProductId.eq(self.product_id))
+            .filter(InventoryMovement::Column::Timestamp.between(self.start_date, self.end_date))
+            .order_by_desc(InventoryMovement::Column::Timestamp)
             .limit(self.limit)
             .offset(self.offset)
             .all(&db)
@@ -164,17 +173,17 @@ impl Query for GetTopSellingProductsQuery {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
         let top_selling = order_item_entity::Entity::find()
-            .inner_join(product_entity::Entity)
-            .inner_join(order_entity::Entity)
-            .filter(order_entity::Column::OrderDate.between(self.start_date, self.end_date))
-            .group_by(product_entity::Column::Id)
+            .inner_join(Product)
+            .inner_join(Order)
+            .filter(Order::Column::OrderDate.between(self.start_date, self.end_date))
+            .group_by(Product::Column::Id)
             .order_by_desc(sum(order_item_entity::Column::Quantity))
             .select_only()
-            .column(product_entity::Column::Id)
-            .column(product_entity::Column::Name)
-            .column_as(sum(order_item_entity::Column::Quantity), "quantity_sold")
+            .column(Product::Column::Id)
+            .column(Product::Column::Name)
+            .column_as(sum(OrderItem::Column::Quantity), "quantity_sold")
             .column_as(
-                sum(order_item_entity::Column::Quantity.cast::<f64>() * order_item_entity::Column::UnitPrice),
+                sum(OrderItem::Column::Quantity.cast::<f64>() * OrderItem::Column::UnitPrice),
                 "total_revenue",
             )
             .into_tuple()
@@ -214,21 +223,21 @@ impl Query for GetInventoryTurnoverRatioQuery {
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        let avg_inventory = inventory_snapshot_entity::Entity::find()
-            .filter(inventory_snapshot_entity::Column::Date.between(self.start_date, self.end_date))
+        let avg_inventory = InventorySnapshot::find()
+            .filter(InventorySnapshot::Column::Date.between(self.start_date, self.end_date))
             .select_only()
-            .column_as(avg(inventory_snapshot_entity::Column::TotalValue), "average_inventory_value")
+            .column_as(avg(InventorySnapshot::Column::TotalValue), "average_inventory_value")
             .into_tuple()
             .one(&db)
             .await
             .map_err(|_| ServiceError::DatabaseError)?
             .unwrap_or(0.0);
 
-        let cogs = order_item_entity::Entity::find()
-            .inner_join(order_entity::Entity)
-            .filter(order_entity::Column::OrderDate.between(self.start_date, self.end_date))
+        let cogs = OrderItem::find()
+            .inner_join(Order)
+            .filter(Order::Column::OrderDate.between(self.start_date, self.end_date))
             .select_only()
-            .column_as(sum(order_item_entity::Column::Quantity.cast::<f64>() * order_item_entity::Column::UnitCost), "cost_of_goods_sold")
+            .column_as(sum(OrderItem::Column::Quantity.cast::<f64>() * OrderItem::Column::UnitCost), "cost_of_goods_sold")
             .into_tuple()
             .one(&db)
             .await
@@ -266,16 +275,17 @@ impl Query for GetInventoryForecastQuery {
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        let current_stock = inventory_item_entity::Entity::find()
-            .filter(inventory_item_entity::Column::ProductId.eq(self.product_id))
+        let current_stock = InventoryItem::find()
+            .filter(InventoryItem::Column::ProductId.eq(self.product_id))
             .select_only()
-            .column(inventory_item_entity::Column::Quantity)
+            .column(InventoryItem::Column::Quantity)
             .into_tuple()
             .one(&db)
             .await
             .map_err(|_| ServiceError::NotFound)?
             .unwrap_or(0);
 
-        let end_date = Utc
+        let end_date = Utc::now();
+        let start_date = end_date - Duration::days(self.forecast_period as i64);
     }
 }

@@ -1,28 +1,53 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
+use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
-#[sea_orm(table_name = "return_items")]
+#[sea_orm(table_name = "returns")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    
-    #[validate(range(min = 1, message = "Return ID must be positive"))]
-    pub return_id: i32,
-    
-    #[validate(range(min = 1, message = "Product ID must be positive"))]
-    pub product_id: i32,
-    
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
-    pub quantity: i32,
-    
-    #[validate(length(min = 1, max = 255, message = "Reason must be between 1 and 255 characters"))]
-    pub reason: String,
+    pub created_date: DateTime<Utc>,
+    #[validate(range(min = 0, message = "Amount must be non-negative"))]
+    pub amount: Decimal,
+    pub action_needed: Option<String>,
+    pub condition: Option<String>,
+    #[validate(email(message = "Invalid email format"))]
+    pub customer_email: String,
+    pub customer_id: i32,
+    pub description: Option<String>,
+    pub entered_by: Option<String>,
+    #[validate(range(min = 0, message = "Flat rate shipping must be non-negative"))]
+    pub flat_rate_shipping: Decimal,
+    pub order_date: DateTime<Utc>,
+    pub order_id: i32,
+    pub reason_category: Option<String>,
+    pub reported_condition: Option<String>,
+    pub requested_date: DateTime<Utc>,
+    pub rma: String,
+    pub serial_number: Option<String>,
+    pub shipped_date: Option<DateTime<Utc>>,
+    pub status: ReturnStatus,
+    #[validate(range(min = 0, message = "Tax refunded must be non-negative"))]
+    pub tax_refunded: Decimal,
+    #[validate(range(min = 0, message = "Total refunded must be non-negative"))]
+    pub total_refunded: Decimal,
+    pub tracking_number: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "super::return_line_item::Entity")]
+    ReturnLineItems,
+}
+
+impl Related<super::return_line_item::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ReturnLineItems.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}
 
@@ -31,47 +56,86 @@ impl ActiveModelBehavior for ActiveModel {}
 pub enum ReturnStatus {
     #[sea_orm(string_value = "Requested")]
     Requested,
-    
     #[sea_orm(string_value = "Approved")]
     Approved,
-    
     #[sea_orm(string_value = "Rejected")]
     Rejected,
-    
     #[sea_orm(string_value = "Received")]
     Received,
-    
     #[sea_orm(string_value = "Refunded")]
     Refunded,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Associations, Queryable, Insertable, Validate)]
-#[belongs_to(Return)]
-#[belongs_to(Product)]
-#[table_name = "return_items"]
-pub struct ReturnItem {
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
+#[sea_orm(table_name = "return_line_items")]
+pub struct ReturnLineItem {
+    #[sea_orm(primary_key)]
     pub id: i32,
-    #[validate(range(min = 1, message = "Return ID must be positive"))]
+    #[validate(range(min = 0, message = "Amount must be non-negative"))]
+    pub amount: Decimal,
+    pub condition: Option<String>,
+    #[validate(range(min = 0, message = "Flat rate shipping must be non-negative"))]
+    pub flat_rate_shipping: Decimal,
+    pub name: String,
+    #[validate(range(min = 0, message = "Price must be non-negative"))]
+    pub price: Decimal,
     pub return_id: i32,
-    #[validate(range(min = 1, message = "Product ID must be positive"))]
-    pub product_id: i32,
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
-    pub quantity: i32,
-    #[validate(length(min = 1, max = 255, message = "Reason must be between 1 and 255 characters"))]
-    pub reason: String,
+    pub serial_number: Option<String>,
+    pub sku: String,
+    #[validate(range(min = 0, message = "Tax refunded must be non-negative"))]
+    pub tax_refunded: Decimal,
 }
 
-impl Return {
-    pub fn new(order_id: i32, customer_id: i32, reason: String) -> Result<Self, ValidationError> {
-        let now = Utc::now().naive_utc();
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum ReturnLineItemRelation {
+    #[sea_orm(
+        belongs_to = "super::return::Entity",
+        from = "Column::ReturnId",
+        to = "super::return::Column::Id"
+    )]
+    Return,
+}
+
+impl Related<super::return::Entity> for ReturnLineItem {
+    fn to() -> RelationDef {
+        ReturnLineItemRelation::Return.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    pub fn new(
+        order_id: i32,
+        customer_id: i32,
+        customer_email: String,
+        amount: Decimal,
+        rma: String,
+    ) -> Result<Self, ValidationError> {
+        let now = Utc::now();
         let return_request = Self {
             id: 0, // Assuming database will auto-increment this
-            order_id,
+            created_date: now,
+            amount,
+            action_needed: None,
+            condition: None,
+            customer_email,
             customer_id,
+            description: None,
+            entered_by: None,
+            flat_rate_shipping: Decimal::new(0, 2),
+            order_date: now, // This should be set to the actual order date
+            order_id,
+            reason_category: None,
+            reported_condition: None,
+            requested_date: now,
+            rma,
+            serial_number: None,
+            shipped_date: None,
             status: ReturnStatus::Requested,
-            reason,
-            created_at: now,
-            updated_at: now,
+            tax_refunded: Decimal::new(0, 2),
+            total_refunded: Decimal::new(0, 2),
+            tracking_number: None,
         };
         return_request.validate()?;
         Ok(return_request)
@@ -82,7 +146,13 @@ impl Return {
             return Err("Cannot update status of a refunded return".into());
         }
         self.status = new_status;
-        self.updated_at = Utc::now().naive_utc();
+        Ok(())
+    }
+
+    pub fn add_line_item(&self, line_item: ReturnLineItem) -> Result<(), ValidationError> {
+        // Here you would typically save the line item to the database
+        // For this example, we'll just validate the line item
+        line_item.validate()?;
         Ok(())
     }
 }
@@ -103,24 +173,27 @@ impl ReturnStatus {
     }
 }
 
-impl ReturnItem {
-    pub fn new(return_id: i32, product_id: i32, quantity: i32, reason: String) -> Result<Self, ValidationError> {
+impl ReturnLineItem {
+    pub fn new(
+        return_id: i32,
+        amount: Decimal,
+        name: String,
+        price: Decimal,
+        sku: String,
+    ) -> Result<Self, ValidationError> {
         let item = Self {
             id: 0, // Assuming database will auto-increment this
+            amount,
+            condition: None,
+            flat_rate_shipping: Decimal::new(0, 2),
+            name,
+            price,
             return_id,
-            product_id,
-            quantity,
-            reason,
+            serial_number: None,
+            sku,
+            tax_refunded: Decimal::new(0, 2),
         };
         item.validate()?;
         Ok(item)
-    }
-}
-
-// Implement a custom validator for ReturnStatus if needed
-fn validate_return_status(status: &ReturnStatus) -> Result<(), ValidationError> {
-    match status {
-        ReturnStatus::Requested | ReturnStatus::Approved | ReturnStatus::Rejected | ReturnStatus::Received | ReturnStatus::Refunded => Ok(()),
-        _ => Err(ValidationError::new("Invalid return status")),
     }
 }

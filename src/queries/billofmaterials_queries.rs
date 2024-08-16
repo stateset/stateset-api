@@ -1,7 +1,16 @@
 use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use sea_orm::*;
+use sea_orm::{
+    QuerySelect,
+    QueryOrder,
+    QueryFilter,
+    EntityTrait,
+    RelationTrait,
+    query::*,
+    Expr,
+    Function::*,
+};
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
 
@@ -16,7 +25,8 @@ use crate::order_item::OrderItem;
 use crate::product::Product;
 use crate::customer::Customer;
 use crate::order::Order;
-use crate::warehouse::Warehouse;   
+use crate::warehouse::Warehouse;
+use crate::component::Component;
 
 #[async_trait]
 pub trait Query: Send + Sync {
@@ -58,9 +68,9 @@ impl Query for GetBOMByProductQuery {
             .map_err(|_| ServiceError::NotFound)?
             .ok_or(ServiceError::NotFound)?;
 
-        let items = bom_item_entity::Entity::find()
-            .filter(bom_item_entity::Column::ProductId.eq(self.product_id))
-            .find_also_related(component_entity::Entity)
+        let items = BillOfMaterialsLineItem::find()
+            .filter(BillOfMaterialsLineItem::Column::ProductId.eq(self.product_id))
+            .find_also_related(Component::Entity)
             .all(&db)
             .await
             .map_err(|_| ServiceError::DatabaseError)?;
@@ -112,16 +122,16 @@ impl Query for GetBOMCostAnalysisQuery {
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let product = product_entity::Entity::find_by_id(self.product_id)
+        let product = Product::find_by_id(self.product_id)
             .one(&db)
             .await
             .map_err(|_| ServiceError::NotFound)?
             .ok_or(ServiceError::NotFound)?;
 
-        let items = bom_item_entity::Entity::find()
-            .filter(bom_item_entity::Column::ProductId.eq(self.product_id))
-            .find_also_related(component_entity::Entity)
-            .find_also_related(inventory_item_entity::Entity)
+        let items = BillOfMaterialsLineItem::find()
+            .filter(BillOfMaterialsLineItem::Column::ProductId.eq(self.product_id))
+            .find_also_related(Component::Entity)
+            .find_also_related(InventoryItem::Entity)
             .all(&db)
             .await
             .map_err(|_| ServiceError::DatabaseError)?;
@@ -178,15 +188,15 @@ impl Query for GetComponentUsageQuery {
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let component = component_entity::Entity::find_by_id(self.component_id)
+        let component = Component::find_by_id(self.component_id)
             .one(&db)
             .await
             .map_err(|_| ServiceError::NotFound)?
             .ok_or(ServiceError::NotFound)?;
 
-        let usages = bom_item_entity::Entity::find()
-            .filter(bom_item_entity::Column::ComponentId.eq(self.component_id))
-            .find_also_related(product_entity::Entity)
+        let usages = BillOfMaterialsLineItem::find()
+            .filter(BillOfMaterialsLineItem::Column::ComponentId.eq(self.component_id))
+            .find_also_related(Product::Entity)
             .all(&db)
             .await
             .map_err(|_| ServiceError::DatabaseError)?;
@@ -230,10 +240,10 @@ impl Query for GetBOMShortagesQuery {
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let shortages = bom_item_entity::Entity::find()
-            .filter(bom_item_entity::Column::ProductId.eq(self.product_id))
-            .find_also_related(component_entity::Entity)
-            .find_also_related(inventory_item_entity::Entity)
+        let shortages = BillOfMaterialsLineItem::find()
+            .filter(BillOfMaterialsLineItem::Column::ProductId.eq(self.product_id))
+            .find_also_related(Component::Entity)
+                .find_also_related(InventoryItem::Entity)
             .all(&db)
             .await
             .map_err(|_| ServiceError::DatabaseError)?;

@@ -3257,6 +3257,7 @@ dependencies = [
  "lru",
  "prost",
  "redis",
+ "rust_decimal",
  "sea-orm",
  "serde",
  "serde_json",
