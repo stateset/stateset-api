@@ -2,7 +2,7 @@ use validator::Validate;
 use chrono::NaiveDateTime;
 use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, AsChangeset, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
 #[table_name = "customers"]
 pub struct Customer {
     pub id: i32,

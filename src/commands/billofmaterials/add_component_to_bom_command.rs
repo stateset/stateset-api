@@ -1,11 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{BOMComponent, NewBOMComponent}};
+use crate::{errors::ServiceError, db::DbPool, models::{bom_component, NewBOMComponent, BOMComponent}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use chrono::Utc;
+use sea_orm::{entity::*, query::*, DbConn, Set};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AddComponentToBOMCommand {
@@ -21,17 +21,18 @@ impl Command for AddComponentToBOMCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let component = conn.transaction(|| {
-            self.add_component(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for adding component {} to BOM ID {}: {}", self.component_id, self.bom_id, e);
-            e
-        })?;
+        let component = db
+            .transaction::<_, ServiceError, _>(|txn| Box::pin(self.add_component(txn)))
+            .await
+            .map_err(|e| {
+                error!(
+                    "Transaction failed for adding component {} to BOM ID {}: {}",
+                    self.component_id, self.bom_id, e
+                );
+                e
+            })?;
 
         self.log_and_trigger_event(event_sender, &component).await?;
 
@@ -40,29 +41,41 @@ impl Command for AddComponentToBOMCommand {
 }
 
 impl AddComponentToBOMCommand {
-    fn add_component(&self, conn: &PgConnection) -> Result<BOMComponent, ServiceError> {
-        let new_component = NewBOMComponent {
-            bom_id: self.bom_id,
-            component_id: self.component_id,
-            quantity: self.quantity,
-            created_at: Utc::now(),
+    async fn add_component(&self, db: &DbConn) -> Result<BOMComponent, ServiceError> {
+        let new_component = bom_component::ActiveModel {
+            bom_id: Set(self.bom_id),
+            component_id: Set(self.component_id),
+            quantity: Set(self.quantity),
+            created_at: Set(Utc::now().naive_utc()),
+            ..Default::default()
         };
 
-        diesel::insert_into(bom_components::table)
-            .values(&new_component)
-            .get_result::<BOMComponent>(conn)
+        new_component
+            .insert(db)
+            .await
             .map_err(|e| {
-                error!("Failed to add component {} to BOM ID {}: {}", self.component_id, self.bom_id, e);
+                error!(
+                    "Failed to add component {} to BOM ID {}: {}",
+                    self.component_id, self.bom_id, e
+                );
                 ServiceError::DatabaseError(format!("Failed to add component: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, component: &BOMComponent) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: Arc<EventSender>,
+        component: &BOMComponent,
+    ) -> Result<(), ServiceError> {
         info!("Component ID: {} added to BOM ID: {}", self.component_id, self.bom_id);
-        event_sender.send(Event::ComponentAddedToBOM(self.bom_id, component.id))
+        event_sender
+            .send(Event::ComponentAddedToBOM(self.bom_id, component.id))
             .await
             .map_err(|e| {
-                error!("Failed to send ComponentAddedToBOM event for BOM ID {}: {}", self.bom_id, e);
+                error!(
+                    "Failed to send ComponentAddedToBOM event for BOM ID {}: {}",
+                    self.bom_id, e
+                );
                 ServiceError::EventError(e.to_string())
             })
     }

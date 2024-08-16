@@ -1,10 +1,10 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Shipment, ShipmentStatus}};
+use crate::{errors::ServiceError, db::DbPool, models::{shipment, Shipment, ShipmentStatus}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait, ActiveValue};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct HoldShipmentCommand {
@@ -18,17 +18,9 @@ impl Command for HoldShipmentCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_shipment = conn.transaction(|| {
-            self.hold_shipment(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for holding shipment ID {}: {}", self.shipment_id, e);
-            e
-        })?;
+        let updated_shipment = self.hold_shipment(&db).await?;
 
         self.log_and_trigger_event(event_sender, &updated_shipment).await?;
 
@@ -37,10 +29,24 @@ impl Command for HoldShipmentCommand {
 }
 
 impl HoldShipmentCommand {
-    fn hold_shipment(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        diesel::update(shipments::table.find(self.shipment_id))
-            .set(shipments::status.eq(ShipmentStatus::OnHold))
-            .get_result::<Shipment>(conn)
+    async fn hold_shipment(&self, db: &sea_orm::DatabaseConnection) -> Result<Shipment, ServiceError> {
+        let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch shipment with ID {}: {}", self.shipment_id, e);
+                ServiceError::DatabaseError(format!("Failed to fetch shipment: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Shipment with ID {} not found", self.shipment_id);
+                ServiceError::NotFound
+            })?
+            .into();
+
+        shipment.status = ActiveValue::Set(ShipmentStatus::OnHold); // Setting status to OnHold
+
+        shipment.update(db)
+            .await
             .map_err(|e| {
                 error!("Failed to hold shipment ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to hold shipment: {}", e))

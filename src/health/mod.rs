@@ -1,20 +1,27 @@
-use actix_web::{web, HttpResponse};
+use axum::{
+    extract::State,
+    routing::get,
+    Json, Router,
+};
+use serde_json::json;
 use crate::AppState;
-use redis::{Commands, ConnectionLike};
-use std::time::Duration;
+use redis::{AsyncCommands, RedisResult};
+use std::sync::Arc;
 
-pub async fn health_check(state: web::Data<AppState>) -> HttpResponse {
+pub async fn health_check(
+    State(state): State<Arc<AppState>>,
+) -> Json<serde_json::Value> {
     let db_status = check_database(&state.db_pool).await;
     let redis_status = check_redis(&state.redis_client).await;
 
     if db_status && redis_status {
-        HttpResponse::Ok().json(serde_json::json!({
+        Json(json!({
             "status": "healthy",
             "version": env!("CARGO_PKG_VERSION"),
             "environment": &state.config.environment
         }))
     } else {
-        HttpResponse::ServiceUnavailable().json(serde_json::json!({
+        Json(json!({
             "status": "unhealthy",
             "database": db_status,
             "redis": redis_status
@@ -27,10 +34,15 @@ async fn check_database(pool: &DbPool) -> bool {
 }
 
 async fn check_redis(client: &RedisClient) -> bool {
-    let mut conn = match client.get_async_connection().await {
-        Ok(conn) => conn,
-        Err(_) => return false,
-    };
+    match client.get_async_connection().await {
+        Ok(mut conn) => {
+            let result: RedisResult<String> = conn.ping().await;
+            result.is_ok()
+        }
+        Err(_) => false,
+    }
+}
 
-    redis::cmd("PING").query_async::<_, String>(&mut conn).await.is_ok()
+pub fn health_check_route() -> Router<Arc<AppState>> {
+    Router::new().route("/health", get(health_check))
 }

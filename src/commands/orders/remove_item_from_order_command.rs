@@ -1,11 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{OrderItem}};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{order_item_entity, order_item_entity::Entity as OrderItem}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use prometheus::IntCounter;
 
 lazy_static! {
@@ -30,24 +30,28 @@ impl Command for RemoveItemFromOrderCommand {
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             ORDER_ITEM_REMOVE_FAILURES.inc();
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError
         })?;
 
         // Attempt to delete the item from the order_items table
-        let deleted_rows = match diesel::delete(order_items::table.filter(order_items::id.eq(self.item_id).and(order_items::order_id.eq(self.order_id))))
-            .execute(&conn) {
-            Ok(rows) => rows,
-            Err(e) => {
+        let delete_result = OrderItem::delete_many()
+            .filter(
+                Condition::all()
+                    .add(order_item_entity::Column::Id.eq(self.item_id))
+                    .add(order_item_entity::Column::OrderId.eq(self.order_id))
+            )
+            .exec(&db)
+            .await
+            .map_err(|e| {
                 ORDER_ITEM_REMOVE_FAILURES.inc();
                 error!("Failed to remove item {} from order {}: {}", self.item_id, self.order_id, e);
-                return Err(ServiceError::DatabaseError);
-            }
-        };
+                ServiceError::DatabaseError
+            })?;
 
-        if deleted_rows == 0 {
+        if delete_result.rows_affected == 0 {
             ORDER_ITEM_REMOVE_FAILURES.inc();
             error!(
                 "Item {} not found in order {}. No rows were deleted.",

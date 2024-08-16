@@ -1,10 +1,26 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
+use sea_orm::*;
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
-use diesel::dsl::*;
+
+use crate::billofmaterials::BillOfMaterials;
+use crate::inventory_item::InventoryItem;
+use crate::order::Order;
+use crate::shipment::Shipment;
+use crate::tracking_event::TrackingEvent;
+use crate::work_order::WorkOrder;
+use crate::return_entity::ReturnEntity;
+use crate::order_item::OrderItem;   
+use crate::product::Product;
+use crate::customer::Customer;
+use crate::order::Order;
+use crate::warehouse::Warehouse;
+use crate::manufacture_order_component_entity::ManufactureOrderComponent;
+use crate::manufacture_order_operation_entity::ManufactureOrderOperation;
+use crate::manufacture_order_entity::ManufactureOrder;
+use crate::manufacture_order_status::ManufactureOrderStatus;
 
 #[async_trait]
 pub trait Query: Send + Sync {
@@ -20,39 +36,41 @@ pub struct GetWorkOrderByIdQuery {
 
 #[async_trait]
 impl Query for GetWorkOrderByIdQuery {
-    type Result = WorkOrder;
+    type Result = WorkOrder::Model;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let work_order = work_orders::table
-            .find(self.work_order_id)
-            .first::<WorkOrder>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
-        Ok(work_order)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        WorkOrder::find_by_id(self.work_order_id)
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .ok_or(ServiceError::NotFound)
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetWorkOrdersByStatusQuery {
     pub status: WorkOrderStatus,
-    pub limit: i64,
-    pub offset: i64,
+    pub limit: u64,
+    pub offset: u64,
 }
 
 #[async_trait]
 impl Query for GetWorkOrdersByStatusQuery {
-    type Result = Vec<WorkOrder>;
+    type Result = Vec<WorkOrder::Model>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let work_orders = work_orders::table
-            .filter(work_orders::status.eq(self.status))
-            .order(work_orders::created_at.desc())
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        WorkOrder::find()
+            .filter(WorkOrder::Column::Status.eq(self.status))
+            .order_by_desc(WorkOrder::Column::CreatedAt)
             .limit(self.limit)
             .offset(self.offset)
-            .load::<WorkOrder>(&conn)
-            .map_err(|_| ServiceError::DatabaseError)?;
-        Ok(work_orders)
+            .all(&db)
+            .await
+            .map_err(|_| ServiceError::DatabaseError)
     }
 }
 
@@ -60,24 +78,25 @@ impl Query for GetWorkOrdersByStatusQuery {
 pub struct GetWorkOrdersInDateRangeQuery {
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
-    pub limit: i64,
-    pub offset: i64,
+    pub limit: u64,
+    pub offset: u64,
 }
 
 #[async_trait]
 impl Query for GetWorkOrdersInDateRangeQuery {
-    type Result = Vec<WorkOrder>;
+    type Result = Vec<WorkOrder::Model>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let work_orders = work_orders::table
-            .filter(work_orders::created_at.between(self.start_date, self.end_date))
-            .order(work_orders::created_at.desc())
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        WorkOrder::Entity::find()
+            .filter(WorkOrder::Column::CreatedAt.between(self.start_date, self.end_date))
+            .order_by_desc(WorkOrder::Column::CreatedAt)
             .limit(self.limit)
             .offset(self.offset)
-            .load::<WorkOrder>(&conn)
-            .map_err(|_| ServiceError::DatabaseError)?;
-        Ok(work_orders)
+            .all(&db)
+            .await
+            .map_err(|_| ServiceError::DatabaseError)
     }
 }
 
@@ -88,9 +107,9 @@ pub struct GetWorkOrderDetailsQuery {
 
 #[derive(Debug, Serialize)]
 pub struct WorkOrderDetails {
-    pub work_order: WorkOrder,
-    pub tasks: Vec<WorkOrderTask>,
-    pub materials: Vec<WorkOrderMaterial>,
+    pub work_order: WorkOrder::Model,
+    pub tasks: Vec<work_order_task_entity::Model>,
+    pub materials: Vec<work_order_material_entity::Model>,
 }
 
 #[async_trait]
@@ -98,19 +117,24 @@ impl Query for GetWorkOrderDetailsQuery {
     type Result = WorkOrderDetails;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let work_order = work_orders::table
-            .find(self.work_order_id)
-            .first::<WorkOrder>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        let tasks = WorkOrderTask::belonging_to(&work_order)
-            .load::<WorkOrderTask>(&conn)
+        let work_order = WorkOrder::Entity::find_by_id(self.work_order_id)
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .ok_or(ServiceError::NotFound)?;
+
+        let tasks = work_order_task_entity::Entity::find()
+            .filter(work_order_task_entity::Column::WorkOrderId.eq(self.work_order_id))
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        let materials = WorkOrderMaterial::belonging_to(&work_order)
-            .load::<WorkOrderMaterial>(&conn)
+        let materials = work_order_material_entity::Entity::find()
+            .filter(work_order_material_entity::Column::WorkOrderId.eq(self.work_order_id))
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(WorkOrderDetails {
@@ -139,26 +163,29 @@ impl Query for GetWorkOrderProductivityQuery {
     type Result = WorkOrderProductivity;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let total_work_orders: i64 = work_orders::table
-            .filter(work_orders::created_at.between(self.start_date, self.end_date))
-            .count()
-            .get_result(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let total_work_orders = WorkOrder::Entity::find()
+            .filter(WorkOrder::Column::CreatedAt.between(self.start_date, self.end_date))
+            .count(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        let completed_work_orders: i64 = work_orders::table
-            .filter(work_orders::created_at.between(self.start_date, self.end_date))
-            .filter(work_orders::status.eq(WorkOrderStatus::Completed))
-            .count()
-            .get_result(&conn)
+        let completed_work_orders = WorkOrder::Entity::find()
+            .filter(WorkOrder::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(WorkOrder::Column::Status.eq(WorkOrderStatus::Completed))
+            .count(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        let average_completion_time: f64 = work_orders::table
-            .filter(work_orders::created_at.between(self.start_date, self.end_date))
-            .filter(work_orders::status.eq(WorkOrderStatus::Completed))
-            .select(avg(work_orders::completion_time))
-            .first::<Option<f64>>(&conn)
+        let average_completion_time = WorkOrder::Entity::find()
+            .filter(WorkOrder::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(WorkOrder::Column::Status.eq(WorkOrderStatus::Completed))
+            .select_only()
+            .column_as(avg(WorkOrder::Column::CompletionTime), "average_completion_time")
+            .into_tuple()
+            .one(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?
             .unwrap_or(0.0);
 
@@ -174,7 +201,7 @@ impl Query for GetWorkOrderProductivityQuery {
 pub struct GetTopPerformingTechniciansQuery {
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
-    pub limit: i64,
+    pub limit: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -190,22 +217,23 @@ impl Query for GetTopPerformingTechniciansQuery {
     type Result = Vec<TechnicianPerformance>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let performances = work_orders::table
-            .inner_join(technicians::table)
-            .filter(work_orders::created_at.between(self.start_date, self.end_date))
-            .filter(work_orders::status.eq(WorkOrderStatus::Completed))
-            .group_by((technicians::id, technicians::name))
-            .order(count_star().desc())
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let performances = WorkOrder::Entity::find()
+            .inner_join(technician_entity::Entity)
+            .filter(WorkOrder::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(WorkOrder::Column::Status.eq(WorkOrderStatus::Completed))
+            .group_by((technician_entity::Column::Id, technician_entity::Column::Name))
+            .order_by_desc(count_star())
             .limit(self.limit)
-            .select((
-                technicians::id,
-                technicians::name,
-                count_star(),
-                avg(work_orders::completion_time),
-            ))
-            .load::<(i32, String, i64, Option<f64>)>(&conn)
+            .select_only()
+            .column(technician_entity::Column::Id)
+            .column(technician_entity::Column::Name)
+            .column_as(count_star(), "completed_work_orders")
+            .column_as(avg(WorkOrder::Column::CompletionTime), "average_completion_time")
+            .into_tuple()
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(performances

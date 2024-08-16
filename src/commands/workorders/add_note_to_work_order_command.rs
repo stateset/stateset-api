@@ -1,35 +1,33 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{WorkOrderNote, NewWorkOrderNote}};
+use crate::{errors::ServiceError, db::DbPool, models::{work_order_note_entity, NewWorkOrderNote}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use chrono::Utc;
+use sea_orm::{DatabaseConnection, EntityTrait, Set, TransactionTrait, ActiveModelTrait};
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AddNoteToWorkOrderCommand {
     pub work_order_id: i32,
-    #[validate(length(min = 1))]
     pub note: String, // Note to be added to the work order
 }
 
 #[async_trait::async_trait]
 impl Command for AddNoteToWorkOrderCommand {
-    type Result = WorkOrderNote;
+    type Result = work_order_note_entity::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let work_order_note = conn.transaction(|| {
-            self.add_note_to_work_order(&conn)
-        }).map_err(|e| {
+        let work_order_note = db.transaction(|txn| {
+            Box::pin(async move {
+                self.add_note_to_work_order(txn).await
+            })
+        }).await.map_err(|e| {
             error!("Transaction failed for adding note to Work Order ID {}: {}", self.work_order_id, e);
-            e
+            ServiceError::DatabaseError(format!("Transaction failed: {}", e))
         })?;
 
         self.log_and_trigger_event(event_sender, &work_order_note).await?;
@@ -39,23 +37,21 @@ impl Command for AddNoteToWorkOrderCommand {
 }
 
 impl AddNoteToWorkOrderCommand {
-    fn add_note_to_work_order(&self, conn: &PgConnection) -> Result<WorkOrderNote, ServiceError> {
-        let new_note = NewWorkOrderNote {
-            work_order_id: self.work_order_id,
-            note: self.note.clone(),
-            created_at: Utc::now(),
+    async fn add_note_to_work_order(&self, txn: &DatabaseConnection) -> Result<work_order_note_entity::Model, ServiceError> {
+        let new_note = work_order_note_entity::ActiveModel {
+            work_order_id: Set(self.work_order_id),
+            note: Set(self.note.clone()),
+            created_at: Set(Utc::now()),
+            ..Default::default()
         };
 
-        diesel::insert_into(work_order_notes::table)
-            .values(&new_note)
-            .get_result::<WorkOrderNote>(conn)
-            .map_err(|e| {
-                error!("Failed to add note to Work Order ID {}: {}", self.work_order_id, e);
-                ServiceError::DatabaseError(format!("Failed to add note: {}", e))
-            })
+        new_note.insert(txn).await.map_err(|e| {
+            error!("Failed to add note to Work Order ID {}: {}", self.work_order_id, e);
+            ServiceError::DatabaseError(format!("Failed to add note: {}", e))
+        })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, note: &WorkOrderNote) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, note: &work_order_note_entity::Model) -> Result<(), ServiceError> {
         info!("Note added to Work Order ID: {}. Note ID: {}", self.work_order_id, note.id);
         event_sender.send(Event::WorkOrderNoteAdded(self.work_order_id, note.id))
             .await

@@ -1,6 +1,13 @@
 use slog::{Drain, Logger};
 use slog_async::Async;
 use slog_term::{FullFormat, TermDecorator};
+use axum::{
+    middleware::Next,
+    response::Response,
+    http::Request,
+};
+use std::time::Instant;
+use std::sync::Arc;
 
 pub fn setup_logger() -> Logger {
     let decorator = TermDecorator::new().build();
@@ -9,65 +16,83 @@ pub fn setup_logger() -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-pub struct LoggingMiddleware {
+#[derive(Clone)]
+pub struct LoggingState {
     log: Logger,
 }
 
-impl LoggingMiddleware {
+impl LoggingState {
     pub fn new(log: Logger) -> Self {
         Self { log }
     }
 }
 
-impl<S, B> actix_web::dev::Transform<S, actix_web::dev::ServiceRequest> for LoggingMiddleware
-where
-    S: actix_web::dev::Service<actix_web::dev::ServiceRequest, Response = actix_web::dev::ServiceResponse<B>, Error = actix_web::Error>,
-    S::Future: 'static,
-    B: 'static,
-{
-    type Response = actix_web::dev::ServiceResponse<B>;
-    type Error = actix_web::Error;
-    type Transform = LoggingMiddlewareService<S>;
-    type InitError = ();
-    type Future = std::future::Ready<Result<Self::Transform, Self::InitError>>;
+pub async fn logging_middleware<B>(
+    state: axum::extract::State<Arc<LoggingState>>,
+    req: Request<B>,
+    next: Next<B>,
+) -> Response {
+    let start_time = Instant::now();
+    let method = req.method().clone();
+    let uri = req.uri().clone();
 
-    fn new_transform(&self, service: S) -> Self::Future {
-        std::future::ready(Ok(LoggingMiddlewareService { service, log: self.log.clone() }))
+    let response = next.run(req).await;
+
+    let duration = start_time.elapsed();
+    slog::info!(state.log, "Request processed";
+        "method" => method.as_str(),
+        "path" => uri.path(),
+        "status" => response.status().as_u16(),
+        "duration" => format!("{:?}", duration),
+    );
+
+    response
+}
+
+// Example of how to use the middleware in your Axum application
+pub fn create_app(logger: Logger) -> axum::Router {
+    let logging_state = Arc::new(LoggingState::new(logger));
+
+    axum::Router::new()
+        // ... your routes here ...
+        .layer(axum::middleware::from_fn_with_state(logging_state.clone(), logging_middleware))
+        .with_state(logging_state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        routing::get,
+        Router,
+    };
+    use http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    async fn test_handler() -> &'static str {
+        "Hello, World!"
     }
-}
 
-pub struct LoggingMiddlewareService<S> {
-    service: S,
-    log: Logger,
-}
+    #[tokio::test]
+    async fn test_logging_middleware() {
+        let logger = setup_logger();
+        let logging_state = Arc::new(LoggingState::new(logger));
 
-impl<S, B> actix_web::dev::Service<actix_web::dev::ServiceRequest> for LoggingMiddlewareService<S>
-where
-    S: actix_web::dev::Service<actix_web::dev::ServiceRequest, Response = actix_web::dev::ServiceResponse<B>, Error = actix_web::Error>,
-    S::Future: 'static,
-    B: 'static,
-{
-    type Response = actix_web::dev::ServiceResponse<B>;
-    type Error = actix_web::Error;
-    type Future = Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>>>;
+        let app = Router::new()
+            .route("/", get(test_handler))
+            .layer(axum::middleware::from_fn_with_state(logging_state.clone(), logging_middleware))
+            .with_state(logging_state);
 
-    actix_web::dev::forward_ready!(service);
+        let request = Request::builder()
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
 
-    fn call(&self, req: actix_web::dev::ServiceRequest) -> Self::Future {
-        let start_time = std::time::Instant::now();
-        let log = self.log.clone();
+        let response = app.oneshot(request).await.unwrap();
 
-        let fut = self.service.call(req);
-        Box::pin(async move {
-            let res = fut.await?;
-            let duration = start_time.elapsed();
-            slog::info!(log, "Request processed";
-                "method" => res.request().method().as_str(),
-                "path" => res.request().path(),
-                "status" => res.status().as_u16(),
-                "duration" => format!("{:?}", duration),
-            );
-            Ok(res)
-        })
+        assert_eq!(response.status(), StatusCode::OK);
+        // Note: We can't easily check the log output in this test,
+        // but we can verify that the middleware didn't interfere with the response.
     }
 }

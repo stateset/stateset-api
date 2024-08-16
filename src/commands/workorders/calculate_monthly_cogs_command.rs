@@ -1,15 +1,15 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{WorkOrder, COGSData}};
+use crate::{errors::ServiceError, db::DbPool, models::{work_order_entity, cogs_data_entity}};
 use crate::events::{Event, EventSender};
 use crate::commands::CalculateCOGSCommand;
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
-use chrono::{Utc, NaiveDateTime, Datelike};
+use chrono::{Utc, NaiveDateTime, Datelike, NaiveDate, NaiveTime};
 use bigdecimal::BigDecimal;
 use futures::stream::{self, StreamExt};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Order};
 
 lazy_static! {
     static ref MONTHLY_COGS_CALCULATIONS: IntCounter = 
@@ -35,17 +35,13 @@ pub struct MonthlyCOGSResult {
     pub cogs_trend: BigDecimal,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Command for CalculateMonthlyCOGSCommand {
     type Result = MonthlyCOGSResult;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            MONTHLY_COGS_CALCULATION_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
-        })?;
+        let db = db_pool.clone();
 
         let now = Utc::now().naive_utc();
         let start_date = NaiveDateTime::new(
@@ -64,7 +60,7 @@ impl Command for CalculateMonthlyCOGSCommand {
             )
         };
 
-        let work_orders = self.get_work_orders_for_period(&conn, start_date, end_date)?;
+        let work_orders = self.get_work_orders_for_period(&db, start_date, end_date).await?;
 
         let (total_cogs, total_quantity_produced) = self.calculate_total_cogs_and_quantity(work_orders, &db_pool).await?;
 
@@ -78,7 +74,7 @@ impl Command for CalculateMonthlyCOGSCommand {
             if now.month() == 1 { now.year() - 1 } else { now.year() },
             if now.month() == 1 { 12 } else { now.month() - 1 }
         );
-        let previous_cogs_data = self.get_previous_cogs_data(&conn, &previous_period)?;
+        let previous_cogs_data = self.get_previous_cogs_data(&db, &previous_period).await?;
 
         let cogs_trend = previous_cogs_data
             .map(|data| {
@@ -95,7 +91,7 @@ impl Command for CalculateMonthlyCOGSCommand {
             cogs_trend: cogs_trend.clone(),
         };
 
-        self.store_cogs_data(&conn, &result)?;
+        self.store_cogs_data(&db, &result).await?;
 
         // Trigger an event indicating that monthly COGS was calculated
         if let Err(e) = event_sender.send(Event::MonthlyCOGSCalculated(current_period, total_cogs)).await {
@@ -120,25 +116,26 @@ impl Command for CalculateMonthlyCOGSCommand {
 }
 
 impl CalculateMonthlyCOGSCommand {
-    fn get_work_orders_for_period(
+    async fn get_work_orders_for_period(
         &self,
-        conn: &PgConnection,
+        db: &DatabaseConnection,
         start_date: NaiveDateTime,
         end_date: NaiveDateTime
-    ) -> Result<Vec<WorkOrder>, ServiceError> {
-        work_orders::table
-            .filter(work_orders::created_at.between(start_date, end_date))
-            .load::<WorkOrder>(conn)
+    ) -> Result<Vec<work_order_entity::Model>, ServiceError> {
+        work_order_entity::Entity::find()
+            .filter(work_order_entity::Column::CreatedAt.between(start_date, end_date))
+            .all(db)
+            .await
             .map_err(|e| {
                 MONTHLY_COGS_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch work orders: {}", e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch work orders: {}", e))
             })
     }
 
     async fn calculate_total_cogs_and_quantity(
         &self,
-        work_orders: Vec<WorkOrder>,
+        work_orders: Vec<work_order_entity::Model>,
         db_pool: &Arc<DbPool>
     ) -> Result<(BigDecimal, i32), ServiceError> {
         let results = stream::iter(work_orders)
@@ -171,35 +168,32 @@ impl CalculateMonthlyCOGSCommand {
         Ok((total_cogs, total_quantity_produced))
     }
 
-    fn get_previous_cogs_data(&self, conn: &PgConnection, previous_period: &str) -> Result<Option<COGSData>, ServiceError> {
-        cogs_data::table
-            .filter(cogs_data::period.eq(previous_period))
-            .first::<COGSData>(conn)
-            .optional()
+    async fn get_previous_cogs_data(&self, db: &DatabaseConnection, previous_period: &str) -> Result<Option<cogs_data_entity::Model>, ServiceError> {
+        cogs_data_entity::Entity::find()
+            .filter(cogs_data_entity::Column::Period.eq(previous_period))
+            .one(db)
+            .await
             .map_err(|e| {
                 MONTHLY_COGS_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch previous COGS data: {}", e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch previous COGS data: {}", e))
             })
     }
 
-    fn store_cogs_data(&self, conn: &PgConnection, result: &MonthlyCOGSResult) -> Result<(), ServiceError> {
-        let new_cogs_data = COGSData {
-            period: result.period.clone(),
-            total_cogs: result.total_cogs.clone(),
-            average_cogs: result.average_cogs.clone(),
-            quantity_produced: result.quantity_produced,
-            cogs_trend: result.cogs_trend.clone(),
+    async fn store_cogs_data(&self, db: &DatabaseConnection, result: &MonthlyCOGSResult) -> Result<(), ServiceError> {
+        let new_cogs_data = cogs_data_entity::ActiveModel {
+            period: sea_orm::ActiveValue::Set(result.period.clone()),
+            total_cogs: sea_orm::ActiveValue::Set(result.total_cogs.clone()),
+            average_cogs: sea_orm::ActiveValue::Set(result.average_cogs.clone()),
+            quantity_produced: sea_orm::ActiveValue::Set(result.quantity_produced),
+            cogs_trend: sea_orm::ActiveValue::Set(result.cogs_trend.clone()),
         };
 
-        diesel::insert_into(cogs_data::table)
-            .values(&new_cogs_data)
-            .execute(conn)
-            .map_err(|e| {
-                MONTHLY_COGS_CALCULATION_FAILURES.inc();
-                error!("Failed to store COGS data: {}", e);
-                ServiceError::DatabaseError
-            })?;
+        new_cogs_data.insert(db).await.map_err(|e| {
+            MONTHLY_COGS_CALCULATION_FAILURES.inc();
+            error!("Failed to store COGS data: {}", e);
+            ServiceError::DatabaseError(format!("Failed to store COGS data: {}", e))
+        })?;
 
         Ok(())
     }

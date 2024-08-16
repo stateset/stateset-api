@@ -1,13 +1,15 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{PurchaseOrder, InventoryItem, ManufacturingOrder}};
+use crate::{errors::ServiceError, db::DbPool, models::{purchase_order_entity, inventory_item_entity, manufacturing_order_entity}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use chrono::{NaiveDateTime};
 use bigdecimal::BigDecimal;
+use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, Condition, QueryFilter};
+use lazy_static::lazy_static;
+use prometheus::IntCounter;
 
 lazy_static! {
     static ref AVERAGE_COST_CALCULATIONS: IntCounter = 
@@ -33,21 +35,17 @@ pub struct AverageCostResult {
     pub total_quantity: BigDecimal,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Command for CalculateAverageCostCommand {
     type Result = AverageCostResult;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            AVERAGE_COST_CALCULATION_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
-        })?;
+        let db = db_pool.clone();
 
-        let purchases = self.get_purchases(&conn)?;
-        let inventory = self.get_inventory(&conn)?;
-        let manufacturing_costs = self.get_manufacturing_costs(&conn)?;
+        let purchases = self.get_purchases(&db).await?;
+        let inventory = self.get_inventory(&db).await?;
+        let manufacturing_costs = self.get_manufacturing_costs(&db).await?;
 
         let total_cost = purchases.iter().fold(BigDecimal::from(0), |sum, po| sum + &po.total_cost) +
                          manufacturing_costs.iter().fold(BigDecimal::from(0), |sum, cost| sum + &cost.amount);
@@ -66,7 +64,6 @@ impl Command for CalculateAverageCostCommand {
             total_quantity: total_quantity.clone(),
         };
 
-        // Trigger an event indicating that average cost was calculated
         if let Err(e) = event_sender.send(Event::AverageCostCalculated(self.product_id, average_cost)).await {
             AVERAGE_COST_CALCULATION_FAILURES.inc();
             error!("Failed to send AverageCostCalculated event for product {}: {}", self.product_id, e);
@@ -88,39 +85,51 @@ impl Command for CalculateAverageCostCommand {
 }
 
 impl CalculateAverageCostCommand {
-    fn get_purchases(&self, conn: &PgConnection) -> Result<Vec<PurchaseOrder>, ServiceError> {
-        purchase_orders::table
-            .filter(purchase_orders::product_id.eq(self.product_id))
-            .filter(purchase_orders::date.between(self.start_date, self.end_date))
-            .load::<PurchaseOrder>(conn)
+    async fn get_purchases(&self, db: &DatabaseConnection) -> Result<Vec<purchase_order_entity::Model>, ServiceError> {
+        purchase_order_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(purchase_order_entity::Column::ProductId.eq(self.product_id))
+                    .add(purchase_order_entity::Column::Date.between(self.start_date, self.end_date))
+            )
+            .all(db)
+            .await
             .map_err(|e| {
                 AVERAGE_COST_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch purchase orders for product {}: {}", self.product_id, e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch purchase orders: {}", e))
             })
     }
 
-    fn get_inventory(&self, conn: &PgConnection) -> Result<Vec<InventoryItem>, ServiceError> {
-        inventory_items::table
-            .filter(inventory_items::product_id.eq(self.product_id))
-            .filter(inventory_items::date.between(self.start_date, self.end_date))
-            .load::<InventoryItem>(conn)
+    async fn get_inventory(&self, db: &DatabaseConnection) -> Result<Vec<inventory_item_entity::Model>, ServiceError> {
+        inventory_item_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(inventory_item_entity::Column::ProductId.eq(self.product_id))
+                    .add(inventory_item_entity::Column::Date.between(self.start_date, self.end_date))
+            )
+            .all(db)
+            .await
             .map_err(|e| {
                 AVERAGE_COST_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch inventory for product {}: {}", self.product_id, e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch inventory: {}", e))
             })
     }
 
-    fn get_manufacturing_costs(&self, conn: &PgConnection) -> Result<Vec<ManufacturingOrder>, ServiceError> {
-        manufacturing_orders::table
-            .filter(manufacturing_orders::product_id.eq(self.product_id))
-            .filter(manufacturing_orders::date.between(self.start_date, self.end_date))
-            .load::<ManufacturingOrder>(conn)
+    async fn get_manufacturing_costs(&self, db: &DatabaseConnection) -> Result<Vec<manufacturing_order_entity::Model>, ServiceError> {
+        manufacturing_order_entity::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(manufacturing_order_entity::Column::ProductId.eq(self.product_id))
+                    .add(manufacturing_order_entity::Column::Date.between(self.start_date, self.end_date))
+            )
+            .all(db)
+            .await
             .map_err(|e| {
                 AVERAGE_COST_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch manufacturing costs for product {}: {}", self.product_id, e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch manufacturing costs: {}", e))
             })
     }
 }

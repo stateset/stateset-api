@@ -1,11 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Order, OrderStatus}};
+use crate::{errors::ServiceError, db::DbPool, models::order_entity};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{DatabaseConnection, EntityTrait, ActiveModelTrait, Set};
 use prometheus::IntCounter;
 
 lazy_static! {
@@ -27,45 +27,71 @@ pub struct ApplyOrderDiscountCommand {
     pub discount_amount: f64,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Command for ApplyOrderDiscountCommand {
-    type Result = Order;
+    type Result = order_entity::Model;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.clone();
+
+        let updated_order = self.apply_discount(&db, event_sender.clone()).await.map_err(|e| {
             ORDER_DISCOUNT_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
+            error!("Failed to apply discount to order ID {}: {}", self.order_id, e);
+            e
         })?;
 
-        conn.transaction(|| {
-            // Apply discount to the order's total amount
-            let updated_order = diesel::update(orders::table.find(self.order_id))
-                .set(orders::total_amount.eq(orders::total_amount - self.discount_amount))
-                .get_result::<Order>(&conn)
-                .map_err(|e| {
-                    ORDER_DISCOUNT_FAILURES.inc();
-                    error!("Failed to apply discount to order ID {}: {}", self.order_id, e);
-                    ServiceError::DatabaseError
-                })?;
+        ORDER_DISCOUNTS_APPLIED.inc();
 
-            // Send the OrderUpdated event
-            if let Err(e) = event_sender.send(Event::OrderUpdated(self.order_id)).await {
+        info!(
+            order_id = %self.order_id,
+            discount_amount = %self.discount_amount,
+            "Successfully applied discount to order"
+        );
+
+        Ok(updated_order)
+    }
+}
+
+impl ApplyOrderDiscountCommand {
+    async fn apply_discount(
+        &self, 
+        db: &DatabaseConnection, 
+        event_sender: Arc<EventSender>
+    ) -> Result<order_entity::Model, ServiceError> {
+        let order = order_entity::Entity::find_by_id(self.order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                ORDER_DISCOUNT_FAILURES.inc();
+                error!("Failed to find Order ID {}: {}", self.order_id, e);
+                ServiceError::DatabaseError(format!("Failed to find Order: {}", e))
+            })?
+            .ok_or_else(|| {
+                ORDER_DISCOUNT_FAILURES.inc();
+                error!("Order ID {} not found", self.order_id);
+                ServiceError::NotFound(format!("Order ID {} not found", self.order_id))
+            })?;
+
+        let mut active_model = order.into_active_model();
+        active_model.total_amount = Set(active_model.total_amount.unwrap_or_default() - self.discount_amount);
+
+        let updated_order = active_model.update(db)
+            .await
+            .map_err(|e| {
+                ORDER_DISCOUNT_FAILURES.inc();
+                error!("Failed to update Order ID {}: {}", self.order_id, e);
+                ServiceError::DatabaseError(format!("Failed to update Order: {}", e))
+            })?;
+
+        event_sender.send(Event::OrderUpdated(self.order_id))
+            .await
+            .map_err(|e| {
                 ORDER_DISCOUNT_FAILURES.inc();
                 error!("Failed to send OrderUpdated event for order ID {}: {}", self.order_id, e);
-                return Err(ServiceError::EventError(e.to_string()));
-            }
+                ServiceError::EventError(e.to_string())
+            })?;
 
-            ORDER_DISCOUNTS_APPLIED.inc();
-
-            info!(
-                order_id = %self.order_id,
-                discount_amount = %self.discount_amount,
-                "Successfully applied discount to order"
-            );
-
-            Ok(updated_order)
-        })
+        Ok(updated_order)
     }
 }

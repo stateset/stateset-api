@@ -1,10 +1,28 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
+use sea_orm::*;
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
-use diesel::dsl::*;
+
+
+use crate::billofmaterials::BillOfMaterials;
+use crate::inventory_item::InventoryItem;
+use crate::order::Order;
+use crate::shipment::Shipment;
+use crate::tracking_event::TrackingEvent;
+use crate::work_order::WorkOrder;
+use crate::return_entity::ReturnEntity;
+use crate::order_item::OrderItem;   
+use crate::product::Product;
+use crate::customer::Customer;
+use crate::order::Order;
+use crate::warehouse::Warehouse;
+use crate::manufacture_order_component_entity::ManufactureOrderComponent;
+use crate::manufacture_order_operation_entity::ManufactureOrderOperation;
+use crate::manufacture_order_entity::ManufactureOrder;
+use crate::manufacture_order_status::ManufactureOrderStatus;
+
 
 #[async_trait]
 pub trait Query: Send + Sync {
@@ -30,23 +48,31 @@ impl Query for GetWarehouseLocationsByProductQuery {
     type Result = Vec<WarehouseLocationStock>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let locations = warehouse_inventory::table
-            .inner_join(warehouse_locations::table)
-            .filter(warehouse_inventory::product_id.eq(self.product_id))
-            .select((
-                warehouse_locations::id,
-                warehouse_locations::name,
-                warehouse_inventory::quantity,
-            ))
-            .load::<(String, String, i32)>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let locations = warehouse_inventory_entity::Entity::find()
+            .join_rev(
+                JoinType::InnerJoin,
+                warehouse_location_entity::Entity::belongs_to(warehouse_inventory_entity::Entity)
+                    .from(warehouse_inventory_entity::Column::LocationId)
+                    .to(warehouse_location_entity::Column::Id)
+                    .into(),
+            )
+            .filter(warehouse_inventory_entity::Column::ProductId.eq(self.product_id))
+            .select_only()
+            .column(warehouse_location_entity::Column::Id)
+            .column(warehouse_location_entity::Column::Name)
+            .column(warehouse_inventory_entity::Column::Quantity)
+            .into_tuple()
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(locations
             .into_iter()
-            .map(|(id, name, quantity)| WarehouseLocationStock {
-                location_id: id,
-                location_name: name,
+            .map(|(location_id, location_name, quantity)| WarehouseLocationStock {
+                location_id,
+                location_name,
                 quantity,
             })
             .collect())
@@ -72,35 +98,35 @@ impl Query for GetOptimalPickingLocationsQuery {
     type Result = Vec<PickingLocation>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        // First, get the order items
-        let order_items = order_items::table
-            .filter(order_items::order_id.eq(self.order_id))
-            .load::<OrderItem>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let order_items = order_item_entity::Entity::find()
+            .filter(order_item_entity::Column::OrderId.eq(self.order_id))
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let mut picking_locations = Vec::new();
 
         for item in order_items {
-            let locations = warehouse_inventory::table
-                .inner_join(warehouse_locations::table)
-                .inner_join(products::table.on(warehouse_inventory::product_id.eq(products::id)))
-                .filter(warehouse_inventory::product_id.eq(item.product_id))
-                .filter(warehouse_inventory::quantity.ge(item.quantity))
-                .order(warehouse_locations::pick_sequence.asc())
-                .select((
-                    products::id,
-                    products::name,
-                    warehouse_locations::id,
-                    warehouse_locations::name,
-                    warehouse_inventory::quantity,
-                ))
-                .first::<(i32, String, String, String, i32)>(&conn)
-                .optional()
+            let location = warehouse_inventory_entity::Entity::find()
+                .join(JoinType::InnerJoin, warehouse_location_entity::Entity)
+                .join(JoinType::InnerJoin, product_entity::Entity)
+                .filter(warehouse_inventory_entity::Column::ProductId.eq(item.product_id))
+                .filter(warehouse_inventory_entity::Column::Quantity.gte(item.quantity))
+                .order_by_asc(warehouse_location_entity::Column::PickSequence)
+                .select_only()
+                .column(product_entity::Column::Id)
+                .column(product_entity::Column::Name)
+                .column(warehouse_location_entity::Column::Id)
+                .column(warehouse_location_entity::Column::Name)
+                .column(warehouse_inventory_entity::Column::Quantity)
+                .into_tuple()
+                .one(&db)
+                .await
                 .map_err(|_| ServiceError::DatabaseError)?;
 
-            if let Some((product_id, product_name, location_id, location_name, _)) = locations {
+            if let Some((product_id, product_name, location_id, location_name, _)) = location {
                 picking_locations.push(PickingLocation {
                     product_id,
                     product_name,
@@ -135,37 +161,54 @@ impl Query for GetWarehouseUtilizationQuery {
     type Result = WarehouseUtilization;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let total_locations: i32 = warehouse_locations::table
-            .filter(warehouse_locations::warehouse_id.eq(self.warehouse_id))
-            .count()
-            .get_result(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let total_locations = warehouse_location_entity::Entity::find()
+            .filter(warehouse_location_entity::Column::WarehouseId.eq(self.warehouse_id))
+            .count(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        let occupied_locations: i32 = warehouse_inventory::table
-            .inner_join(warehouse_locations::table)
-            .filter(warehouse_locations::warehouse_id.eq(self.warehouse_id))
-            .filter(warehouse_inventory::quantity.gt(0))
-            .select(count_distinct(warehouse_locations::id))
-            .first(&conn)
+        let occupied_locations = warehouse_inventory_entity::Entity::find()
+            .join_rev(
+                JoinType::InnerJoin,
+                warehouse_location_entity::Entity::belongs_to(warehouse_inventory_entity::Entity)
+                    .from(warehouse_inventory_entity::Column::LocationId)
+                    .to(warehouse_location_entity::Column::Id)
+                    .into(),
+            )
+            .filter(warehouse_location_entity::Column::WarehouseId.eq(self.warehouse_id))
+            .filter(warehouse_inventory_entity::Column::Quantity.gt(0))
+            .count(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let utilization_rate = occupied_locations as f64 / total_locations as f64;
 
-        let volume_data: (Option<f64>, Option<f64>) = warehouse_locations::table
-            .left_join(warehouse_inventory::table)
-            .filter(warehouse_locations::warehouse_id.eq(self.warehouse_id))
-            .select((
-                sum(warehouse_locations::volume),
-                sum(warehouse_inventory::quantity.cast::<f64>() * products::volume),
-            ))
-            .first(&conn)
+        let volume_data = warehouse_location_entity::Entity::find()
+            .left_join(warehouse_inventory_entity::Entity)
+            .filter(warehouse_location_entity::Column::WarehouseId.eq(self.warehouse_id))
+            .select_only()
+            .column_as(sum(warehouse_location_entity::Column::Volume), "total_volume")
+            .column_as(
+                sum(
+                    warehouse_inventory_entity::Column::Quantity.cast::<f64>()
+                        * product_entity::Column::Volume,
+                ),
+                "used_volume",
+            )
+            .into_tuple()
+            .one(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let total_volume = volume_data.0.unwrap_or(0.0);
         let used_volume = volume_data.1.unwrap_or(0.0);
-        let volume_utilization_rate = if total_volume > 0.0 { used_volume / total_volume } else { 0.0 };
+        let volume_utilization_rate = if total_volume > 0.0 {
+            used_volume / total_volume
+        } else {
+            0.0
+        };
 
         Ok(WarehouseUtilization {
             total_locations,
@@ -200,28 +243,28 @@ impl Query for GetInventoryMovementHistoryQuery {
     type Result = Vec<InventoryMovement>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let movements = inventory_movements::table
-            .left_join(warehouse_locations::table.on(inventory_movements::from_location_id.eq(warehouse_locations::id.nullable())))
-            .left_join(warehouse_locations::table.on(inventory_movements::to_location_id.eq(warehouse_locations::id.nullable())))
-            .filter(inventory_movements::product_id.eq(self.product_id))
-            .filter(inventory_movements::timestamp.between(self.start_date, self.end_date))
-            .select((
-                inventory_movements::id,
-                inventory_movements::movement_type,
-                warehouse_locations::name.nullable().first(),
-                warehouse_locations::name.nullable().second(),
-                inventory_movements::quantity,
-                inventory_movements::timestamp,
-            ))
-            .load::<(i32, String, Option<String>, Option<String>, i32, DateTime<Utc>)>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let movements = inventory_movement_entity::Entity::find()
+            .left_join(warehouse_location_entity::Entity)
+            .filter(inventory_movement_entity::Column::ProductId.eq(self.product_id))
+            .filter(inventory_movement_entity::Column::Timestamp.between(self.start_date, self.end_date))
+            .select_only()
+            .column(inventory_movement_entity::Column::Id)
+            .column(inventory_movement_entity::Column::MovementType)
+            .column_as(warehouse_location_entity::Column::Name.nullable(), "from_location")
+            .column_as(warehouse_location_entity::Column::Name.nullable(), "to_location")
+            .column(inventory_movement_entity::Column::Quantity)
+            .column(inventory_movement_entity::Column::Timestamp)
+            .into_tuple()
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(movements
             .into_iter()
-            .map(|(id, movement_type, from_location, to_location, quantity, timestamp)| InventoryMovement {
-                movement_id: id,
+            .map(|(movement_id, movement_type, from_location, to_location, quantity, timestamp)| InventoryMovement {
+                movement_id,
                 movement_type,
                 from_location,
                 to_location,
@@ -252,21 +295,22 @@ impl Query for CreateCycleCountQuery {
     type Result = CycleCount;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let new_cycle_count = NewCycleCount {
-            location_id: &self.location_id,
-            counter_id: self.counter_id,
-            status: CycleCountStatus::Pending,
-            created_at: Utc::now(),
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let new_cycle_count = cycle_count_entity::ActiveModel {
+            location_id: Set(self.location_id.clone()),
+            counter_id: Set(self.counter_id),
+            status: Set(CycleCountStatus::Pending),
+            created_at: Set(Utc::now()),
+            ..Default::default()
         };
 
-        let cycle_count = diesel::insert_into(cycle_counts::table)
-            .values(&new_cycle_count)
-            .get_result::<CycleCount>(&conn)
+        let cycle_count = new_cycle_count
+            .insert(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        Ok(cycle_count)
+        Ok(cycle_count.into())
     }
 }
 
@@ -284,52 +328,77 @@ pub struct InventoryReconciliation {
 
 #[async_trait]
 impl Query for ReconcileInventoryQuery {
-    type Result = Vec<InventoryAdjustment>;
+    type Result = Vec<inventory_adjustment_entity::Model>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
         let mut adjustments = Vec::new();
 
-        conn.transaction::<_, diesel::result::Error, _>(|| {
-            for reconciliation in &self.reconciliations {
-                let current_quantity: i32 = warehouse_inventory::table
-                    .filter(warehouse_inventory::product_id.eq(reconciliation.product_id))
-                    .filter(warehouse_inventory::location_id.eq(cycle_counts::table.select(cycle_counts::location_id).find(self.cycle_count_id)))
-                    .select(warehouse_inventory::quantity)
-                    .first(&conn)?;
+        let transaction = db
+            .transaction::<_, DbErr, _>(|txn| {
+                Box::pin(async move {
+                    for reconciliation in &self.reconciliations {
+                        let current_quantity = warehouse_inventory_entity::Entity::find()
+                            .filter(warehouse_inventory_entity::Column::ProductId.eq(reconciliation.product_id))
+                            .filter(warehouse_inventory_entity::Column::LocationId.eq(
+                                cycle_count_entity::Entity::find_by_id(self.cycle_count_id)
+                                    .select_only()
+                                    .column(cycle_count_entity::Column::LocationId)
+                                    .into_tuple()
+                                    .one(txn)
+                                    .await?,
+                            ))
+                            .select_only()
+                            .column(warehouse_inventory_entity::Column::Quantity)
+                            .into_tuple()
+                            .one(txn)
+                            .await?
+                            .unwrap_or(0);
 
-                let difference = reconciliation.counted_quantity - current_quantity;
+                        let difference = reconciliation.counted_quantity - current_quantity;
 
-                if difference != 0 {
-                    let adjustment = diesel::insert_into(inventory_adjustments::table)
-                        .values((
-                            inventory_adjustments::cycle_count_id.eq(self.cycle_count_id),
-                            inventory_adjustments::product_id.eq(reconciliation.product_id),
-                            inventory_adjustments::quantity_change.eq(difference),
-                            inventory_adjustments::created_at.eq(Utc::now()),
-                        ))
-                        .get_result::<InventoryAdjustment>(&conn)?;
+                        if difference != 0 {
+                            let adjustment = inventory_adjustment_entity::ActiveModel {
+                                cycle_count_id: Set(self.cycle_count_id),
+                                product_id: Set(reconciliation.product_id),
+                                quantity_change: Set(difference),
+                                created_at: Set(Utc::now()),
+                                ..Default::default()
+                            };
 
-                    diesel::update(warehouse_inventory::table)
-                        .filter(warehouse_inventory::product_id.eq(reconciliation.product_id))
-                        .filter(warehouse_inventory::location_id.eq(cycle_counts::table.select(cycle_counts::location_id).find(self.cycle_count_id)))
-                        .set(warehouse_inventory::quantity.eq(warehouse_inventory::quantity + difference))
-                        .execute(&conn)?;
+                            let adjustment = adjustment.insert(txn).await?;
 
-                    adjustments.push(adjustment);
-                }
-            }
+                            warehouse_inventory_entity::Entity::update_many()
+                                .filter(warehouse_inventory_entity::Column::ProductId.eq(reconciliation.product_id))
+                                .filter(warehouse_inventory_entity::Column::LocationId.eq(
+                                    cycle_count_entity::Entity::find_by_id(self.cycle_count_id)
+                                        .select_only()
+                                        .column(cycle_count_entity::Column::LocationId)
+                                        .into_tuple()
+                                        .one(txn)
+                                        .await?,
+                                ))
+                                .col_expr(warehouse_inventory_entity::Column::Quantity, Expr::col(warehouse_inventory_entity::Column::Quantity).add(difference))
+                                .exec(txn)
+                                .await?;
 
-            diesel::update(cycle_counts::table)
-                .filter(cycle_counts::id.eq(self.cycle_count_id))
-                .set(cycle_counts::status.eq(CycleCountStatus::Completed))
-                .execute(&conn)?;
+                            adjustments.push(adjustment);
+                        }
+                    }
 
-            Ok(())
-        }).map_err(|_| ServiceError::DatabaseError)?;
+                    cycle_count_entity::Entity::update_many()
+                        .filter(cycle_count_entity::Column::Id.eq(self.cycle_count_id))
+                        .col_expr(cycle_count_entity::Column::Status, Expr::value(CycleCountStatus::Completed))
+                        .exec(txn)
+                        .await?;
 
-        Ok(adjustments)
+                    Ok(adjustments)
+                })
+            })
+            .await;
+
+        transaction.map_err(|_| ServiceError::DatabaseError)
     }
 }
 
@@ -352,28 +421,30 @@ impl Query for GetCrossDockingOpportunitiesQuery {
     type Result = Vec<CrossDockingOpportunity>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let incoming_items = incoming_shipment_items::table
-            .filter(incoming_shipment_items::shipment_id.eq(self.incoming_shipment_id))
-            .load::<IncomingShipmentItem>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let incoming_items = incoming_shipment_item_entity::Entity::find()
+            .filter(incoming_shipment_item_entity::Column::ShipmentId.eq(self.incoming_shipment_id))
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let mut opportunities = Vec::new();
 
         for item in incoming_items {
-            let matching_orders = order_items::table
-                .inner_join(orders::table)
-                .inner_join(products::table.on(order_items::product_id.eq(products::id)))
-                .filter(order_items::product_id.eq(item.product_id))
-                .filter(orders::status.eq(OrderStatus::Pending))
-                .select((
-                    products::id,
-                    products::name,
-                    orders::id,
-                    order_items::quantity,
-                ))
-                .load::<(i32, String, i32, i32)>(&conn)
+            let matching_orders = order_item_entity::Entity::find()
+                .inner_join(order_entity::Entity)
+                .inner_join(product_entity::Entity)
+                .filter(order_item_entity::Column::ProductId.eq(item.product_id))
+                .filter(order_entity::Column::Status.eq(OrderStatus::Pending))
+                .select_only()
+                .column(product_entity::Column::Id)
+                .column(product_entity::Column::Name)
+                .column(order_entity::Column::Id)
+                .column(order_item_entity::Column::Quantity)
+                .into_tuple()
+                .all(&db)
+                .await
                 .map_err(|_| ServiceError::DatabaseError)?;
 
             for (product_id, product_name, order_id, outgoing_quantity) in matching_orders {
@@ -411,44 +482,55 @@ impl Query for AnalyzePickEfficiencyQuery {
     type Result = PickEfficiencyAnalysis;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let pick_data: (i32, Option<f64>) = pick_tasks::table
-            .filter(pick_tasks::created_at.between(self.start_date, self.end_date))
-            .filter(pick_tasks::status.eq(PickTaskStatus::Completed))
-            .select((
-                count_star(),
-                avg(pick_tasks::completed_at - pick_tasks::created_at),
-            ))
-            .first(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let pick_data = pick_task_entity::Entity::find()
+            .filter(pick_task_entity::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(pick_task_entity::Column::Status.eq(PickTaskStatus::Completed))
+            .select_only()
+            .column_as(count_star(), "total_picks")
+            .column_as(avg(pick_task_entity::Column::CompletedAt - pick_task_entity::Column::CreatedAt), "average_pick_time")
+            .into_tuple()
+            .one(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        let total_picks = pick_data.0;
+        let total_picks = pick_data.0.unwrap_or(0);
         let average_pick_time = pick_data.1.unwrap_or(0.0);
-        let picks_per_hour = if average_pick_time > 0.0 { 3600.0 / average_pick_time } else { 0.0 };
+        let picks_per_hour = if average_pick_time > 0.0 {
+            3600.0 / average_pick_time
+        } else {
+            0.0
+        };
 
-        let picker_efficiency: Vec<(String, f64)> = pick_tasks::table
-            .inner_join(users::table)
-            .filter(pick_tasks::created_at.between(self.start_date, self.end_date))
-            .filter(pick_tasks::status.eq(PickTaskStatus::Completed))
-            .group_by(users::id)
-            .select((
-                users::name,
-                avg(pick_tasks::completed_at - pick_tasks::created_at),
-            ))
-            .load(&conn)
+        let picker_efficiency = pick_task_entity::Entity::find()
+            .inner_join(user_entity::Entity)
+            .filter(pick_task_entity::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(pick_task_entity::Column::Status.eq(PickTaskStatus::Completed))
+            .group_by(user_entity::Column::Id)
+            .select_only()
+            .column(user_entity::Column::Name)
+            .column_as(avg(pick_task_entity::Column::CompletedAt - pick_task_entity::Column::CreatedAt), "average_time")
+            .into_tuple()
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
-        let (most_efficient_picker, least_efficient_picker) = picker_efficiency.iter()
-            .fold((String::new(), String::new()), |acc, (name, time)| {
-                if acc.0.is_empty() || time < &acc.1.parse::<f64>().unwrap_or(f64::MAX) {
-                    (name.clone(), time.to_string())
-                } else if acc.1.is_empty() || time > &acc.1.parse::<f64>().unwrap_or(0.0) {
-                    (acc.0, name.clone())
-                } else {
-                    acc
-                }
-            });
+        let (most_efficient_picker, least_efficient_picker) = picker_efficiency
+            .iter()
+            .fold(
+                (String::new(), String::new(), f64::MAX, f64::MIN),
+                |acc, (name, time)| {
+                    let time = time.unwrap_or(f64::MAX);
+                    (
+                        if time < acc.2 { name.clone() } else { acc.0 },
+                        if time > acc.3 { name.clone() } else { acc.1 },
+                        time.min(acc.2),
+                        time.max(acc.3),
+                    )
+                },
+            )
+            .into();
 
         Ok(PickEfficiencyAnalysis {
             total_picks,
@@ -481,37 +563,44 @@ impl Query for GetBinReplenishmentNeedsQuery {
     type Result = Vec<BinReplenishmentNeed>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        let replenishment_needs = warehouse_inventory::table
-            .inner_join(warehouse_locations::table)
-            .inner_join(products::table)
-            .filter(warehouse_inventory::quantity.cast::<f64>() / warehouse_locations::capacity.cast::<f64>().le(self.threshold_percentage))
-            .select((
-                warehouse_locations::id,
-                warehouse_locations::name,
-                products::id,
-                products::name,
-                warehouse_inventory::quantity,
-                warehouse_locations::capacity,
-            ))
-            .load::<(String, String, i32, String, i32, i32)>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let replenishment_needs = warehouse_inventory_entity::Entity::find()
+            .join(JoinType::InnerJoin, warehouse_location_entity::Entity)
+            .join(JoinType::InnerJoin, product_entity::Entity)
+            .filter(
+                Expr::col(warehouse_inventory_entity::Column::Quantity)
+                    .div(Expr::col(warehouse_location_entity::Column::Capacity).cast::<f64>())
+                    .lte(self.threshold_percentage),
+            )
+            .select_only()
+            .column(warehouse_location_entity::Column::Id)
+            .column(warehouse_location_entity::Column::Name)
+            .column(product_entity::Column::Id)
+            .column(product_entity::Column::Name)
+            .column(warehouse_inventory_entity::Column::Quantity)
+            .column(warehouse_location_entity::Column::Capacity)
+            .into_tuple()
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(replenishment_needs
             .into_iter()
-            .map(|(location_id, location_name, product_id, product_name, current_quantity, bin_capacity)| {
-                let replenishment_quantity = bin_capacity - current_quantity;
-                BinReplenishmentNeed {
-                    location_id,
-                    location_name,
-                    product_id,
-                    product_name,
-                    current_quantity,
-                    bin_capacity,
-                    replenishment_quantity,
-                }
-            })
+            .map(
+                |(location_id, location_name, product_id, product_name, current_quantity, bin_capacity)| {
+                    let replenishment_quantity = bin_capacity - current_quantity;
+                    BinReplenishmentNeed {
+                        location_id,
+                        location_name,
+                        product_id,
+                        product_name,
+                        current_quantity,
+                        bin_capacity,
+                        replenishment_quantity,
+                    }
+                },
+            )
             .collect())
     }
 }

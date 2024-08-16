@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -8,28 +8,24 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{Promotion, PromotionStatus},
+    models::{promotion, PromotionStatus},
 };
-use diesel::prelude::*;
-use chrono::{DateTime, Utc};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct DeactivatePromotionCommand {
     pub promotion_id: i32,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Command for DeactivatePromotionCommand {
-    type Result = Promotion;
+    type Result = promotion::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {:?}", e);
-            ServiceError::DatabaseError
-        })?;
+        let db = db_pool.clone();
 
-        let updated_promotion = self.deactivate_promotion(&conn)?;
+        let updated_promotion = self.deactivate_promotion(&db).await?;
 
         self.log_and_trigger_event(event_sender, &updated_promotion).await?;
 
@@ -38,10 +34,26 @@ impl Command for DeactivatePromotionCommand {
 }
 
 impl DeactivatePromotionCommand {
-    fn deactivate_promotion(&self, conn: &PgConnection) -> Result<Promotion, ServiceError> {
-        diesel::update(promotions::table.find(self.promotion_id))
-            .set(promotions::status.eq(PromotionStatus::Inactive))
-            .get_result::<Promotion>(conn)
+    async fn deactivate_promotion(&self, db: &DatabaseConnection) -> Result<promotion::Model, ServiceError> {
+        let promotion = promotion::Entity::find_by_id(self.promotion_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to find promotion ID {}: {:?}", self.promotion_id, e);
+                ServiceError::DatabaseError
+            })?
+            .ok_or_else(|| {
+                error!("Promotion ID {} not found", self.promotion_id);
+                ServiceError::NotFound
+            })?;
+
+        let mut promotion_active_model: promotion::ActiveModel = promotion.into();
+
+        promotion_active_model.status = Set(PromotionStatus::Inactive);
+
+        promotion_active_model
+            .update(db)
+            .await
             .map_err(|e| {
                 error!(
                     "Failed to deactivate promotion ID {}: {:?}",
@@ -54,7 +66,7 @@ impl DeactivatePromotionCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        promotion: &Promotion,
+        promotion: &promotion::Model,
     ) -> Result<(), ServiceError> {
         info!("Promotion deactivated: {}", promotion.id);
 

@@ -1,13 +1,19 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Order, Facility, InventoryItem, IncomingInventory}};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{
+    order_entity, order_entity::Entity as Order,
+    order_item_entity, order_item_entity::Entity as OrderItem,
+    facility_entity, facility_entity::Entity as Facility,
+    inventory_item_entity, inventory_item_entity::Entity as InventoryItem,
+    incoming_inventory_entity, incoming_inventory_entity::Entity as IncomingInventory
+}};
 use crate::events::{Event, EventSender};
 use crate::services::geocoding::GeocodingService;
 use crate::ml::routing_model::RoutingModel;
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use prometheus::IntCounter;
 use chrono::{Utc, NaiveDateTime};
 
@@ -35,7 +41,7 @@ struct FacilityScore {
 
 #[async_trait]
 impl Command for OrderRoutingCommand {
-    type Result = Vec<Order>; // Now returns multiple orders in case of splitting
+    type Result = Vec<order_entity::Model>; // Now returns multiple orders in case of splitting
 
     #[instrument(skip(db_pool, event_sender, geocoding_service, routing_model))]
     async fn execute(
@@ -45,25 +51,31 @@ impl Command for OrderRoutingCommand {
         geocoding_service: Arc<GeocodingService>,
         routing_model: Arc<RoutingModel>,
     ) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             ORDER_ROUTING_FAILURES.inc();
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError
         })?;
 
         // Fetch the order and its items
-        let order = orders::table
-            .filter(orders::id.eq(self.order_id))
-            .first::<Order>(&conn)
+        let order = Order::find_by_id(self.order_id)
+            .one(&db)
+            .await
             .map_err(|e| {
                 ORDER_ROUTING_FAILURES.inc();
                 error!("Failed to fetch order {}: {}", self.order_id, e);
                 ServiceError::DatabaseError
+            })?
+            .ok_or_else(|| {
+                ORDER_ROUTING_FAILURES.inc();
+                error!("Order {} not found", self.order_id);
+                ServiceError::NotFound
             })?;
 
-        let order_items = order_items::table
-            .filter(order_items::order_id.eq(self.order_id))
-            .load::<OrderItem>(&conn)
+        let order_items = OrderItem::find()
+            .filter(order_item_entity::Column::OrderId.eq(self.order_id))
+            .all(&db)
+            .await
             .map_err(|e| {
                 ORDER_ROUTING_FAILURES.inc();
                 error!("Failed to fetch order items for order {}: {}", self.order_id, e);
@@ -71,8 +83,9 @@ impl Command for OrderRoutingCommand {
             })?;
 
         // Fetch all facilities
-        let facilities = facilities::table
-            .load::<Facility>(&conn)
+        let facilities = Facility::find()
+            .all(&db)
+            .await
             .map_err(|e| {
                 ORDER_ROUTING_FAILURES.inc();
                 error!("Failed to fetch facilities: {}", e);
@@ -82,7 +95,7 @@ impl Command for OrderRoutingCommand {
         // Score each facility
         let mut facility_scores = Vec::new();
         for facility in facilities {
-            let score = self.score_facility(&conn, &facility, &order_items, &order, &geocoding_service, &routing_model).await?;
+            let score = self.score_facility(&db, &facility, &order_items, &order, &geocoding_service, &routing_model).await?;
             facility_scores.push(score);
         }
 
@@ -107,18 +120,16 @@ impl Command for OrderRoutingCommand {
                 // Remove allocated items from remaining_items and add to new_order
                 for &index in allocated_items.iter().rev() {
                     let item = remaining_items.remove(index);
-                    diesel::insert_into(order_items::table)
-                        .values(&OrderItem {
-                            order_id: new_order.id,
-                            product_id: item.product_id,
-                            quantity: item.quantity,
-                            ..item
-                        })
-                        .execute(&conn)
-                        .map_err(|e| {
-                            error!("Failed to insert new order item: {}", e);
-                            ServiceError::DatabaseError
-                        })?;
+                    let new_item = order_item_entity::ActiveModel {
+                        order_id: Set(new_order.id),
+                        product_id: Set(item.product_id),
+                        quantity: Set(item.quantity),
+                        ..Default::default()
+                    };
+                    new_item.insert(&db).await.map_err(|e| {
+                        error!("Failed to insert new order item: {}", e);
+                        ServiceError::DatabaseError
+                    })?;
                 }
 
                 allocated_orders.push(new_order);
@@ -136,21 +147,21 @@ impl Command for OrderRoutingCommand {
         }
 
         // Update the orders in the database
-        let updated_orders = conn.transaction::<_, diesel::result::Error, _>(|| {
-            let mut results = Vec::new();
-            for order in allocated_orders {
-                let updated_order = diesel::update(orders::table)
-                    .filter(orders::id.eq(order.id))
-                    .set(orders::facility_id.eq(order.facility_id))
-                    .get_result::<Order>(&conn)?;
-                results.push(updated_order);
-            }
-            Ok(results)
-        }).map_err(|e| {
-            ORDER_ROUTING_FAILURES.inc();
-            error!("Failed to update orders: {}", e);
-            ServiceError::DatabaseError
-        })?;
+        let updated_orders = db.transaction::<_, Vec<order_entity::Model>, ServiceError>(|txn| {
+            Box::pin(async move {
+                let mut results = Vec::new();
+                for order in allocated_orders {
+                    let mut order: order_entity::ActiveModel = order.into();
+                    order.facility_id = Set(Some(order.facility_id.unwrap()));
+                    let updated_order = order.update(txn).await.map_err(|e| {
+                        error!("Failed to update order: {}", e);
+                        ServiceError::DatabaseError
+                    })?;
+                    results.push(updated_order);
+                }
+                Ok(results)
+            })
+        }).await?;
 
         // Trigger events for each routed order
         for order in &updated_orders {
@@ -176,10 +187,10 @@ impl Command for OrderRoutingCommand {
 impl OrderRoutingCommand {
     async fn score_facility(
         &self, 
-        conn: &PgConnection, 
-        facility: &Facility, 
-        order_items: &[OrderItem], 
-        order: &Order,
+        db: &DatabaseConnection, 
+        facility: &facility_entity::Model, 
+        order_items: &[order_item_entity::Model], 
+        order: &order_entity::Model,
         geocoding_service: &GeocodingService,
         routing_model: &RoutingModel,
     ) -> Result<FacilityScore, ServiceError> {
@@ -188,29 +199,29 @@ impl OrderRoutingCommand {
 
         // Check current and incoming inventory availability
         for item in order_items {
-            let current_inventory = inventory_items::table
-                .filter(inventory_items::facility_id.eq(facility.id))
-                .filter(inventory_items::product_id.eq(item.product_id))
-                .first::<InventoryItem>(conn)
-                .optional()
+            let current_inventory = InventoryItem::find()
+                .filter(inventory_item_entity::Column::FacilityId.eq(facility.id))
+                .filter(inventory_item_entity::Column::ProductId.eq(item.product_id))
+                .one(db)
+                .await
                 .map_err(|e| {
                     error!("Failed to fetch inventory for product {} in facility {}: {}", item.product_id, facility.id, e);
                     ServiceError::DatabaseError
                 })?;
 
-            let incoming_inventory = incoming_inventory::table
-                .filter(incoming_inventory::facility_id.eq(facility.id))
-                .filter(incoming_inventory::product_id.eq(item.product_id))
-                .filter(incoming_inventory::expected_arrival.le(Utc::now().naive_utc() + chrono::Duration::hours(24)))
-                .select(diesel::dsl::sum(incoming_inventory::quantity))
-                .first::<Option<i32>>(conn)
+            let incoming_inventory = IncomingInventory::find()
+                .filter(incoming_inventory_entity::Column::FacilityId.eq(facility.id))
+                .filter(incoming_inventory_entity::Column::ProductId.eq(item.product_id))
+                .filter(incoming_inventory_entity::Column::ExpectedArrival.lte(Utc::now().naive_utc() + chrono::Duration::hours(24)))
+                .all(db)
+                .await
                 .map_err(|e| {
                     error!("Failed to fetch incoming inventory for product {} in facility {}: {}", item.product_id, facility.id, e);
                     ServiceError::DatabaseError
-                })?
-                .unwrap_or(0);
+                })?;
 
-            let total_available = current_inventory.map_or(0, |inv| inv.quantity) + incoming_inventory;
+            let incoming_quantity: i32 = incoming_inventory.iter().map(|inv| inv.quantity).sum();
+            let total_available = current_inventory.map_or(0, |inv| inv.quantity) + incoming_quantity;
 
             if total_available >= item.quantity {
                 score += 1.0;
@@ -222,11 +233,11 @@ impl OrderRoutingCommand {
         }
 
         // Consider facility capacity
-        let current_orders = orders::table
-            .filter(orders::facility_id.eq(facility.id))
-            .filter(orders::status.eq("Processing"))
-            .count()
-            .get_result::<i64>(conn)
+        let current_orders = Order::find()
+            .filter(order_entity::Column::FacilityId.eq(facility.id))
+            .filter(order_entity::Column::Status.eq("Processing"))
+            .count(db)
+            .await
             .map_err(|e| {
                 error!("Failed to fetch current orders for facility {}: {}", facility.id, e);
                 ServiceError::DatabaseError
@@ -236,7 +247,7 @@ impl OrderRoutingCommand {
         score += capacity_score;
 
         // Calculate actual shipping distance and cost
-        let distance = geocoding_service.calculate_distance(order.shipping_address, facility.address).await?;
+        let distance = geocoding_service.calculate_distance(order.shipping_address.clone(), facility.address.clone()).await?;
         let shipping_cost = facility.calculate_shipping_cost(distance);
         score += 1.0 / (1.0 + shipping_cost);
 

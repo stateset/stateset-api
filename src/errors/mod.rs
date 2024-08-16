@@ -1,5 +1,9 @@
 use thiserror::Error;
-use actix_web::{HttpResponse, ResponseError};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::json;
 use tracing::error;
 
@@ -30,49 +34,36 @@ pub enum ApiError {
     ServiceUnavailable(String),
 }
 
-impl ResponseError for ApiError {
-    fn error_response(&self) -> HttpResponse {
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
         // Log the error before responding
         error!("API Error occurred: {:?}", self);
 
-        match self {
-            ApiError::InternalServerError => {
-                HttpResponse::InternalServerError().json(json!({"error": "Internal Server Error"}))
-            }
-            ApiError::BadRequest(ref message) => {
-                HttpResponse::BadRequest().json(json!({"error": "Bad Request", "details": message}))
-            }
-            ApiError::Unauthorized => {
-                HttpResponse::Unauthorized().json(json!({"error": "Unauthorized"}))
-            }
-            ApiError::Forbidden => {
-                HttpResponse::Forbidden().json(json!({"error": "Forbidden"}))
-            }
-            ApiError::NotFound => {
-                HttpResponse::NotFound().json(json!({"error": "Not Found"}))
-            }
-            ApiError::UnprocessableEntity(ref message) => {
-                HttpResponse::UnprocessableEntity().json(json!({"error": "Unprocessable Entity", "details": message}))
-            }
-            ApiError::TooManyRequests => {
-                HttpResponse::TooManyRequests().json(json!({"error": "Too Many Requests"}))
-            }
-            ApiError::ServiceUnavailable(ref message) => {
-                HttpResponse::ServiceUnavailable().json(json!({"error": "Service Unavailable", "details": message}))
-            }
-        }
-    }
+        let (status, error_message) = match self {
+            ApiError::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error"),
+            ApiError::BadRequest(ref message) => (StatusCode::BAD_REQUEST, "Bad Request"),
+            ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+            ApiError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden"),
+            ApiError::NotFound => (StatusCode::NOT_FOUND, "Not Found"),
+            ApiError::UnprocessableEntity(ref message) => (StatusCode::UNPROCESSABLE_ENTITY, "Unprocessable Entity"),
+            ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests"),
+            ApiError::ServiceUnavailable(ref message) => (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable"),
+        };
 
-    fn status_code(&self) -> actix_web::http::StatusCode {
-        match self {
-            ApiError::InternalServerError => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::BadRequest(_) => actix_web::http::StatusCode::BAD_REQUEST,
-            ApiError::Unauthorized => actix_web::http::StatusCode::UNAUTHORIZED,
-            ApiError::Forbidden => actix_web::http::StatusCode::FORBIDDEN,
-            ApiError::NotFound => actix_web::http::StatusCode::NOT_FOUND,
-            ApiError::UnprocessableEntity(_) => actix_web::http::StatusCode::UNPROCESSABLE_ENTITY,
-            ApiError::TooManyRequests => actix_web::http::StatusCode::TOO_MANY_REQUESTS,
-            ApiError::ServiceUnavailable(_) => actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-        }
+        let body = Json(json!({
+            "error": error_message,
+            "details": self.to_string(),
+        }));
+
+        (status, body).into_response()
     }
+}
+
+// Helper function to convert any error into an ApiError
+pub fn handle_error<E>(err: E) -> ApiError
+where
+    E: std::error::Error,
+{
+    error!("Error occurred: {:?}", err);
+    ApiError::InternalServerError
 }

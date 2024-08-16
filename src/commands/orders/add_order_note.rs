@@ -1,12 +1,13 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::OrderNote};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{order_note_entity, order_note_entity::Entity as OrderNote}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use prometheus::IntCounter;
+use chrono::Utc;
 
 lazy_static! {
     static ref ORDER_NOTES_ADDED: IntCounter = 
@@ -28,7 +29,7 @@ pub struct AddOrderNoteCommand {
 
 #[async_trait]
 impl Command for AddOrderNoteCommand {
-    type Result = OrderNote;
+    type Result = order_note_entity::Model;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -39,31 +40,27 @@ impl Command for AddOrderNoteCommand {
             return Err(ServiceError::ValidationError(e.to_string()));
         }
 
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             ORDER_NOTE_ADD_FAILURES.inc();
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError
         })?;
 
         // Create a new OrderNote to be added to the order
-        let new_note = OrderNote {
-            order_id: self.order_id,
-            note: self.note.clone(),
-            is_customer_visible: self.is_customer_visible,
-            created_at: chrono::Utc::now().naive_utc(),
+        let new_note = order_note_entity::ActiveModel {
+            order_id: Set(self.order_id),
+            note: Set(self.note.clone()),
+            is_customer_visible: Set(self.is_customer_visible),
+            created_at: Set(Utc::now().naive_utc()),
+            ..Default::default() // This will set default values for other fields
         };
 
         // Insert the new note into the order_notes table
-        let saved_note = match diesel::insert_into(order_notes::table)
-            .values(&new_note)
-            .get_result::<OrderNote>(&conn) {
-            Ok(note) => note,
-            Err(e) => {
-                ORDER_NOTE_ADD_FAILURES.inc();
-                error!("Failed to add note to order {}: {}", self.order_id, e);
-                return Err(ServiceError::DatabaseError);
-            }
-        };
+        let saved_note = new_note.insert(&db).await.map_err(|e| {
+            ORDER_NOTE_ADD_FAILURES.inc();
+            error!("Failed to add note to order {}: {}", self.order_id, e);
+            ServiceError::DatabaseError
+        })?;
 
         // Trigger an event indicating that a note was added to the order
         if let Err(e) = event_sender.send(Event::OrderNoteAdded(self.order_id, saved_note.id)).await {

@@ -1,14 +1,14 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{PurchaseOrder, InventoryMovement, ManufacturingCost}};
+use crate::{errors::ServiceError, db::DbPool, models::{purchase_order_entity, inventory_movement_entity, manufacturing_cost_entity}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use chrono::{NaiveDateTime, Utc};
 use bigdecimal::BigDecimal;
 use std::cmp::Ordering;
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Order};
 
 lazy_static! {
     static ref WAVG_COGS_CALCULATIONS: IntCounter = 
@@ -41,9 +41,9 @@ pub struct EndingInventory {
 
 #[derive(Debug)]
 enum Movement {
-    Purchase(PurchaseOrder),
-    InventoryMovement(InventoryMovement),
-    Manufacturing(ManufacturingCost),
+    Purchase(purchase_order_entity::Model),
+    InventoryMovement(inventory_movement_entity::Model),
+    Manufacturing(manufacturing_cost_entity::Model),
 }
 
 impl Movement {
@@ -56,21 +56,17 @@ impl Movement {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Command for CalculateWeightedAverageCOGSCommand {
     type Result = WeightedAverageCOGSResult;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            WAVG_COGS_CALCULATION_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
-        })?;
+        let db = db_pool.clone();
 
-        let purchase_orders = self.get_purchase_orders(&conn)?;
-        let inventory_movements = self.get_inventory_movements(&conn)?;
-        let manufacturing_costs = self.get_manufacturing_costs(&conn)?;
+        let purchase_orders = self.get_purchase_orders(&db).await?;
+        let inventory_movements = self.get_inventory_movements(&db).await?;
+        let manufacturing_costs = self.get_manufacturing_costs(&db).await?;
 
         let mut all_movements: Vec<Movement> = Vec::new();
         all_movements.extend(purchase_orders.into_iter().map(Movement::Purchase));
@@ -103,39 +99,42 @@ impl Command for CalculateWeightedAverageCOGSCommand {
 }
 
 impl CalculateWeightedAverageCOGSCommand {
-    fn get_purchase_orders(&self, conn: &PgConnection) -> Result<Vec<PurchaseOrder>, ServiceError> {
-        purchase_orders::table
-            .filter(purchase_orders::product_id.eq(self.product_id))
-            .filter(purchase_orders::date.between(self.start_date, self.end_date))
-            .load::<PurchaseOrder>(conn)
+    async fn get_purchase_orders(&self, db: &DatabaseConnection) -> Result<Vec<purchase_order_entity::Model>, ServiceError> {
+        purchase_order_entity::Entity::find()
+            .filter(purchase_order_entity::Column::ProductId.eq(self.product_id))
+            .filter(purchase_order_entity::Column::Date.between(self.start_date, self.end_date))
+            .all(db)
+            .await
             .map_err(|e| {
                 WAVG_COGS_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch purchase orders for product {}: {}", self.product_id, e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch purchase orders: {}", e))
             })
     }
 
-    fn get_inventory_movements(&self, conn: &PgConnection) -> Result<Vec<InventoryMovement>, ServiceError> {
-        inventory_movements::table
-            .filter(inventory_movements::product_id.eq(self.product_id))
-            .filter(inventory_movements::date.between(self.start_date, self.end_date))
-            .load::<InventoryMovement>(conn)
+    async fn get_inventory_movements(&self, db: &DatabaseConnection) -> Result<Vec<inventory_movement_entity::Model>, ServiceError> {
+        inventory_movement_entity::Entity::find()
+            .filter(inventory_movement_entity::Column::ProductId.eq(self.product_id))
+            .filter(inventory_movement_entity::Column::Date.between(self.start_date, self.end_date))
+            .all(db)
+            .await
             .map_err(|e| {
                 WAVG_COGS_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch inventory movements for product {}: {}", self.product_id, e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch inventory movements: {}", e))
             })
     }
 
-    fn get_manufacturing_costs(&self, conn: &PgConnection) -> Result<Vec<ManufacturingCost>, ServiceError> {
-        manufacturing_costs::table
-            .filter(manufacturing_costs::product_id.eq(self.product_id))
-            .filter(manufacturing_costs::date.between(self.start_date, self.end_date))
-            .load::<ManufacturingCost>(conn)
+    async fn get_manufacturing_costs(&self, db: &DatabaseConnection) -> Result<Vec<manufacturing_cost_entity::Model>, ServiceError> {
+        manufacturing_cost_entity::Entity::find()
+            .filter(manufacturing_cost_entity::Column::ProductId.eq(self.product_id))
+            .filter(manufacturing_cost_entity::Column::Date.between(self.start_date, self.end_date))
+            .all(db)
+            .await
             .map_err(|e| {
                 WAVG_COGS_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch manufacturing costs for product {}: {}", self.product_id, e);
-                ServiceError::DatabaseError
+                ServiceError::DatabaseError(format!("Failed to fetch manufacturing costs: {}", e))
             })
     }
 

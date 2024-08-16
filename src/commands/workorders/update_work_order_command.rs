@@ -1,10 +1,10 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::WorkOrder};
+use crate::{errors::ServiceError, db::DbPool, models::work_order_entity};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{DatabaseConnection, EntityTrait, ActiveModelTrait, Set, IntoActiveModel};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateWorkOrderCommand {
@@ -16,20 +16,15 @@ pub struct UpdateWorkOrderCommand {
 
 #[async_trait::async_trait]
 impl Command for UpdateWorkOrderCommand {
-    type Result = WorkOrder;
+    type Result = work_order_entity::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_work_order = conn.transaction(|| {
-            self.update_work_order(&conn)
-        }).map_err(|e| {
+        let updated_work_order = self.update_work_order(&db).await.map_err(|e| {
             error!("Transaction failed for updating Work Order ID {}: {}", self.work_order_id, e);
-            e
+            ServiceError::DatabaseError(format!("Failed to update Work Order: {}", e))
         })?;
 
         self.log_and_trigger_event(event_sender, &updated_work_order).await?;
@@ -39,23 +34,42 @@ impl Command for UpdateWorkOrderCommand {
 }
 
 impl UpdateWorkOrderCommand {
-    fn update_work_order(&self, conn: &PgConnection) -> Result<WorkOrder, ServiceError> {
-        let target = work_orders::table.find(self.work_order_id);
+    async fn update_work_order(&self, db: &DatabaseConnection) -> Result<work_order_entity::Model, ServiceError> {
+        let target = work_order_entity::Entity::find_by_id(self.work_order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
+                ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Work Order ID {} not found", self.work_order_id);
+                ServiceError::NotFound(format!("Work Order ID {} not found", self.work_order_id))
+            })?;
 
-        diesel::update(target)
-            .set((
-                self.description.as_ref().map(|desc| work_orders::description.eq(desc)),
-                self.quantity.map(|qty| work_orders::quantity.eq(qty)),
-                self.due_date.map(|date| work_orders::due_date.eq(date)),
-            ))
-            .get_result::<WorkOrder>(conn)
+        let mut active_model = target.into_active_model();
+
+        if let Some(description) = &self.description {
+            active_model.description = Set(description.clone());
+        }
+
+        if let Some(quantity) = self.quantity {
+            active_model.quantity = Set(quantity);
+        }
+
+        if let Some(due_date) = self.due_date {
+            active_model.due_date = Set(Some(due_date));
+        }
+
+        active_model.update(db)
+            .await
             .map_err(|e| {
                 error!("Failed to update Work Order ID {}: {}", self.work_order_id, e);
                 ServiceError::DatabaseError(format!("Failed to update Work Order: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, work_order: &WorkOrder) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, work_order: &work_order_entity::Model) -> Result<(), ServiceError> {
         info!("Work Order updated with ID: {}", self.work_order_id);
         event_sender.send(Event::WorkOrderUpdated(work_order.id))
             .await

@@ -1,15 +1,15 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use sea_orm::*;
 
 use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{Order, OrderNote, NewOrderNote},
+    models::{order_entity, order_entity::Entity as Order, order_note_entity, order_note_entity::Entity as OrderNote},
 };
-use diesel::prelude::*;
 
 pub struct RefundOrderCommand {
     pub order_id: i32,
@@ -19,19 +19,22 @@ pub struct RefundOrderCommand {
 
 #[async_trait]
 impl Command for RefundOrderCommand {
-    type Result = Order;
+    type Result = order_entity::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             error!("Failed to get database connection: {:?}", e);
             ServiceError::DatabaseError
         })?;
 
-        let updated_order = conn.transaction::<Order, ServiceError, _>(|| {
-            self.process_refund(&conn)?;
-            self.log_refund_reason(&conn)
-        }).map_err(|e| {
+        let updated_order = db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
+            Box::pin(async move {
+                let order = self.process_refund(txn).await?;
+                self.log_refund_reason(txn).await?;
+                Ok(order)
+            })
+        }).await.map_err(|e| {
             error!("Failed to process refund for order ID {}: {:?}", self.order_id, e);
             e
         })?;
@@ -43,34 +46,48 @@ impl Command for RefundOrderCommand {
 }
 
 impl RefundOrderCommand {
-    fn process_refund(&self, conn: &PgConnection) -> Result<Order, ServiceError> {
-        diesel::update(orders::table.find(self.order_id))
-            .set(orders::total_amount.eq(orders::total_amount - self.refund_amount))
-            .get_result::<Order>(conn)
+    async fn process_refund(&self, txn: &DatabaseTransaction) -> Result<order_entity::Model, ServiceError> {
+        let order = Order::find_by_id(self.order_id)
+            .one(txn)
+            .await
             .map_err(|e| {
-                error!("Failed to update order amount for refund: {:?}", e);
+                error!("Failed to find order: {:?}", e);
                 ServiceError::DatabaseError
-            })
+            })?
+            .ok_or_else(|| {
+                error!("Order not found: {}", self.order_id);
+                ServiceError::NotFound
+            })?;
+
+        let mut order: order_entity::ActiveModel = order.into();
+        let new_total = order.total_amount.unwrap() - self.refund_amount;
+        order.total_amount = Set(new_total);
+
+        order.update(txn).await.map_err(|e| {
+            error!("Failed to update order amount for refund: {:?}", e);
+            ServiceError::DatabaseError
+        })
     }
 
-    fn log_refund_reason(&self, conn: &PgConnection) -> Result<(), ServiceError> {
-        diesel::insert_into(order_notes::table)
-            .values(&NewOrderNote {
-                order_id: self.order_id,
-                note: format!("Refunded: {} - Reason: {}", self.refund_amount, self.reason),
-            })
-            .execute(conn)
-            .map_err(|e| {
-                error!("Failed to log refund reason for order ID {}: {:?}", self.order_id, e);
-                ServiceError::DatabaseError
-            })?;
+    async fn log_refund_reason(&self, txn: &DatabaseTransaction) -> Result<(), ServiceError> {
+        let new_note = order_note_entity::ActiveModel {
+            order_id: Set(self.order_id),
+            note: Set(format!("Refunded: {} - Reason: {}", self.refund_amount, self.reason)),
+            ..Default::default()
+        };
+
+        new_note.insert(txn).await.map_err(|e| {
+            error!("Failed to log refund reason for order ID {}: {:?}", self.order_id, e);
+            ServiceError::DatabaseError
+        })?;
+
         Ok(())
     }
 
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        updated_order: &Order,
+        updated_order: &order_entity::Model,
     ) -> Result<(), ServiceError> {
         info!("Order ID {} refunded with amount: {}", self.order_id, self.refund_amount);
 

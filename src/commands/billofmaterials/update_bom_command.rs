@@ -1,10 +1,10 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{BOM}};
+use crate::{errors::ServiceError, db::DbPool, models::{bom, prelude::*}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, DbConn, TransactionTrait};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateBOMCommand {
@@ -16,18 +16,17 @@ pub struct UpdateBOMCommand {
 
 #[async_trait::async_trait]
 impl Command for UpdateBOMCommand {
-    type Result = BOM;
+    type Result = bom::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_bom = conn.transaction(|| {
-            self.update_bom(&conn)
-        }).map_err(|e| {
+        let updated_bom = db.transaction::<_, ServiceError, _>(|txn| {
+            Box::pin(async move {
+                self.update_bom(txn).await
+            })
+        }).await.map_err(|e| {
             error!("Transaction failed for updating BOM ID {}: {}", self.bom_id, e);
             e
         })?;
@@ -39,22 +38,27 @@ impl Command for UpdateBOMCommand {
 }
 
 impl UpdateBOMCommand {
-    fn update_bom(&self, conn: &PgConnection) -> Result<BOM, ServiceError> {
-        let target = boms::table.find(self.bom_id);
+    async fn update_bom(&self, txn: &DbConn) -> Result<bom::Model, ServiceError> {
+        let mut update_data = bom::ActiveModel {
+            id: ActiveValue::Unchanged(self.bom_id),
+            ..Default::default()
+        };
 
-        diesel::update(target)
-            .set((
-                self.name.as_ref().map(|name| boms::name.eq(name)),
-                self.description.as_ref().map(|desc| boms::description.eq(desc)),
-            ))
-            .get_result::<BOM>(conn)
-            .map_err(|e| {
-                error!("Failed to update BOM ID {}: {}", self.bom_id, e);
-                ServiceError::DatabaseError(format!("Failed to update BOM: {}", e))
-            })
+        if let Some(ref name) = self.name {
+            update_data.name = ActiveValue::Set(name.clone());
+        }
+
+        if let Some(ref description) = self.description {
+            update_data.description = ActiveValue::Set(Some(description.clone()));
+        }
+
+        update_data.update(txn).await.map_err(|e| {
+            error!("Failed to update BOM ID {}: {}", self.bom_id, e);
+            ServiceError::DatabaseError(format!("Failed to update BOM: {}", e))
+        })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, bom: &BOM) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, bom: &bom::Model) -> Result<(), ServiceError> {
         info!("BOM updated for BOM ID: {}", self.bom_id);
         event_sender.send(Event::BOMUpdated(bom.id))
             .await

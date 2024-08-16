@@ -1,12 +1,12 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::OrderError, db::DbPool, models::{Order, OrderItem, OrderStatus, NewOrderNote}};
+use sea_orm::*;
+use crate::{errors::OrderError, db::DbPool, models::{order_entity, order_entity::Entity as Order, order_note_entity, OrderStatus}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument, warn};
-use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use chrono::Utc;
 use prometheus::{IntCounter, IntCounterVec};
 
 lazy_static! {
@@ -32,17 +32,17 @@ pub struct CancelOrderCommand {
 
 #[async_trait]
 impl Command for CancelOrderCommand {
-    type Result = Order;
+    type Result = order_entity::Model;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, OrderError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             ORDER_CANCELLATION_FAILURES.with_label_values(&["db_pool_error"]).inc();
             error!("Failed to get database connection: {}", e);
-            OrderError::DatabaseError(e.into())
+            OrderError::DatabaseError(e.to_string())
         })?;
 
-        let updated_order = match cancel_order_in_db(&conn, self.order_id, &self.reason, self.version) {
+        let updated_order = match cancel_order_in_db(&db, self.order_id, &self.reason, self.version).await {
             Ok(order) => order,
             Err(e) => {
                 ORDER_CANCELLATION_FAILURES.with_label_values(&[e.error_type()]).inc();
@@ -69,39 +69,43 @@ impl Command for CancelOrderCommand {
     }
 }
 
-#[instrument(skip(conn))]
-fn cancel_order_in_db(conn: &PgConnection, order_id: i32, reason: &str, version: i32) -> Result<Order, OrderError> {
-    conn.transaction(|| {
-        let updated_order = diesel::update(orders::table.find(order_id))
-            .set((
-                orders::status.eq(OrderStatus::Cancelled),
-                orders::version.eq(orders::version + 1)
-            ))
-            .filter(orders::version.eq(version))
-            .get_result::<Order>(conn)
-            .map_err(|e| match e {
-                diesel::result::Error::NotFound => OrderError::NotFound(order_id),
-                _ => {
-                    error!("Failed to update order status: {}", e);
-                    OrderError::DatabaseError(e.into())
-                }
-            })?;
+#[instrument(skip(db))]
+async fn cancel_order_in_db(db: &DatabaseConnection, order_id: i32, reason: &str, version: i32) -> Result<order_entity::Model, OrderError> {
+    let transaction_result = db.transaction::<_, order_entity::Model, OrderError>(|txn| {
+        Box::pin(async move {
+            let order = Order::find_by_id(order_id)
+                .one(txn)
+                .await
+                .map_err(|e| OrderError::DatabaseError(e.to_string()))?
+                .ok_or(OrderError::NotFound(order_id))?;
 
-        if updated_order.version != version + 1 {
-            warn!("Concurrent modification detected for order {}", order_id);
-            return Err(OrderError::ConcurrentModification(order_id));
-        }
+            if order.version != version {
+                warn!("Concurrent modification detected for order {}", order_id);
+                return Err(OrderError::ConcurrentModification(order_id));
+            }
 
-        diesel::insert_into(order_notes::table)
-            .values(&NewOrderNote { order_id, note: reason.to_string() })
-            .execute(conn)
-            .map_err(|e| {
-                error!("Failed to insert order note: {}", e);
-                OrderError::DatabaseError(e.into())
-            })?;
+            let mut order: order_entity::ActiveModel = order.into();
+            order.status = Set(OrderStatus::Cancelled.to_string());
+            order.version = Set(version + 1);
 
-        Ok(updated_order)
-    })
+            let updated_order = order.update(txn).await
+                .map_err(|e| OrderError::DatabaseError(e.to_string()))?;
+
+            let new_note = order_note_entity::ActiveModel {
+                order_id: Set(order_id),
+                note: Set(reason.to_string()),
+                created_at: Set(Utc::now()),
+                ..Default::default()
+            };
+
+            new_note.insert(txn).await
+                .map_err(|e| OrderError::DatabaseError(e.to_string()))?;
+
+            Ok(updated_order)
+        })
+    }).await;
+
+    transaction_result
 }
 
 // Extend the OrderError enum to include an error type
@@ -112,7 +116,7 @@ pub enum OrderError {
     #[error("Cannot cancel order {0} in current status")]
     InvalidStatus(i32),
     #[error("Database error: {0}")]
-    DatabaseError(#[from] diesel::result::Error),
+    DatabaseError(String),
     #[error("Event error: {0}")]
     EventError(String),
     #[error("Concurrent modification of order {0}")]

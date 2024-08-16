@@ -1,9 +1,14 @@
-use actix_web::{web, App, HttpServer, middleware};
+use axum::{
+    routing::{get, post},
+    Router, Extension,
+};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use slog::{info, o, Drain, Logger};
 use dotenv::dotenv;
 use opentelemetry::global;
+use tower_http::compression::CompressionLayer;
+use tower_http::trace::TraceLayer;
 
 mod config;
 mod services;
@@ -48,7 +53,7 @@ struct Services {
     work_order_service: Arc<services::work_orders::WorkOrderService>,
 }
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> Result<(), AppError> {
     dotenv().ok();
     let config = Arc::new(config::load()?);
@@ -79,35 +84,33 @@ async fn main() -> Result<(), AppError> {
     #[cfg(feature = "grpc")]
     let grpc_server = grpc_server::start(config.clone(), app_state.services.clone()).await?;
 
-    // Start HTTP server
-    let server = HttpServer::new(move || {
-        App::new()
-            .app_data(web::Data::new(app_state.clone()))
-            .app_data(web::Data::new(schema.clone()))
-            .wrap(middleware::Logger::default())
-            .wrap(tracing::TracingMiddleware::new())
-            .wrap(metrics::PrometheusMetrics::new())
-            .wrap(middleware::Compress::default())
-            .wrap(middleware::NormalizePath::trim())
-            .configure(configure_routes)
-            .service(web::resource("/health").to(health::health_check))
-    })
-    .bind(format!("{}:{}", config.host, config.port))?
-    .run();
+    // Build our application with a route
+    let app = Router::new()
+        .route("/health", get(health::health_check))
+        .nest("/orders", handlers::orders::routes())
+        .nest("/inventory", handlers::inventory::routes())
+        .nest("/return", handlers::returns::routes())
+        .nest("/warranties", handlers::warranties::routes())
+        .nest("/shipments", handlers::shipments::routes())
+        .nest("/work_orders", handlers::work_orders::routes())
+        .nest("/billofmaterials", handlers::billofmaterials::routes())
+        .nest("/manufacturing", handlers::manufacturing::routes())
+        .nest("/suppliers", handlers::suppliers::routes())
+        .route("/proto_endpoint", post(handle_proto_request))
+        .layer(Extension(app_state))
+        .layer(Extension(schema))
+        .layer(TraceLayer::new_for_http())
+        .layer(CompressionLayer::new())
+        .layer(axum::middleware::from_fn(auth::auth_middleware))
+        .layer(axum::middleware::from_fn(rate_limiter::rate_limit_middleware));
 
-    info!(log, "HTTP server running"; 
-        "address" => format!("{}:{}", config.host, config.port)
-    );
-
-    // Graceful shutdown handling
-    let graceful_shutdown = shutdown_signal();
-
-    tokio::select! {
-        _ = server => {},
-        _ = graceful_shutdown => {
-            info!(log, "Initiating graceful shutdown");
-        },
-    }
+    // Run our app with hyper
+    let addr = format!("{}:{}", config.host, config.port);
+    info!(log, "HTTP server running"; "address" => &addr);
+    axum::Server::bind(&addr.parse().unwrap())
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 
     info!(log, "Shutting down");
     Ok(())
@@ -223,13 +226,14 @@ async fn initialize_services(
     }
 }
 
+
 async fn handle_proto_request(
-    state: web::Data<AppState>,
-    payload: web::Bytes
-) -> Result<web::Bytes, actix_web::Error> {
+    Extension(state): Extension<AppState>,
+    payload: axum::body::Bytes
+) -> Result<axum::response::Response<axum::body::Full<axum::body::Bytes>>, axum::http::StatusCode> {
     // Deserialize the incoming protobuf message
     let request = proto::SomeRequest::decode(payload.as_ref())
-        .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
 
     // Process the request (this is where you'd add your business logic)
     let response = proto::SomeResponse {
@@ -240,9 +244,12 @@ async fn handle_proto_request(
     // Serialize the response back to protobuf
     let mut buf = Vec::new();
     response.encode(&mut buf)
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(web::Bytes::from(buf))
+    Ok(axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .body(axum::body::Full::from(buf))
+        .unwrap())
 }
 
 fn setup_telemetry(config: &AppConfig) -> Result<(), AppError> {
@@ -252,100 +259,4 @@ fn setup_telemetry(config: &AppConfig) -> Result<(), AppError> {
         .install_simple()?;
     global::set_tracer_provider(tracer);
     Ok(())
-}
-
-fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/orders")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::orders::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/inventory")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::inventory::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/return")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::returns::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/warranties")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::warranties::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/shipments")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::shipments::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/work_orders")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::work_orders::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/billofmaterials")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::billofmaterials::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/manufacturing")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::manufacturing::configure_routes)
-    );
-
-    cfg.service(
-        web::scope("/suppliers")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .configure(handlers::suppliers::configure_routes)
-    );
-
-    cfg.service(
-        web::resource("/proto_endpoint")
-            .wrap(auth::AuthMiddleware::new(vec!["user", "admin"]))
-            .wrap(rate_limiter::RateLimitMiddleware::new(100, 60))
-            .route(web::post().to(handle_proto_request))
-    );
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
 }

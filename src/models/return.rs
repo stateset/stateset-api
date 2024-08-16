@@ -1,31 +1,47 @@
-use serde::{Serialize, Deserialize};
-use validator::{Validate, ValidationError};
-use diesel::prelude::*;
-use diesel::sql_types::Text;
-use chrono::{NaiveDateTime, Utc};
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable, AsChangeset, Validate)]
-#[table_name = "returns"]
-pub struct Return {
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
+#[sea_orm(table_name = "return_items")]
+pub struct Model {
+    #[sea_orm(primary_key)]
     pub id: i32,
-    #[validate(range(min = 1, message = "Order ID must be positive"))]
-    pub order_id: i32,
-    #[validate(range(min = 1, message = "Customer ID must be positive"))]
-    pub customer_id: i32,
-    pub status: ReturnStatus,
-    #[validate(length(min = 1, max = 500, message = "Reason must be between 1 and 500 characters"))]
+    
+    #[validate(range(min = 1, message = "Return ID must be positive"))]
+    pub return_id: i32,
+    
+    #[validate(range(min = 1, message = "Product ID must be positive"))]
+    pub product_id: i32,
+    
+    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    pub quantity: i32,
+    
+    #[validate(length(min = 1, max = 255, message = "Reason must be between 1 and 255 characters"))]
     pub reason: String,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, AsExpression, FromSqlRow)]
-#[sql_type = "Text"]
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ReturnStatus {
+    #[sea_orm(string_value = "Requested")]
     Requested,
+    
+    #[sea_orm(string_value = "Approved")]
     Approved,
+    
+    #[sea_orm(string_value = "Rejected")]
     Rejected,
+    
+    #[sea_orm(string_value = "Received")]
     Received,
+    
+    #[sea_orm(string_value = "Refunded")]
     Refunded,
 }
 

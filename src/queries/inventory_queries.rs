@@ -1,10 +1,22 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
+use sea_orm::*;
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
-use diesel::dsl::*;
+
+use crate::billofmaterials::BillOfMaterials;
+use crate::inventory_item::InventoryItem;
+use crate::order::Order;
+use crate::shipment::Shipment;
+use crate::tracking_event::TrackingEvent;
+use crate::work_order::WorkOrder;
+use crate::return_entity::ReturnEntity;
+use crate::order_item::OrderItem;   
+use crate::product::Product;
+use crate::customer::Customer;
+use crate::order::Order;
+use crate::warehouse::Warehouse;   
 
 #[async_trait]
 pub trait Query: Send + Sync {
@@ -20,40 +32,49 @@ pub struct GetInventoryItemQuery {
 
 #[async_trait]
 impl Query for GetInventoryItemQuery {
-    type Result = InventoryItem;
+    type Result = inventory_item_entity::Model;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let item = inventory_items::table
-            .filter(inventory_items::product_id.eq(self.product_id))
-            .first::<InventoryItem>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
-        Ok(item)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        inventory_item_entity::Entity::find()
+            .filter(inventory_item_entity::Column::ProductId.eq(self.product_id))
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .ok_or(ServiceError::NotFound)
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetLowStockItemsQuery {
     pub threshold: i32,
-    pub limit: i64,
-    pub offset: i64,
+    pub limit: u64,
+    pub offset: u64,
 }
 
 #[async_trait]
 impl Query for GetLowStockItemsQuery {
-    type Result = Vec<(Product, InventoryItem)>;
+    type Result = Vec<(product_entity::Model, inventory_item_entity::Model)>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let items = products::table
-            .inner_join(inventory_items::table)
-            .filter(inventory_items::quantity.le(self.threshold))
-            .order(inventory_items::quantity.asc())
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        product_entity::Entity::find()
+            .join_rev(
+                JoinType::InnerJoin,
+                inventory_item_entity::Entity::belongs_to(product_entity::Entity)
+                    .from(inventory_item_entity::Column::ProductId)
+                    .to(product_entity::Column::Id)
+                    .into(),
+            )
+            .filter(inventory_item_entity::Column::Quantity.le(self.threshold))
+            .order_by_asc(inventory_item_entity::Column::Quantity)
             .limit(self.limit)
             .offset(self.offset)
-            .load::<(Product, InventoryItem)>(&conn)
-            .map_err(|_| ServiceError::DatabaseError)?;
-        Ok(items)
+            .all(&db)
+            .await
+            .map_err(|_| ServiceError::DatabaseError)
     }
 }
 
@@ -71,18 +92,23 @@ impl Query for GetInventoryValueQuery {
     type Result = InventoryValue;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let result: (Option<f64>, i64) = inventory_items::table
-            .select((
-                sum(inventory_items::quantity.cast::<f64>() * inventory_items::unit_cost),
-                count(inventory_items::id),
-            ))
-            .first(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let result = inventory_item_entity::Entity::find()
+            .select_only()
+            .column_as(
+                sum(inventory_item_entity::Column::Quantity.cast::<f64>() * inventory_item_entity::Column::UnitCost),
+                "total_value",
+            )
+            .column_as(count(inventory_item_entity::Column::Id), "total_items")
+            .into_tuple()
+            .one(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
-        
+
         Ok(InventoryValue {
             total_value: result.0.unwrap_or(0.0),
-            total_items: result.1,
+            total_items: result.1.unwrap_or(0),
         })
     }
 }
@@ -92,25 +118,26 @@ pub struct GetInventoryMovementsQuery {
     pub product_id: i32,
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
-    pub limit: i64,
-    pub offset: i64,
+    pub limit: u64,
+    pub offset: u64,
 }
 
 #[async_trait]
 impl Query for GetInventoryMovementsQuery {
-    type Result = Vec<InventoryMovement>;
+    type Result = Vec<inventory_movement_entity::Model>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let movements = inventory_movements::table
-            .filter(inventory_movements::product_id.eq(self.product_id))
-            .filter(inventory_movements::timestamp.between(self.start_date, self.end_date))
-            .order(inventory_movements::timestamp.desc())
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        inventory_movement_entity::Entity::find()
+            .filter(inventory_movement_entity::Column::ProductId.eq(self.product_id))
+            .filter(inventory_movement_entity::Column::Timestamp.between(self.start_date, self.end_date))
+            .order_by_desc(inventory_movement_entity::Column::Timestamp)
             .limit(self.limit)
             .offset(self.offset)
-            .load::<InventoryMovement>(&conn)
-            .map_err(|_| ServiceError::DatabaseError)?;
-        Ok(movements)
+            .all(&db)
+            .await
+            .map_err(|_| ServiceError::DatabaseError)
     }
 }
 
@@ -118,7 +145,7 @@ impl Query for GetInventoryMovementsQuery {
 pub struct GetTopSellingProductsQuery {
     pub start_date: DateTime<Utc>,
     pub end_date: DateTime<Utc>,
-    pub limit: i64,
+    pub limit: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -134,21 +161,25 @@ impl Query for GetTopSellingProductsQuery {
     type Result = Vec<TopSellingProduct>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        let top_selling = order_items::table
-            .inner_join(products::table)
-            .inner_join(orders::table.on(order_items::order_id.eq(orders::id)))
-            .filter(orders::order_date.between(self.start_date, self.end_date))
-            .group_by((products::id, products::name))
-            .order(sum(order_items::quantity).desc())
-            .limit(self.limit)
-            .select((
-                products::id,
-                products::name,
-                sum(order_items::quantity),
-                sum(order_items::quantity.cast::<f64>() * order_items::unit_price),
-            ))
-            .load::<(i32, String, Option<i64>, Option<f64>)>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let top_selling = order_item_entity::Entity::find()
+            .inner_join(product_entity::Entity)
+            .inner_join(order_entity::Entity)
+            .filter(order_entity::Column::OrderDate.between(self.start_date, self.end_date))
+            .group_by(product_entity::Column::Id)
+            .order_by_desc(sum(order_item_entity::Column::Quantity))
+            .select_only()
+            .column(product_entity::Column::Id)
+            .column(product_entity::Column::Name)
+            .column_as(sum(order_item_entity::Column::Quantity), "quantity_sold")
+            .column_as(
+                sum(order_item_entity::Column::Quantity.cast::<f64>() * order_item_entity::Column::UnitPrice),
+                "total_revenue",
+            )
+            .into_tuple()
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(top_selling
@@ -181,22 +212,26 @@ impl Query for GetInventoryTurnoverRatioQuery {
     type Result = InventoryTurnoverRatio;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        // Calculate average inventory value
-        let avg_inventory: f64 = inventory_snapshots::table
-            .filter(inventory_snapshots::date.between(self.start_date, self.end_date))
-            .select(avg(inventory_snapshots::total_value))
-            .first::<Option<f64>>(&conn)
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+
+        let avg_inventory = inventory_snapshot_entity::Entity::find()
+            .filter(inventory_snapshot_entity::Column::Date.between(self.start_date, self.end_date))
+            .select_only()
+            .column_as(avg(inventory_snapshot_entity::Column::TotalValue), "average_inventory_value")
+            .into_tuple()
+            .one(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?
             .unwrap_or(0.0);
 
-        // Calculate cost of goods sold
-        let cogs: f64 = order_items::table
-            .inner_join(orders::table.on(order_items::order_id.eq(orders::id)))
-            .filter(orders::order_date.between(self.start_date, self.end_date))
-            .select(sum(order_items::quantity.cast::<f64>() * order_items::unit_cost))
-            .first::<Option<f64>>(&conn)
+        let cogs = order_item_entity::Entity::find()
+            .inner_join(order_entity::Entity)
+            .filter(order_entity::Column::OrderDate.between(self.start_date, self.end_date))
+            .select_only()
+            .column_as(sum(order_item_entity::Column::Quantity.cast::<f64>() * order_item_entity::Column::UnitCost), "cost_of_goods_sold")
+            .into_tuple()
+            .one(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?
             .unwrap_or(0.0);
 
@@ -229,39 +264,18 @@ impl Query for GetInventoryForecastQuery {
     type Result = InventoryForecast;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
-        
-        // Get current stock
-        let current_stock = inventory_items::table
-            .filter(inventory_items::product_id.eq(self.product_id))
-            .select(inventory_items::quantity)
-            .first::<i32>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
 
-        // Calculate average daily demand for the last 30 days
-        let end_date = Utc::now();
-        let start_date = end_date - chrono::Duration::days(30);
-        let avg_daily_demand: f64 = order_items::table
-            .inner_join(orders::table.on(order_items::order_id.eq(orders::id)))
-            .filter(order_items::product_id.eq(self.product_id))
-            .filter(orders::order_date.between(start_date, end_date))
-            .select(sum(order_items::quantity).cast::<f64>() / 30.0)
-            .first::<Option<f64>>(&conn)
-            .map_err(|_| ServiceError::DatabaseError)?
-            .unwrap_or(0.0);
+        let current_stock = inventory_item_entity::Entity::find()
+            .filter(inventory_item_entity::Column::ProductId.eq(self.product_id))
+            .select_only()
+            .column(inventory_item_entity::Column::Quantity)
+            .into_tuple()
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .unwrap_or(0);
 
-        let forecasted_demand = (avg_daily_demand * self.forecast_period as f64) as i32;
-        let recommended_reorder = if forecasted_demand > current_stock {
-            forecasted_demand - current_stock
-        } else {
-            0
-        };
-
-        Ok(InventoryForecast {
-            product_id: self.product_id,
-            current_stock,
-            forecasted_demand,
-            recommended_reorder,
-        })
+        let end_date = Utc
     }
 }

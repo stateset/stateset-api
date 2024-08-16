@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use lapin::{
     Channel, BasicProperties, options::*, types::FieldTable, Error as LapinError, Consumer, message::Delivery,
 };

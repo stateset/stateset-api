@@ -1,12 +1,16 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Order, OrderItem, OrderStatus}};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{
+    order_entity, order_entity::Entity as Order,
+    order_item_entity, order_item_entity::Entity as OrderItem,
+    OrderStatus
+}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use chrono::Utc;
 use prometheus::IntCounter;
 
 lazy_static! {
@@ -26,19 +30,18 @@ pub trait Command: Send + Sync {
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError>;
 }
 
-// CreateOrderCommand: Handles the creation of a new order
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct CreateOrderCommand {
     #[validate(range(min = 1))]
     pub customer_id: i32,
 
     #[validate(length(min = 1))]
-    pub items: Vec<OrderItem>,
+    pub items: Vec<order_item_entity::Model>,
 }
 
 #[async_trait]
 impl Command for CreateOrderCommand {
-    type Result = Order;
+    type Result = order_entity::Model;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -49,32 +52,51 @@ impl Command for CreateOrderCommand {
             ServiceError::ValidationError(e.to_string())
         })?;
 
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             ORDER_CREATION_FAILURES.inc();
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError
         })?;
 
-        let new_order = Order {
-            customer_id: self.customer_id,
-            items: self.items.clone(),
-            status: OrderStatus::Pending,
-            // Set other fields like total amount, created_at, etc.
-        };
+        let result = db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
+            Box::pin(async move {
+                // Create new order
+                let new_order = order_entity::ActiveModel {
+                    customer_id: Set(self.customer_id),
+                    status: Set(OrderStatus::Pending.to_string()),
+                    created_at: Set(Utc::now()),
+                    // Set other fields as needed
+                    ..Default::default()
+                };
 
-        let saved_order = match diesel::insert_into(orders::table)
-            .values(&new_order)
-            .get_result::<Order>(&conn) {
-            Ok(order) => order,
-            Err(e) => {
-                ORDER_CREATION_FAILURES.inc();
-                error!("Failed to save order: {}", e);
-                return Err(ServiceError::DatabaseError);
-            }
-        };
+                let saved_order = new_order.insert(txn).await.map_err(|e| {
+                    ORDER_CREATION_FAILURES.inc();
+                    error!("Failed to save order: {}", e);
+                    ServiceError::DatabaseError
+                })?;
+
+                // Insert order items
+                for item in &self.items {
+                    let new_item = order_item_entity::ActiveModel {
+                        order_id: Set(saved_order.id),
+                        product_id: Set(item.product_id),
+                        quantity: Set(item.quantity),
+                        // Set other fields as needed
+                        ..Default::default()
+                    };
+                    new_item.insert(txn).await.map_err(|e| {
+                        ORDER_CREATION_FAILURES.inc();
+                        error!("Failed to save order item: {}", e);
+                        ServiceError::DatabaseError
+                    })?;
+                }
+
+                Ok(saved_order)
+            })
+        }).await?;
 
         // Trigger an event
-        if let Err(e) = event_sender.send(Event::OrderCreated(saved_order.id)).await {
+        if let Err(e) = event_sender.send(Event::OrderCreated(result.id)).await {
             ORDER_CREATION_FAILURES.inc();
             error!("Failed to send OrderCreated event: {}", e);
             return Err(ServiceError::EventError(e.to_string()));
@@ -82,8 +104,8 @@ impl Command for CreateOrderCommand {
 
         ORDER_CREATIONS.inc();
 
-        info!("Order created successfully: {:?}", saved_order);
+        info!("Order created successfully: {:?}", result);
 
-        Ok(saved_order)
+        Ok(result)
     }
 }

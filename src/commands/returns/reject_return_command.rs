@@ -1,10 +1,11 @@
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Return, ReturnStatus}};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{return_entity, return_entity::Entity as Return}};
+use crate::models::return_entity::ReturnStatus;
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -29,17 +30,12 @@ impl Command for RejectReturnCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError("Failed to get database connection".into())
         })?;
 
-        let rejected_return = conn.transaction(|| {
-            self.reject_return(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for rejecting return ID {}: {}", self.return_id, e);
-            e
-        })?;
+        let rejected_return = self.reject_return(&db).await?;
 
         self.log_and_trigger_event(event_sender, &rejected_return).await?;
 
@@ -53,25 +49,33 @@ impl Command for RejectReturnCommand {
 }
 
 impl RejectReturnCommand {
-    fn reject_return(&self, conn: &PgConnection) -> Result<Return, ServiceError> {
-        diesel::update(returns::table.find(self.return_id))
-            .set((
-                returns::status.eq(ReturnStatus::Rejected),
-                returns::reason.eq(self.reason.clone()),
-            ))
-            .get_result::<Return>(conn)
+    async fn reject_return(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
+        let return_request = Return::find_by_id(self.return_id)
+            .one(db)
+            .await
             .map_err(|e| {
-                if e == diesel::result::Error::NotFound {
-                    error!("Return request not found: {}", self.return_id);
-                    ServiceError::NotFound(format!("Return request with ID {} not found", self.return_id))
-                } else {
-                    error!("Failed to reject return request: {}", e);
-                    ServiceError::DatabaseError(format!("Failed to reject return request: {}", e))
-                }
+                error!("Database error: {}", e);
+                ServiceError::DatabaseError(format!("Database error: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Return request not found: {}", self.return_id);
+                ServiceError::NotFound(format!("Return request with ID {} not found", self.return_id))
+            })?;
+
+        let mut return_request: return_entity::ActiveModel = return_request.into();
+        return_request.status = Set(ReturnStatus::Rejected.to_string());
+        return_request.reason = Set(Some(self.reason.clone()));
+
+        return_request
+            .update(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to reject return request: {}", e);
+                ServiceError::DatabaseError(format!("Failed to reject return request: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, rejected_return: &Return) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, rejected_return: &return_entity::Model) -> Result<(), ServiceError> {
         info!("Return request rejected for return ID: {}. Reason: {}", self.return_id, self.reason);
         event_sender.send(Event::ReturnRejected(self.return_id))
             .await

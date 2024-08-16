@@ -1,11 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Shipment, ShipmentStatus, ShippingMethod}};
+use crate::{errors::ServiceError, db::DbPool, models::{shipment, Shipment, ShipmentStatus, ShippingMethod}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, ActiveValue::Set};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct CreateShipmentCommand {
@@ -20,7 +20,7 @@ pub struct CreateShipmentCommand {
 
 #[async_trait::async_trait]
 impl Command for CreateShipmentCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -29,14 +29,14 @@ impl Command for CreateShipmentCommand {
             ServiceError::ValidationError(e.to_string())
         })?;
 
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let saved_shipment = conn.transaction(|| {
-            self.create_shipment(&conn)
-        }).map_err(|e| {
+        let saved_shipment = db.transaction::<_, ServiceError, _>(|txn| {
+            Box::pin(async move {
+                let shipment = self.create_shipment(txn).await?;
+                Ok(shipment)
+            })
+        }).await.map_err(|e| {
             error!("Transaction failed for creating shipment: {}", e);
             e
         })?;
@@ -48,25 +48,22 @@ impl Command for CreateShipmentCommand {
 }
 
 impl CreateShipmentCommand {
-    fn create_shipment(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        let shipment = Shipment {
-            order_id: self.order_id,
-            shipping_address: self.shipping_address.clone(),
-            shipping_method: self.shipping_method.clone(),
-            status: ShipmentStatus::Pending,
-            // Additional fields like tracking number, timestamps, etc.
+    async fn create_shipment(&self, txn: &sea_orm::DatabaseTransaction) -> Result<shipment::Model, ServiceError> {
+        let new_shipment = shipment::ActiveModel {
+            order_id: Set(self.order_id),
+            shipping_address: Set(self.shipping_address.clone()),
+            shipping_method: Set(self.shipping_method.clone()),
+            status: Set(ShipmentStatus::Pending),
+            ..Default::default() // Additional fields like tracking number, timestamps, etc.
         };
 
-        diesel::insert_into(shipments::table)
-            .values(&shipment)
-            .get_result::<Shipment>(conn)
-            .map_err(|e| {
-                error!("Failed to create shipment: {}", e);
-                ServiceError::DatabaseError(format!("Failed to create shipment: {}", e))
-            })
+        new_shipment.insert(txn).await.map_err(|e| {
+            error!("Failed to create shipment: {}", e);
+            ServiceError::DatabaseError(format!("Failed to create shipment: {}", e))
+        })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &Shipment) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &shipment::Model) -> Result<(), ServiceError> {
         info!("Shipment created: {:?}", shipment);
         event_sender.send(Event::ShipmentCreated(shipment.id))
             .await

@@ -1,10 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::Shipment};
+use crate::{errors::ServiceError, db::DbPool, models::{shipment, Shipment}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AssignShipmentCarrierCommand {
@@ -16,21 +17,13 @@ pub struct AssignShipmentCarrierCommand {
 
 #[async_trait::async_trait]
 impl Command for AssignShipmentCarrierCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_shipment = conn.transaction(|| {
-            self.assign_carrier(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for assigning carrier to shipment ID {}: {}", self.shipment_id, e);
-            e
-        })?;
+        let updated_shipment = self.assign_carrier(&db).await?;
 
         self.log_and_trigger_event(event_sender, &updated_shipment).await?;
 
@@ -39,17 +32,33 @@ impl Command for AssignShipmentCarrierCommand {
 }
 
 impl AssignShipmentCarrierCommand {
-    fn assign_carrier(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        diesel::update(shipments::table.find(self.shipment_id))
-            .set(shipments::carrier.eq(self.carrier_name.clone()))
-            .get_result::<Shipment>(conn)
+    async fn assign_carrier(&self, db: &sea_orm::DatabaseConnection) -> Result<shipment::Model, ServiceError> {
+        let shipment = shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to find shipment ID {}: {}", self.shipment_id, e);
+                ServiceError::DatabaseError(format!("Failed to find shipment: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Shipment ID {} not found", self.shipment_id);
+                ServiceError::NotFound
+            })?;
+
+        let mut shipment_active_model: shipment::ActiveModel = shipment.into();
+
+        shipment_active_model.carrier = Set(self.carrier_name.clone());
+
+        shipment_active_model
+            .update(db)
+            .await
             .map_err(|e| {
                 error!("Failed to assign carrier to shipment ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to assign carrier: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &Shipment) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &shipment::Model) -> Result<(), ServiceError> {
         info!("Carrier assigned to shipment ID: {}. Carrier: {}", self.shipment_id, self.carrier_name);
         event_sender.send(Event::CarrierAssignedToShipment(self.shipment_id, self.carrier_name.clone()))
             .await

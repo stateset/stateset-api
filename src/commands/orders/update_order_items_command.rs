@@ -1,16 +1,16 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use validator::Validate;
+use sea_orm::*;
 
 use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{Order, OrderItem},
+    models::{order_entity, order_entity::Entity as Order, order_item_entity, order_item_entity::Entity as OrderItem},
 };
-use diesel::prelude::*;
 use prometheus::IntCounter;
 use lazy_static::lazy_static;
 
@@ -28,26 +28,28 @@ lazy_static! {
 pub struct UpdateOrderItemsCommand {
     pub order_id: i32,
     #[validate(length(min = 1))]
-    pub items: Vec<OrderItem>,
+    pub items: Vec<order_item_entity::Model>,
 }
 
 #[async_trait]
 impl Command for UpdateOrderItemsCommand {
-    type Result = Order;
+    type Result = order_entity::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             ORDER_ITEM_UPDATE_FAILURES.inc();
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError
         })?;
 
-        let updated_order = conn.transaction(|| {
-            self.delete_existing_items(&conn)?;
-            self.insert_new_items(&conn)?;
-            self.recalculate_order_total(&conn)
-        }).map_err(|e: ServiceError| {
+        let updated_order = db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
+            Box::pin(async move {
+                self.delete_existing_items(txn).await?;
+                self.insert_new_items(txn).await?;
+                self.recalculate_order_total(txn).await
+            })
+        }).await.map_err(|e| {
             error!("Transaction failed for updating order items in order ID {}: {}", self.order_id, e);
             ORDER_ITEM_UPDATE_FAILURES.inc();
             e
@@ -63,9 +65,11 @@ impl Command for UpdateOrderItemsCommand {
 }
 
 impl UpdateOrderItemsCommand {
-    fn delete_existing_items(&self, conn: &PgConnection) -> Result<(), ServiceError> {
-        diesel::delete(order_items::table.filter(order_items::order_id.eq(self.order_id)))
-            .execute(conn)
+    async fn delete_existing_items(&self, txn: &DatabaseTransaction) -> Result<(), ServiceError> {
+        OrderItem::delete_many()
+            .filter(order_item_entity::Column::OrderId.eq(self.order_id))
+            .exec(txn)
+            .await
             .map_err(|e| {
                 error!("Failed to delete order items for order ID {}: {}", self.order_id, e);
                 ORDER_ITEM_UPDATE_FAILURES.inc();
@@ -74,31 +78,52 @@ impl UpdateOrderItemsCommand {
         Ok(())
     }
 
-    fn insert_new_items(&self, conn: &PgConnection) -> Result<(), ServiceError> {
+    async fn insert_new_items(&self, txn: &DatabaseTransaction) -> Result<(), ServiceError> {
         for item in &self.items {
-            diesel::insert_into(order_items::table)
-                .values(item)
-                .execute(conn)
-                .map_err(|e| {
-                    error!("Failed to insert order item for order ID {}: {}", self.order_id, e);
-                    ORDER_ITEM_UPDATE_FAILURES.inc();
-                    ServiceError::DatabaseError
-                })?;
+            let new_item = order_item_entity::ActiveModel {
+                order_id: Set(self.order_id),
+                product_id: Set(item.product_id),
+                quantity: Set(item.quantity),
+                // Set other fields as needed
+                ..Default::default()
+            };
+            new_item.insert(txn).await.map_err(|e| {
+                error!("Failed to insert order item for order ID {}: {}", self.order_id, e);
+                ORDER_ITEM_UPDATE_FAILURES.inc();
+                ServiceError::DatabaseError
+            })?;
         }
         Ok(())
     }
 
-    fn recalculate_order_total(&self, conn: &PgConnection) -> Result<Order, ServiceError> {
+    async fn recalculate_order_total(&self, txn: &DatabaseTransaction) -> Result<order_entity::Model, ServiceError> {
         // Implement the logic to recalculate the order total
-        orders::table.find(self.order_id)
-            .first::<Order>(conn)
+        let order = Order::find_by_id(self.order_id)
+            .one(txn)
+            .await
             .map_err(|e| {
-                error!("Failed to recalculate total for order ID {}: {}", self.order_id, e);
+                error!("Failed to find order for ID {}: {}", self.order_id, e);
                 ServiceError::DatabaseError
-            })
+            })?
+            .ok_or_else(|| {
+                error!("Order not found for ID {}", self.order_id);
+                ServiceError::NotFound
+            })?;
+
+        // Here you would implement the logic to recalculate the total
+        // For example:
+        // let total = calculate_total(&self.items);
+        // let mut order: order_entity::ActiveModel = order.into();
+        // order.total = Set(total);
+        // order.update(txn).await.map_err(|e| {
+        //     error!("Failed to update order total for ID {}: {}", self.order_id, e);
+        //     ServiceError::DatabaseError
+        // })
+
+        Ok(order)
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, updated_order: &Order) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, updated_order: &order_entity::Model) -> Result<(), ServiceError> {
         if let Err(e) = event_sender.send(Event::OrderUpdated(self.order_id)).await {
             ORDER_ITEM_UPDATE_FAILURES.inc();
             error!("Failed to send OrderUpdated event for order ID {}: {}", self.order_id, e);

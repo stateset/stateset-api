@@ -1,10 +1,22 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
+use sea_orm::*;
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
-use diesel::dsl::*;
+
+use crate::billofmaterials::BillOfMaterials;
+use crate::inventory_item::InventoryItem;
+use crate::order::Order;
+use crate::shipment::Shipment;
+use crate::tracking_event::TrackingEvent;
+use crate::work_order::WorkOrder;
+use crate::return_entity::ReturnEntity;
+use crate::order_item::OrderItem;   
+use crate::product::Product;
+use crate::customer::Customer;
+use crate::order::Order;
+use crate::warehouse::Warehouse;   
 
 #[async_trait]
 pub trait Query: Send + Sync {
@@ -38,32 +50,28 @@ impl Query for GetBOMByProductQuery {
     type Result = BillOfMaterials;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let product = products::table
-            .find(self.product_id)
-            .first::<Product>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
+        let product = product_entity::Entity::find_by_id(self.product_id)
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .ok_or(ServiceError::NotFound)?;
 
-        let items = bom_items::table
-            .inner_join(components::table)
-            .filter(bom_items::product_id.eq(self.product_id))
-            .select((
-                components::id,
-                components::name,
-                bom_items::quantity,
-                components::unit,
-            ))
-            .load::<(i32, String, f64, String)>(&conn)
+        let items = bom_item_entity::Entity::find()
+            .filter(bom_item_entity::Column::ProductId.eq(self.product_id))
+            .find_also_related(component_entity::Entity)
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let bom_items = items
             .into_iter()
-            .map(|(component_id, component_name, quantity, unit)| BOMItem {
-                component_id,
-                component_name,
-                quantity,
-                unit,
+            .map(|(bom_item, component)| BOMItem {
+                component_id: component.unwrap().id,
+                component_name: component.unwrap().name,
+                quantity: bom_item.quantity,
+                unit: component.unwrap().unit,
             })
             .collect();
 
@@ -102,36 +110,33 @@ impl Query for GetBOMCostAnalysisQuery {
     type Result = BOMCostAnalysis;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let product = products::table
-            .find(self.product_id)
-            .first::<Product>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
+        let product = product_entity::Entity::find_by_id(self.product_id)
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .ok_or(ServiceError::NotFound)?;
 
-        let items = bom_items::table
-            .inner_join(components::table)
-            .inner_join(inventory_items::table.on(components::id.eq(inventory_items::product_id)))
-            .filter(bom_items::product_id.eq(self.product_id))
-            .select((
-                components::id,
-                components::name,
-                bom_items::quantity,
-                inventory_items::unit_cost,
-            ))
-            .load::<(i32, String, f64, f64)>(&conn)
+        let items = bom_item_entity::Entity::find()
+            .filter(bom_item_entity::Column::ProductId.eq(self.product_id))
+            .find_also_related(component_entity::Entity)
+            .find_also_related(inventory_item_entity::Entity)
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let mut total_cost = 0.0;
         let cost_items: Vec<BOMCostItem> = items
             .into_iter()
-            .map(|(component_id, component_name, quantity, unit_cost)| {
-                let item_total_cost = quantity * unit_cost;
+            .map(|((bom_item, component), inventory_item)| {
+                let unit_cost = inventory_item.unwrap().unit_cost;
+                let item_total_cost = bom_item.quantity * unit_cost;
                 total_cost += item_total_cost;
                 BOMCostItem {
-                    component_id,
-                    component_name,
-                    quantity,
+                    component_id: component.unwrap().id,
+                    component_name: component.unwrap().name,
+                    quantity: bom_item.quantity,
                     unit_cost,
                     total_cost: item_total_cost,
                 }
@@ -171,30 +176,27 @@ impl Query for GetComponentUsageQuery {
     type Result = ComponentUsage;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let component = components::table
-            .find(self.component_id)
-            .first::<Component>(&conn)
-            .map_err(|_| ServiceError::NotFound)?;
+        let component = component_entity::Entity::find_by_id(self.component_id)
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::NotFound)?
+            .ok_or(ServiceError::NotFound)?;
 
-        let usages = bom_items::table
-            .inner_join(products::table)
-            .filter(bom_items::component_id.eq(self.component_id))
-            .select((
-                products::id,
-                products::name,
-                bom_items::quantity,
-            ))
-            .load::<(i32, String, f64)>(&conn)
+        let usages = bom_item_entity::Entity::find()
+            .filter(bom_item_entity::Column::ComponentId.eq(self.component_id))
+            .find_also_related(product_entity::Entity)
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         let product_usages = usages
             .into_iter()
-            .map(|(product_id, product_name, quantity)| ComponentProductUsage {
-                product_id,
-                product_name,
-                quantity,
+            .map(|(bom_item, product)| ComponentProductUsage {
+                product_id: product.unwrap().id,
+                product_name: product.unwrap().name,
+                quantity: bom_item.quantity,
             })
             .collect();
 
@@ -226,31 +228,28 @@ impl Query for GetBOMShortagesQuery {
     type Result = Vec<BOMShortage>;
 
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
+        let db = db_pool.get().map_err(|_| ServiceError::DatabaseError)?;
         
-        let shortages = bom_items::table
-            .inner_join(components::table)
-            .inner_join(inventory_items::table.on(components::id.eq(inventory_items::product_id)))
-            .filter(bom_items::product_id.eq(self.product_id))
-            .select((
-                components::id,
-                components::name,
-                (bom_items::quantity * self.production_quantity as f64),
-                inventory_items::quantity,
-            ))
-            .load::<(i32, String, f64, i32)>(&conn)
+        let shortages = bom_item_entity::Entity::find()
+            .filter(bom_item_entity::Column::ProductId.eq(self.product_id))
+            .find_also_related(component_entity::Entity)
+            .find_also_related(inventory_item_entity::Entity)
+            .all(&db)
+            .await
             .map_err(|_| ServiceError::DatabaseError)?;
 
         Ok(shortages
             .into_iter()
-            .filter_map(|(component_id, component_name, required_quantity, available_quantity)| {
-                let shortage = required_quantity - available_quantity as f64;
+            .filter_map(|((bom_item, component), inventory_item)| {
+                let required_quantity = bom_item.quantity * self.production_quantity as f64;
+                let available_quantity = inventory_item.unwrap().quantity as f64;
+                let shortage = required_quantity - available_quantity;
                 if shortage > 0.0 {
                     Some(BOMShortage {
-                        component_id,
-                        component_name,
+                        component_id: component.unwrap().id,
+                        component_name: component.unwrap().name,
                         required_quantity,
-                        available_quantity: available_quantity as f64,
+                        available_quantity,
                         shortage,
                     })
                 } else {

@@ -1,9 +1,9 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{BOM, BOMComponent}};
+use crate::{errors::ServiceError, db::DbPool, models::bom};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, DbConn};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuditBOMCommand {
@@ -12,16 +12,13 @@ pub struct AuditBOMCommand {
 
 #[async_trait::async_trait]
 impl Command for AuditBOMCommand {
-    type Result = BOM;
+    type Result = bom::Model;
 
     #[instrument(skip(self, db_pool))]
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let bom = self.audit_bom(&conn)?;
+        let bom = self.audit_bom(&db).await?;
 
         self.log_audit_result(&bom);
 
@@ -30,18 +27,22 @@ impl Command for AuditBOMCommand {
 }
 
 impl AuditBOMCommand {
-    fn audit_bom(&self, conn: &PgConnection) -> Result<BOM, ServiceError> {
-        // Here, auditing would involve checking the BOM and its components' integrity.
-        // For simplicity, we'll just fetch the BOM and assume the audit passes.
-        boms::table.find(self.bom_id)
-            .first::<BOM>(conn)
+    async fn audit_bom(&self, db: &DbConn) -> Result<bom::Model, ServiceError> {
+        // Fetch the BOM and assume the audit passes for simplicity
+        bom::Entity::find_by_id(self.bom_id)
+            .one(db)
+            .await
             .map_err(|e| {
                 error!("Failed to audit BOM ID {}: {}", self.bom_id, e);
                 ServiceError::DatabaseError(format!("Failed to audit BOM: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("BOM ID {} not found during audit", self.bom_id);
+                ServiceError::NotFound(format!("BOM ID {} not found", self.bom_id))
             })
     }
 
-    fn log_audit_result(&self, bom: &BOM) {
+    fn log_audit_result(&self, bom: &bom::Model) {
         info!("BOM audit completed for BOM ID: {}. Name: {}", bom.id, bom.name);
     }
 }

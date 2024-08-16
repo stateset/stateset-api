@@ -6,7 +6,7 @@ pub mod approve_return_command;
 pub mod reject_return_command;
 
 // Re-export commands for easier access
-pub use create_return_command::CreateReturnCommand;
+pub use create_return_command::InitiateReturnCommand;
 pub use cancel_return_command::CancelReturnCommand;
 pub use complete_return_command::CompleteReturnCommand;
 pub use refund_return_command::RefundReturnCommand;

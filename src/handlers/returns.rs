@@ -1,4 +1,9 @@
-use actix_web::{post, get, put, delete, web, HttpResponse};
+use axum::{
+    routing::{post, get, put},
+    extract::{Path, State, Query, Json},
+    response::IntoResponse,
+    Router,
+};
 use crate::services::returns::ReturnService;
 use crate::models::{NewReturn, Return, ReturnStatus, ReturnSearchParams};
 use crate::errors::{ServiceError, ReturnError};
@@ -6,8 +11,8 @@ use crate::auth::AuthenticatedUser;
 use crate::utils::pagination::PaginationParams;
 use validator::Validate;
 use uuid::Uuid;
+use std::sync::Arc;
 
-// Import the commands
 use crate::commands::returns::{
     ApproveReturnCommand,
     RejectReturnCommand,
@@ -17,104 +22,111 @@ use crate::commands::returns::{
     ProcessReturnCommand,
 };
 
-#[post("")]
 async fn create_return(
-    return_info: web::Json<NewReturn>,
-    user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+    State(return_service): State<Arc<ReturnService>>,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Json(return_info): Json<NewReturn>,
+) -> Result<impl IntoResponse, ServiceError> {
     let command = CreateReturnCommand {
-        return_info: return_info.into_inner(),
+        return_info,
         user_id: user.user_id,
     };
 
-    let created_return = command.execute(db_pool.get_ref().clone(), event_sender.get_ref().clone()).await?;
-    Ok(HttpResponse::Created().json(created_return))
-
+    let created_return = command.execute(return_service).await?;
+    Ok((axum::http::StatusCode::CREATED, Json(created_return)))
 }
 
-#[post("/{id}/approve")]
 async fn approve_return(
-    db_pool: web::Data<Arc<DbPool>>,
-    event_sender: web::Data<Arc<EventSender>>,
-    return_id: web::Path<i32>,
-) -> Result<HttpResponse, ServiceError> {
-    let command = ApproveReturnCommand {
-        return_id: return_id.into_inner(),
-    };
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<i32>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let command = ApproveReturnCommand { return_id };
 
-    let approved_return = command.execute(db_pool.get_ref().clone(), event_sender.get_ref().clone()).await?;
-    Ok(HttpResponse::Ok().json(approved_return))
+    let approved_return = command.execute(return_service).await?;
+    Ok(Json(approved_return))
 }
 
-#[post("/{id}/reject")]
 async fn reject_return(
-    db_pool: web::Data<Arc<DbPool>>,
-    event_sender: web::Data<Arc<EventSender>>,
-    return_id: web::Path<i32>,
-    reject_info: web::Json<RejectReturnCommand>,
-) -> Result<HttpResponse, ServiceError> {
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<i32>,
+    Json(reject_info): Json<RejectReturnCommand>,
+) -> Result<impl IntoResponse, ServiceError> {
     let command = RejectReturnCommand {
-        return_id: return_id.into_inner(),
-        reason: reject_info.reason.clone(),
+        return_id,
+        reason: reject_info.reason,
     };
 
-    let rejected_return = command.execute(db_pool.get_ref().clone(), event_sender.get_ref().clone()).await?;
-    Ok(HttpResponse::Ok().json(rejected_return))
+    let rejected_return = command.execute(return_service).await?;
+    Ok(Json(rejected_return))
 }
 
-
-#[post("/{id}/cancel")]
 async fn cancel_return(
-    db_pool: web::Data<Arc<DbPool>>,
-    event_sender: web::Data<Arc<EventSender>>,
-    return_id: web::Path<i32>,
-    cancel_info: web::Json<CancelReturnCommand>,
-) -> Result<HttpResponse, ServiceError> {
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<i32>,
+    Json(cancel_info): Json<CancelReturnCommand>,
+) -> Result<impl IntoResponse, ServiceError> {
     let command = CancelReturnCommand {
-        return_id: return_id.into_inner(),
-        reason: cancel_info.reason.clone(),
+        return_id,
+        reason: cancel_info.reason,
     };
 
-    let result = command.execute(db_pool.get_ref().clone(), event_sender.get_ref().clone()).await?;
-    Ok(HttpResponse::Ok().json(result))
+    let result = command.execute(return_service).await?;
+    Ok(Json(result))
 }
 
-#[get("/{id}")]
+async fn close_return(
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<i32>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let command = CloseReturnCommand { return_id };
+
+    let closed_return = command.execute(return_service).await?;
+    Ok(Json(closed_return))
+}
+
+async fn reopen_return(
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<i32>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let command = ReopenReturnCommand { return_id };
+
+    let reopened_return = command.execute(return_service).await?;
+    Ok(Json(reopened_return))
+}
+
 async fn get_return(
-    return_service: web::Data<ReturnService>,
-    id: web::Path<Uuid>,
-    user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let return_item = return_service.get_return(id.into_inner(), user.user_id)
+    State(return_service): State<Arc<ReturnService>>,
+    Path(id): Path<Uuid>,
+    AuthenticatedUser(user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
+    let return_item = return_service.get_return(id, user.user_id)
         .await
         .map_err(|e| ServiceError::from(ReturnError::from(e)))?;
-    Ok(HttpResponse::Ok().json(return_item))
+    Ok(Json(return_item))
 }
 
-#[put("/{id}")]
 async fn update_return(
-    return_service: web::Data<ReturnService>,
-    id: web::Path<Uuid>,
-    return_info: web::Json<Return>,
-    user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+    State(return_service): State<Arc<ReturnService>>,
+    Path(id): Path<Uuid>,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Json(return_info): Json<Return>,
+) -> Result<impl IntoResponse, ServiceError> {
     return_info.validate().map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-    let updated_return = return_service.update_return(id.into_inner(), return_info.into_inner(), user.user_id)
+    let updated_return = return_service.update_return(id, return_info, user.user_id)
         .await
         .map_err(|e| ServiceError::from(ReturnError::from(e)))?;
-    Ok(HttpResponse::Ok().json(updated_return))
+    Ok(Json(updated_return))
 }
 
-#[get("")]
 async fn list_returns(
-    return_service: web::Data<ReturnService>,
-    user: AuthenticatedUser,
-    query: web::Query<PaginationParams>,
-) -> Result<HttpResponse, ServiceError> {
-    let (returns, total) = return_service.list_returns(user.user_id, query.into_inner())
+    State(return_service): State<Arc<ReturnService>>,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Query(query): Query<PaginationParams>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let (returns, total) = return_service.list_returns(user.user_id, query)
         .await
         .map_err(|e| ServiceError::from(ReturnError::from(e)))?;
-    Ok(HttpResponse::Ok().json(json!({
+    Ok(Json(json!({
         "returns": returns,
         "total": total,
         "page": query.page,
@@ -122,49 +134,49 @@ async fn list_returns(
     })))
 }
 
-#[get("/search")]
 async fn search_returns(
-    return_service: web::Data<ReturnService>,
-    user: AuthenticatedUser,
-    query: web::Query<ReturnSearchParams>,
-    pagination: web::Query<PaginationParams>,
-) -> Result<HttpResponse, ServiceError> {
-    let (returns, total) = return_service.search_returns(user.user_id, query.into_inner(), pagination.into_inner())
+    State(return_service): State<Arc<ReturnService>>,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Query(query): Query<ReturnSearchParams>,
+    Query(pagination): Query<PaginationParams>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let (returns, total) = return_service.search_returns(user.user_id, query, pagination)
         .await
         .map_err(|e| ServiceError::from(ReturnError::from(e)))?;
-    Ok(HttpResponse::Ok().json(json!({
+    Ok(Json(json!({
         "returns": returns,
         "total": total,
-        "query": query.into_inner(),
+        "query": query,
         "page": pagination.page,
         "per_page": pagination.per_page
     })))
 }
 
-#[post("/{id}/process")]
 async fn process_return(
-    return_service: web::Data<ReturnService>,
-    id: web::Path<Uuid>,
-    user: AuthenticatedUser,
-    process_info: web::Json<ProcessReturnCommand>,
-) -> Result<HttpResponse, ServiceError> {
+    State(return_service): State<Arc<ReturnService>>,
+    Path(id): Path<Uuid>,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Json(process_info): Json<ProcessReturnCommand>,
+) -> Result<impl IntoResponse, ServiceError> {
     let command = ProcessReturnCommand {
-        return_id: id.into_inner(),
-        process_info: process_info.into_inner(),
+        return_id: id,
+        process_info,
     };
 
-    let processed_return = command.execute(db_pool.get_ref().clone(), event_sender.get_ref().clone()).await?;
-    Ok(HttpResponse::Ok().json(processed_return))
+    let processed_return = command.execute(return_service).await?;
+    Ok(Json(processed_return))
 }
 
-pub fn configure_routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/returns")
-            .service(create_return)
-            .service(get_return)
-            .service(update_return)
-            .service(list_returns)
-            .service(search_returns)
-            .service(process_return)
-    );
+pub fn returns_routes() -> Router {
+    Router::new()
+        .route("/", post(create_return))
+        .route("/:id", get(get_return).put(update_return))
+        .route("/", get(list_returns))
+        .route("/search", get(search_returns))
+        .route("/:id/approve", post(approve_return))
+        .route("/:id/reject", post(reject_return))
+        .route("/:id/cancel", post(cancel_return))
+        .route("/:id/close", post(close_return))
+        .route("/:id/reopen", post(reopen_return))
+        .route("/:id/process", post(process_return))
 }

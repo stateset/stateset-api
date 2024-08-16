@@ -1,10 +1,14 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::Shipment};
-use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::entity::prelude::*;
+use sea_orm::{DatabaseConnection, Set};
+
+use crate::errors::ServiceError;
+use crate::events::{Event, EventSender};
+use crate::models::shipment;
+
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct TrackShipmentCommand {
@@ -13,16 +17,11 @@ pub struct TrackShipmentCommand {
 
 #[async_trait::async_trait]
 impl Command for TrackShipmentCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
-
-        let shipment = self.get_shipment(&conn)?;
+    async fn execute(&self, db_pool: Arc<DatabaseConnection>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
+        let shipment = self.get_shipment(&db_pool).await?;
 
         let tracking_info = self.fetch_tracking_info(&shipment.tracking_number).await?;
 
@@ -34,14 +33,15 @@ impl Command for TrackShipmentCommand {
 }
 
 impl TrackShipmentCommand {
-    fn get_shipment(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        shipments::table
-            .find(self.shipment_id)
-            .first::<Shipment>(conn)
+    async fn get_shipment(&self, db: &DatabaseConnection) -> Result<shipment::Model, ServiceError> {
+        shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
             .map_err(|e| {
                 error!("Failed to find shipment with ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to find shipment: {}", e))
-            })
+            })?
+            .ok_or_else(|| ServiceError::NotFound(format!("Shipment with ID {} not found", self.shipment_id)))
     }
 
     async fn fetch_tracking_info(&self, tracking_number: &str) -> Result<String, ServiceError> {
@@ -54,7 +54,7 @@ impl TrackShipmentCommand {
         info!("Tracking info: {}", tracking_info);
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &Shipment) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &shipment::Model) -> Result<(), ServiceError> {
         event_sender.send(Event::ShipmentTracked(self.shipment_id))
             .await
             .map_err(|e| {

@@ -1,90 +1,101 @@
-use actix_web::{post, get, put, delete, web, HttpResponse};
+use axum::{
+    routing::{post, get, put, delete},
+    extract::{State, Path, Query, Json},
+    response::IntoResponse,
+    Router,
+};
 use crate::db::DbPool;
 use crate::models::inventory::{NewProduct, Product, ProductSearchParams, StockAdjustment};
 use crate::errors::ServiceError;
-use crate::services::inventory::{create_product, get_product, update_product, delete_product, list_products, search_products, adjust_stock};
+use crate::services::inventory::{create_product, get_product, update_product, delete_product, list_products, search_products, adjust_stock, get_low_stock_products};
 use crate::auth::AuthenticatedUser;
+use crate::utils::pagination::PaginationParams;
 use validator::Validate;
+use std::sync::Arc;
 
-#[post("")]
 async fn create_product(
-    pool: web::Data<DbPool>,
-    product_info: web::Json<NewProduct>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+    State(pool): State<Arc<DbPool>>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+    Json(product_info): Json<NewProduct>,
+) -> Result<impl IntoResponse, ServiceError> {
     product_info.validate()?;
-    let created_product = create_product(&pool, product_info.into_inner()).await?;
-    Ok(HttpResponse::Created().json(created_product))
+    let created_product = create_product(&pool, product_info).await?;
+    Ok((axum::http::StatusCode::CREATED, Json(created_product)))
 }
 
-#[get("/{id}")]
 async fn get_product(
-    pool: web::Data<DbPool>,
-    id: web::Path<i32>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let product = get_product(&pool, id.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(product))
+    State(pool): State<Arc<DbPool>>,
+    Path(id): Path<i32>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
+    let product = get_product(&pool, id).await?;
+    Ok(Json(product))
 }
 
-#[put("/{id}")]
 async fn update_product(
-    pool: web::Data<DbPool>,
-    id: web::Path<i32>,
-    product_info: web::Json<Product>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+    State(pool): State<Arc<DbPool>>,
+    Path(id): Path<i32>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+    Json(product_info): Json<Product>,
+) -> Result<impl IntoResponse, ServiceError> {
     product_info.validate()?;
-    let updated_product = update_product(&pool, id.into_inner(), product_info.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(updated_product))
+    let updated_product = update_product(&pool, id, product_info).await?;
+    Ok(Json(updated_product))
 }
 
-#[delete("/{id}")]
 async fn delete_product(
-    pool: web::Data<DbPool>,
-    id: web::Path<i32>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    delete_product(&pool, id.into_inner()).await?;
-    Ok(HttpResponse::NoContent().finish())
+    State(pool): State<Arc<DbPool>>,
+    Path(id): Path<i32>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
+    delete_product(&pool, id).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
-#[get("")]
 async fn list_products(
-    pool: web::Data<DbPool>,
-    query: web::Query<PaginationParams>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let products = list_products(&pool, query.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(products))
+    State(pool): State<Arc<DbPool>>,
+    Query(query): Query<PaginationParams>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
+    let products = list_products(&pool, query).await?;
+    Ok(Json(products))
 }
 
-#[get("/search")]
 async fn search_products(
-    pool: web::Data<DbPool>,
-    query: web::Query<ProductSearchParams>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let products = search_products(&pool, query.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(products))
+    State(pool): State<Arc<DbPool>>,
+    Query(query): Query<ProductSearchParams>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
+    let products = search_products(&pool, query).await?;
+    Ok(Json(products))
 }
 
-#[post("/adjust-stock")]
 async fn adjust_stock(
-    pool: web::Data<DbPool>,
-    adjustment: web::Json<StockAdjustment>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+    State(pool): State<Arc<DbPool>>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+    Json(adjustment): Json<StockAdjustment>,
+) -> Result<impl IntoResponse, ServiceError> {
     adjustment.validate()?;
-    let updated_product = adjust_stock(&pool, adjustment.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(updated_product))
+    let updated_product = adjust_stock(&pool, adjustment).await?;
+    Ok(Json(updated_product))
 }
 
-#[get("/low-stock")]
 async fn get_low_stock_products(
-    pool: web::Data<DbPool>,
-    _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+    State(pool): State<Arc<DbPool>>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
     let low_stock_products = get_low_stock_products(&pool).await?;
-    Ok(HttpResponse::Ok().json(low_stock_products))
+    Ok(Json(low_stock_products))
+}
+
+pub fn inventory_routes() -> Router {
+    Router::new()
+        .route("/", post(create_product))
+        .route("/", get(list_products))
+        .route("/search", get(search_products))
+        .route("/:id", get(get_product))
+        .route("/:id", put(update_product))
+        .route("/:id", delete(delete_product))
+        .route("/adjust-stock", post(adjust_stock))
+        .route("/low-stock", get(get_low_stock_products))
 }

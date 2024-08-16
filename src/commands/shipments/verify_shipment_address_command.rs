@@ -1,10 +1,10 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::Shipment};
+use crate::{errors::ServiceError, db::DbPool, models::{shipment, Shipment}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct VerifyShipmentAddressCommand {
@@ -17,12 +17,9 @@ impl Command for VerifyShipmentAddressCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let shipment = self.get_shipment(&conn)?;
+        let shipment = self.get_shipment(&db).await?;
 
         let is_valid = self.verify_address(&shipment).await?;
 
@@ -34,16 +31,21 @@ impl Command for VerifyShipmentAddressCommand {
 }
 
 impl VerifyShipmentAddressCommand {
-    fn get_shipment(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        shipments::table.find(self.shipment_id)
-            .first::<Shipment>(conn)
+    async fn get_shipment(&self, db: &sea_orm::DatabaseConnection) -> Result<shipment::Model, ServiceError> {
+        shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
             .map_err(|e| {
                 error!("Failed to find shipment with ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to find shipment: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Shipment with ID {} not found", self.shipment_id);
+                ServiceError::NotFound
             })
     }
 
-    async fn verify_address(&self, shipment: &Shipment) -> Result<bool, ServiceError> {
+    async fn verify_address(&self, shipment: &shipment::Model) -> Result<bool, ServiceError> {
         // Simulate address verification
         // In real-world scenarios, this could involve making an HTTP request to an address verification service
         let is_valid = true; // Placeholder for actual verification logic
@@ -54,7 +56,7 @@ impl VerifyShipmentAddressCommand {
         info!("Address verification result: {}", if is_valid { "Valid" } else { "Invalid" });
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &Shipment, is_valid: bool) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, shipment: &shipment::Model, is_valid: bool) -> Result<(), ServiceError> {
         let event = if is_valid {
             Event::AddressVerified(self.shipment_id)
         } else {

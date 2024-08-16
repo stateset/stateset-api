@@ -1,12 +1,13 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::OrderShipment};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{order_shipment_entity, order_shipment_entity::Entity as OrderShipment}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use prometheus::IntCounter;
+use chrono::Utc;
 
 lazy_static! {
     static ref TRACKING_INFO_ADDED: IntCounter = 
@@ -30,7 +31,7 @@ pub struct AddTrackingInformationCommand {
 
 #[async_trait]
 impl Command for AddTrackingInformationCommand {
-    type Result = OrderShipment;
+    type Result = order_shipment_entity::Model;
 
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -41,53 +42,61 @@ impl Command for AddTrackingInformationCommand {
             return Err(ServiceError::ValidationError(e.to_string()));
         }
 
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             TRACKING_INFO_ADD_FAILURES.inc();
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError
         })?;
 
         // Create a new OrderShipment or update existing one
-        let shipment = conn.transaction::<_, diesel::result::Error, _>(|| {
-            // Check if a shipment already exists for this order
-            let existing_shipment = order_shipments::table
-                .filter(order_shipments::order_id.eq(self.order_id))
-                .first::<OrderShipment>(&conn)
-                .optional()?;
+        let shipment = db.transaction::<_, order_shipment_entity::Model, ServiceError>(|txn| {
+            Box::pin(async move {
+                // Check if a shipment already exists for this order
+                let existing_shipment = OrderShipment::find()
+                    .filter(order_shipment_entity::Column::OrderId.eq(self.order_id))
+                    .one(txn)
+                    .await
+                    .map_err(|e| {
+                        error!("Database error: {}", e);
+                        ServiceError::DatabaseError
+                    })?;
 
-            if let Some(mut shipment) = existing_shipment {
-                // Update existing shipment
-                shipment.tracking_number = self.tracking_number.clone();
-                shipment.carrier = self.carrier.clone();
-                shipment.expected_delivery_date = self.expected_delivery_date;
-                shipment.updated_at = chrono::Utc::now().naive_utc();
+                let shipment = if let Some(existing) = existing_shipment {
+                    // Update existing shipment
+                    let mut shipment: order_shipment_entity::ActiveModel = existing.into();
+                    shipment.tracking_number = Set(self.tracking_number.clone());
+                    shipment.carrier = Set(self.carrier.clone());
+                    shipment.expected_delivery_date = Set(self.expected_delivery_date);
+                    shipment.updated_at = Set(Utc::now().naive_utc());
 
-                diesel::update(order_shipments::table)
-                    .filter(order_shipments::id.eq(shipment.id))
-                    .set(&shipment)
-                    .execute(&conn)?;
+                    shipment.update(txn).await.map_err(|e| {
+                        error!("Failed to update shipment: {}", e);
+                        ServiceError::DatabaseError
+                    })?
+                } else {
+                    // Create new shipment
+                    let new_shipment = order_shipment_entity::ActiveModel {
+                        order_id: Set(self.order_id),
+                        tracking_number: Set(self.tracking_number.clone()),
+                        carrier: Set(self.carrier.clone()),
+                        expected_delivery_date: Set(self.expected_delivery_date),
+                        created_at: Set(Utc::now().naive_utc()),
+                        updated_at: Set(Utc::now().naive_utc()),
+                        ..Default::default()
+                    };
 
-                Ok(shipment)
-            } else {
-                // Create new shipment
-                let new_shipment = OrderShipment {
-                    id: 0, // This will be set by the database
-                    order_id: self.order_id,
-                    tracking_number: self.tracking_number.clone(),
-                    carrier: self.carrier.clone(),
-                    expected_delivery_date: self.expected_delivery_date,
-                    created_at: chrono::Utc::now().naive_utc(),
-                    updated_at: chrono::Utc::now().naive_utc(),
+                    new_shipment.insert(txn).await.map_err(|e| {
+                        error!("Failed to insert new shipment: {}", e);
+                        ServiceError::DatabaseError
+                    })?
                 };
 
-                diesel::insert_into(order_shipments::table)
-                    .values(&new_shipment)
-                    .get_result::<OrderShipment>(&conn)
-            }
-        }).map_err(|e| {
+                Ok(shipment)
+            })
+        }).await.map_err(|e| {
             TRACKING_INFO_ADD_FAILURES.inc();
             error!("Failed to add/update tracking information for order {}: {}", self.order_id, e);
-            ServiceError::DatabaseError
+            e
         })?;
 
         // Trigger an event indicating that tracking information was added/updated

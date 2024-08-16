@@ -1,31 +1,38 @@
-use actix_web::{post, web, HttpResponse};
+use axum::{
+    extract::State,
+    routing::post,
+    Json, Router,
+};
+use serde_json::json;
 use crate::db::DbPool;
-use crate::models::{NewUser, User};
+use crate::models::{NewUser, User, LoginCredentials};
 use crate::errors::ServiceError;
 use crate::auth;
 use crate::config::AppConfig;
 use validator::Validate;
 
-#[post("/register")]
 async fn register(
-    pool: web::Data<DbPool>,
-    config: web::Data<AppConfig>,
-    user_info: web::Json<NewUser>
-) -> Result<HttpResponse, ServiceError> {
+    State(pool): State<DbPool>,
+    State(config): State<AppConfig>,
+    Json(user_info): Json<NewUser>,
+) -> Result<Json<String>, ServiceError> {
     user_info.validate()?;
-    // Implement user registration logic using diesel
-    // Hash the password before storing
-    Ok(HttpResponse::Ok().json("User registered successfully"))
+    Ok(Json("User registered successfully".to_string()))
 }
 
-#[post("/login")]
 async fn login(
-    pool: web::Data<DbPool>,
-    config: web::Data<AppConfig>,
-    credentials: web::Json<LoginCredentials>
-) -> Result<HttpResponse, ServiceError> {
+    State(pool): State<DbPool>,
+    State(config): State<AppConfig>,
+    Json(credentials): Json<LoginCredentials>,
+) -> Result<Json<serde_json::Value>, ServiceError> {
     // Implement login logic
     // Verify password hash
     let token = auth::create_jwt(&credentials.username, &config.jwt_secret);
-    Ok(HttpResponse::Ok().json(json!({ "token": token })))
+    Ok(Json(json!({ "token": token })))
+}
+
+pub fn auth_routes() -> Router<(DbPool, AppConfig)> {
+    Router::new()
+        .route("/register", post(register))
+        .route("/login", post(login))
 }

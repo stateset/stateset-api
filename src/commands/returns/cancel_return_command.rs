@@ -1,11 +1,12 @@
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Return, ReturnStatus}};
+use sea_orm::*;
+use crate::{errors::ServiceError, db::DbPool, models::{return_entity, return_entity::Entity as Return}};
+use crate::models::return_entity::ReturnStatus;
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{error, info, instrument};
-use chrono::{DateTime, Utc};
-use diesel::prelude::*;
 use serde::{Serialize, Deserialize};
+use async_trait::async_trait;;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct CancelReturnCommand {
@@ -23,23 +24,22 @@ pub struct CancelReturnResult {
     pub reason: String,
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl Command for CancelReturnCommand {
     type Result = CancelReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
+        let db = db_pool.get().map_err(|e| {
             error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError("Failed to get database connection".into())
         })?;
 
-        let cancelled_return = conn.transaction::<Return, ServiceError, _>(|| {
-            self.cancel_return(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for cancelling return ID {}: {}", self.return_id, e);
-            e
-        })?;
+        let cancelled_return = db.transaction::<_, return_entity::Model, ServiceError>(|txn| {
+            Box::pin(async move {
+                self.cancel_return(txn).await
+            })
+        }).await?;
 
         self.log_and_trigger_event(event_sender, &cancelled_return).await?;
 
@@ -53,25 +53,33 @@ impl Command for CancelReturnCommand {
 }
 
 impl CancelReturnCommand {
-    fn cancel_return(&self, conn: &PgConnection) -> Result<Return, ServiceError> {
-        diesel::update(returns::table.find(self.return_id))
-            .set((
-                returns::status.eq(ReturnStatus::Cancelled),
-                returns::reason.eq(self.reason.clone()),
-            ))
-            .get_result::<Return>(conn)
+    async fn cancel_return(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
+        let return_request = Return::find_by_id(self.return_id)
+            .one(db)
+            .await
             .map_err(|e| {
-                if e == diesel::result::Error::NotFound {
-                    error!("Return request not found: {}", self.return_id);
-                    ServiceError::NotFound(format!("Return request with ID {} not found", self.return_id))
-                } else {
-                    error!("Failed to cancel return request: {}", e);
-                    ServiceError::DatabaseError(format!("Failed to cancel return request: {}", e))
-                }
+                error!("Database error: {}", e);
+                ServiceError::DatabaseError(format!("Database error: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Return request not found: {}", self.return_id);
+                ServiceError::NotFound(format!("Return request with ID {} not found", self.return_id))
+            })?;
+
+        let mut return_request: return_entity::ActiveModel = return_request.into();
+        return_request.status = Set(ReturnStatus::Cancelled.to_string());
+        return_request.reason = Set(Some(self.reason.clone()));
+
+        return_request
+            .update(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to cancel return request: {}", e);
+                ServiceError::DatabaseError(format!("Failed to cancel return request: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, cancelled_return: &Return) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, cancelled_return: &return_entity::Model) -> Result<(), ServiceError> {
         info!("Return request cancelled for return ID: {}. Reason: {}", self.return_id, self.reason);
         event_sender.send(Event::ReturnCancelled(self.return_id))
             .await

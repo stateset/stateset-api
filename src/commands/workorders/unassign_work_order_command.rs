@@ -1,32 +1,31 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::WorkOrder};
+use crate::{errors::ServiceError, db::DbPool, models::{work_order_entity}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{DatabaseConnection, EntityTrait, Set, TransactionTrait, ActiveModelTrait};
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UnassignWorkOrderCommand {
     pub work_order_id: i32,
 }
 
 #[async_trait::async_trait]
 impl Command for UnassignWorkOrderCommand {
-    type Result = WorkOrder;
+    type Result = work_order_entity::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_work_order = conn.transaction(|| {
-            self.unassign_work_order(&conn)
-        }).map_err(|e| {
+        let updated_work_order = db.transaction(|txn| {
+            Box::pin(async move {
+                self.unassign_work_order(txn).await
+            })
+        }).await.map_err(|e| {
             error!("Transaction failed for unassigning Work Order ID {}: {}", self.work_order_id, e);
-            e
+            ServiceError::DatabaseError(format!("Transaction failed: {}", e))
         })?;
 
         self.log_and_trigger_event(event_sender, &updated_work_order).await?;
@@ -36,17 +35,28 @@ impl Command for UnassignWorkOrderCommand {
 }
 
 impl UnassignWorkOrderCommand {
-    fn unassign_work_order(&self, conn: &PgConnection) -> Result<WorkOrder, ServiceError> {
-        diesel::update(work_orders::table.find(self.work_order_id))
-            .set(work_orders::assignee_id.eq::<Option<i32>>(None)) // Unassign the work order
-            .get_result::<WorkOrder>(conn)
+    async fn unassign_work_order(&self, txn: &DatabaseConnection) -> Result<work_order_entity::Model, ServiceError> {
+        let mut work_order: work_order_entity::ActiveModel = work_order_entity::Entity::find_by_id(self.work_order_id)
+            .one(txn)
+            .await
             .map_err(|e| {
-                error!("Failed to unassign Work Order ID {}: {}", self.work_order_id, e);
-                ServiceError::DatabaseError(format!("Failed to unassign Work Order: {}", e))
-            })
+                error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
+                ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
+            })?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Work Order ID {} not found", self.work_order_id))
+            })?
+            .into();
+
+        work_order.assignee_id = Set(None);
+
+        work_order.update(txn).await.map_err(|e| {
+            error!("Failed to unassign Work Order ID {}: {}", self.work_order_id, e);
+            ServiceError::DatabaseError(format!("Failed to unassign Work Order: {}", e))
+        })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, work_order: &WorkOrder) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, work_order: &work_order_entity::Model) -> Result<(), ServiceError> {
         info!("Work Order ID: {} has been unassigned.", self.work_order_id);
         event_sender.send(Event::WorkOrderUnassigned(work_order.id))
             .await

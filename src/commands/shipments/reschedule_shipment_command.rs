@@ -1,11 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Shipment, ShipmentStatus}};
+use crate::{errors::ServiceError, db::DbPool, models::{shipment, Shipment}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
 use chrono::NaiveDateTime;
+use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait, ActiveValue};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RescheduleShipmentCommand {
@@ -21,17 +21,9 @@ impl Command for RescheduleShipmentCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_shipment = conn.transaction(|| {
-            self.reschedule_shipment(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for rescheduling shipment ID {}: {}", self.shipment_id, e);
-            e
-        })?;
+        let updated_shipment = self.reschedule_shipment(&db).await?;
 
         self.log_and_trigger_event(event_sender, &updated_shipment).await?;
 
@@ -40,10 +32,24 @@ impl Command for RescheduleShipmentCommand {
 }
 
 impl RescheduleShipmentCommand {
-    fn reschedule_shipment(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        diesel::update(shipments::table.find(self.shipment_id))
-            .set(shipments::scheduled_date.eq(self.new_scheduled_date))
-            .get_result::<Shipment>(conn)
+    async fn reschedule_shipment(&self, db: &sea_orm::DatabaseConnection) -> Result<Shipment, ServiceError> {
+        let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch shipment with ID {}: {}", self.shipment_id, e);
+                ServiceError::DatabaseError(format!("Failed to fetch shipment: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Shipment with ID {} not found", self.shipment_id);
+                ServiceError::NotFound
+            })?
+            .into();
+
+        shipment.scheduled_date = ActiveValue::Set(self.new_scheduled_date);
+
+        shipment.update(db)
+            .await
             .map_err(|e| {
                 error!("Failed to reschedule shipment ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to reschedule shipment: {}", e))

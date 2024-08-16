@@ -3,47 +3,47 @@ use sea_orm::*;
 use crate::{errors::ServiceError, db::DbPool, models::{return_entity, return_entity::Entity as Return}};
 use crate::models::return_entity::ReturnStatus;
 use crate::events::{Event, EventSender};
-use validator::Validate;
 use tracing::{info, error, instrument};
 use serde::{Serialize, Deserialize};
+use async_trait::async_trait;;
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
-pub struct ApproveReturnCommand {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReopenReturnCommand {
     pub return_id: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ApproveReturnResult {
+pub struct ReopenReturnResult {
     pub id: String,
     pub object: String,
-    pub approved: bool,
+    pub reopened: bool,
 }
 
-#[async_trait::async_trait]
-impl Command for ApproveReturnCommand {
-    type Result = ApproveReturnResult;
+#[async_trait]
+impl Command for ReopenReturnCommand {
+    type Result = ReopenReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
         let db = db_pool.get().map_err(|e| {
-            error!("Database connection error: {}", e);
+            error!("Failed to get database connection: {}", e);
             ServiceError::DatabaseError("Failed to get database connection".into())
         })?;
 
-        let approved_return = self.approve_return(&db).await?;
+        let reopened_return = self.reopen_return(&db).await?;
 
-        self.log_and_trigger_event(event_sender, &approved_return).await?;
+        self.log_and_trigger_event(event_sender, &reopened_return).await?;
 
-        Ok(ApproveReturnResult {
-            id: approved_return.id.to_string(),
+        Ok(ReopenReturnResult {
+            id: reopened_return.id.to_string(),
             object: "return".to_string(),
-            approved: true,
+            reopened: true,
         })
     }
 }
 
-impl ApproveReturnCommand {
-    async fn approve_return(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
+impl ReopenReturnCommand {
+    async fn reopen_return(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
         let return_request = Return::find_by_id(self.return_id)
             .one(db)
             .await
@@ -57,23 +57,23 @@ impl ApproveReturnCommand {
             })?;
 
         let mut return_request: return_entity::ActiveModel = return_request.into();
-        return_request.status = Set(ReturnStatus::Approved.to_string());
+        return_request.status = Set(ReturnStatus::Open.to_string());
 
         return_request
             .update(db)
             .await
             .map_err(|e| {
-                error!("Failed to approve return request: {}", e);
-                ServiceError::DatabaseError(format!("Database error: {}", e))
+                error!("Failed to reopen return request: {}", e);
+                ServiceError::DatabaseError(format!("Failed to reopen return request: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, approved_return: &return_entity::Model) -> Result<(), ServiceError> {
-        info!("Return request approved for return ID: {}", self.return_id);
-        event_sender.send(Event::ReturnApproved(self.return_id))
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, reopened_return: &return_entity::Model) -> Result<(), ServiceError> {
+        info!("Return request reopened for return ID: {}", self.return_id);
+        event_sender.send(Event::ReturnReopened(self.return_id))
             .await
             .map_err(|e| {
-                error!("Failed to send event for approved return: {}", e);
+                error!("Failed to send ReturnReopened event for return ID {}: {}", self.return_id, e);
                 ServiceError::EventError(e.to_string())
             })
     }

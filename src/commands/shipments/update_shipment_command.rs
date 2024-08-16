@@ -1,11 +1,11 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{Shipment, ShipmentStatus}};
+use crate::{errors::ServiceError, db::DbPool, models::{shipment, Shipment, ShipmentStatus}};
 use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait, ActiveValue};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateShipmentStatusCommand {
@@ -21,17 +21,9 @@ impl Command for UpdateShipmentStatusCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let updated_shipment = conn.transaction(|| {
-            self.update_shipment_status(&conn)
-        }).map_err(|e| {
-            error!("Transaction failed for updating shipment status for shipment ID {}: {}", self.shipment_id, e);
-            e
-        })?;
+        let updated_shipment = self.update_shipment_status(&db).await?;
 
         self.log_and_trigger_event(event_sender, &updated_shipment).await?;
 
@@ -40,10 +32,24 @@ impl Command for UpdateShipmentStatusCommand {
 }
 
 impl UpdateShipmentStatusCommand {
-    fn update_shipment_status(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        diesel::update(shipments::table.find(self.shipment_id))
-            .set(shipments::status.eq(self.new_status.clone()))
-            .get_result::<Shipment>(conn)
+    async fn update_shipment_status(&self, db: &sea_orm::DatabaseConnection) -> Result<Shipment, ServiceError> {
+        let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch shipment with ID {}: {}", self.shipment_id, e);
+                ServiceError::DatabaseError(format!("Failed to fetch shipment: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Shipment with ID {} not found", self.shipment_id);
+                ServiceError::NotFound
+            })?
+            .into();
+
+        shipment.status = ActiveValue::Set(self.new_status.clone());
+
+        shipment.update(db)
+            .await
             .map_err(|e| {
                 error!("Failed to update shipment status for shipment ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to update shipment status: {}", e))

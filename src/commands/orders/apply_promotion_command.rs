@@ -1,18 +1,15 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use validator::Validate;
-
+use sea_orm::{DatabaseConnection, EntityTrait, ActiveModelTrait, Set};
 use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{Order, OrderItem, OrderStatus, Promotion, PromotionStatus},
+    models::{order_entity, promotion_entity, PromotionStatus},
 };
-use diesel::prelude::*;
-use chrono::{DateTime, Utc};
-use prometheus::IntCounter;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ApplyPromotionToOrderCommand {
@@ -20,22 +17,19 @@ pub struct ApplyPromotionToOrderCommand {
     pub promotion_id: i32,
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Command for ApplyPromotionToOrderCommand {
-    type Result = Order;
+    type Result = order_entity::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {:?}", e);
-            ServiceError::DatabaseError
-        })?;
+        let db = db_pool.clone();
 
-        let promotion = self.fetch_promotion(&conn)?;
+        let promotion = self.fetch_promotion(&db).await?;
 
         self.validate_promotion(&promotion)?;
 
-        let updated_order = self.apply_promotion_to_order(&conn, &promotion)?;
+        let updated_order = self.apply_promotion_to_order(&db, &promotion).await?;
 
         self.log_and_trigger_event(event_sender, updated_order.clone()).await?;
 
@@ -44,17 +38,21 @@ impl Command for ApplyPromotionToOrderCommand {
 }
 
 impl ApplyPromotionToOrderCommand {
-    fn fetch_promotion(&self, conn: &PgConnection) -> Result<Promotion, ServiceError> {
-        promotions::table
-            .find(self.promotion_id)
-            .first::<Promotion>(conn)
+    async fn fetch_promotion(&self, db: &DatabaseConnection) -> Result<promotion_entity::Model, ServiceError> {
+        promotion_entity::Entity::find_by_id(self.promotion_id)
+            .one(db)
+            .await
             .map_err(|e| {
                 error!("Failed to fetch promotion ID {}: {:?}", self.promotion_id, e);
-                ServiceError::NotFound
+                ServiceError::DatabaseError
+            })?
+            .ok_or_else(|| {
+                error!("Promotion ID {} not found", self.promotion_id);
+                ServiceError::NotFound(format!("Promotion ID {} not found", self.promotion_id))
             })
     }
 
-    fn validate_promotion(&self, promotion: &Promotion) -> Result<(), ServiceError> {
+    fn validate_promotion(&self, promotion: &promotion_entity::Model) -> Result<(), ServiceError> {
         if promotion.status != PromotionStatus::Active {
             error!("Promotion ID {} is not active", self.promotion_id);
             return Err(ServiceError::ValidationError("Promotion is not active".to_string()));
@@ -62,30 +60,44 @@ impl ApplyPromotionToOrderCommand {
         Ok(())
     }
 
-    fn apply_promotion_to_order(
+    async fn apply_promotion_to_order(
         &self,
-        conn: &PgConnection,
-        promotion: &Promotion,
-    ) -> Result<Order, ServiceError> {
-        diesel::update(orders::table.find(self.order_id))
-            .set((
-                orders::promotion_id.eq(Some(promotion.id)),
-                orders::discount_amount.eq(Some(promotion.discount_amount)),
-            ))
-            .get_result::<Order>(conn)
+        db: &DatabaseConnection,
+        promotion: &promotion_entity::Model,
+    ) -> Result<order_entity::Model, ServiceError> {
+        let order = order_entity::Entity::find_by_id(self.order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to find Order ID {}: {:?}", self.order_id, e);
+                ServiceError::DatabaseError
+            })?
+            .ok_or_else(|| {
+                error!("Order ID {} not found", self.order_id);
+                ServiceError::NotFound(format!("Order ID {} not found", self.order_id))
+            })?;
+
+        let mut active_model = order.into_active_model();
+        active_model.promotion_id = Set(Some(promotion.id));
+        active_model.discount_amount = Set(Some(promotion.discount_amount));
+
+        let updated_order = active_model.update(db)
+            .await
             .map_err(|e| {
                 error!(
                     "Failed to apply promotion ID {} to order ID {}: {:?}",
                     self.promotion_id, self.order_id, e
                 );
                 ServiceError::DatabaseError
-            })
+            })?;
+
+        Ok(updated_order)
     }
 
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        updated_order: Order,
+        updated_order: order_entity::Model,
     ) -> Result<(), ServiceError> {
         info!("Promotion ID {} applied to order ID {}", self.promotion_id, self.order_id);
 

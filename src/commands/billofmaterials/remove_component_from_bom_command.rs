@@ -1,10 +1,10 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::BOMComponent};
+use crate::{errors::ServiceError, db::DbPool, models::{bom_component, prelude::*}};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, DbConn, TransactionTrait};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RemoveComponentFromBOMCommand {
@@ -18,14 +18,14 @@ impl Command for RemoveComponentFromBOMCommand {
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        conn.transaction(|| {
-            self.remove_component(&conn)
-        }).map_err(|e| {
+        db.transaction::<_, ServiceError, _>(|txn| {
+            Box::pin(async move {
+                self.remove_component(txn).await?;
+                Ok(())
+            })
+        }).await.map_err(|e| {
             error!("Transaction failed for removing component {} from BOM ID {}: {}", self.component_id, self.bom_id, e);
             e
         })?;
@@ -37,11 +37,12 @@ impl Command for RemoveComponentFromBOMCommand {
 }
 
 impl RemoveComponentFromBOMCommand {
-    fn remove_component(&self, conn: &PgConnection) -> Result<(), ServiceError> {
-        diesel::delete(bom_components::table)
-            .filter(bom_components::bom_id.eq(self.bom_id))
-            .filter(bom_components::component_id.eq(self.component_id))
-            .execute(conn)
+    async fn remove_component(&self, txn: &DbConn) -> Result<(), ServiceError> {
+        bom_component::Entity::delete_many()
+            .filter(bom_component::Column::BomId.eq(self.bom_id))
+            .filter(bom_component::Column::ComponentId.eq(self.component_id))
+            .exec(txn)
+            .await
             .map_err(|e| {
                 error!("Failed to remove component {} from BOM ID {}: {}", self.component_id, self.bom_id, e);
                 ServiceError::DatabaseError(format!("Failed to remove component: {}", e))

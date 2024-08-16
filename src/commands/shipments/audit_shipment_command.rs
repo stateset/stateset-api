@@ -1,10 +1,9 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::Shipment};
-use crate::events::{Event, EventSender};
+use crate::{errors::ServiceError, db::DbPool, models::shipment, models::Shipment};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AuditShipmentCommand {
@@ -17,12 +16,9 @@ impl Command for AuditShipmentCommand {
 
     #[instrument(skip(self, db_pool))]
     async fn execute(&self, db_pool: Arc<DbPool>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let shipment = self.audit_shipment(&conn)?;
+        let shipment = self.audit_shipment(&db).await?;
 
         self.log_audit_result(&shipment);
 
@@ -31,12 +27,17 @@ impl Command for AuditShipmentCommand {
 }
 
 impl AuditShipmentCommand {
-    fn audit_shipment(&self, conn: &PgConnection) -> Result<Shipment, ServiceError> {
-        shipments::table.find(self.shipment_id)
-            .first::<Shipment>(conn)
+    async fn audit_shipment(&self, db: &sea_orm::DatabaseConnection) -> Result<Shipment, ServiceError> {
+        shipment::Entity::find_by_id(self.shipment_id)
+            .one(db)
+            .await
             .map_err(|e| {
                 error!("Failed to audit shipment with ID {}: {}", self.shipment_id, e);
                 ServiceError::DatabaseError(format!("Failed to audit shipment: {}", e))
+            })?
+            .ok_or_else(|| {
+                error!("Shipment with ID {} not found", self.shipment_id);
+                ServiceError::NotFound
             })
     }
 

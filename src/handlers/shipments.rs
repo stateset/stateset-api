@@ -1,4 +1,8 @@
-use actix_web::{post, get, put, delete, web, HttpResponse};
+use axum::{
+    extract::{Path, Query, State},
+    routing::{get, post, put, delete},
+    Json, Router,
+};
 use crate::db::DbPool;
 use crate::models::shipment::{NewShipment, Shipment, ShipmentSearchParams};
 use crate::errors::ServiceError;
@@ -6,65 +10,69 @@ use crate::services::shipments::{create_shipment, get_shipment, update_shipment,
 use crate::auth::AuthenticatedUser;
 use validator::Validate;
 
-#[post("")]
-async fn create_shipment(
-    pool: web::Data<DbPool>,
-    shipment_info: web::Json<NewShipment>,
+async fn create_shipment_handler(
+    State(pool): State<DbPool>,
+    Json(shipment_info): Json<NewShipment>,
     _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+) -> Result<Json<Shipment>, ServiceError> {
     shipment_info.validate()?;
-    let created_shipment = create_shipment(&pool, shipment_info.into_inner()).await?;
-    Ok(HttpResponse::Created().json(created_shipment))
+    let created_shipment = create_shipment(&pool, shipment_info).await?;
+    Ok(Json(created_shipment))
 }
 
-#[get("/{id}")]
-async fn get_shipment(
-    pool: web::Data<DbPool>,
-    id: web::Path<i32>,
+async fn get_shipment_handler(
+    State(pool): State<DbPool>,
+    Path(id): Path<i32>,
     _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let shipment = get_shipment(&pool, id.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(shipment))
+) -> Result<Json<Shipment>, ServiceError> {
+    let shipment = get_shipment(&pool, id).await?;
+    Ok(Json(shipment))
 }
 
-#[put("/{id}")]
-async fn update_shipment(
-    pool: web::Data<DbPool>,
-    id: web::Path<i32>,
-    shipment_info: web::Json<Shipment>,
+async fn update_shipment_handler(
+    State(pool): State<DbPool>,
+    Path(id): Path<i32>,
+    Json(shipment_info): Json<Shipment>,
     _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
+) -> Result<Json<Shipment>, ServiceError> {
     shipment_info.validate()?;
-    let updated_shipment = update_shipment(&pool, id.into_inner(), shipment_info.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(updated_shipment))
+    let updated_shipment = update_shipment(&pool, id, shipment_info).await?;
+    Ok(Json(updated_shipment))
 }
 
-#[delete("/{id}")]
-async fn delete_shipment(
-    pool: web::Data<DbPool>,
-    id: web::Path<i32>,
+async fn delete_shipment_handler(
+    State(pool): State<DbPool>,
+    Path(id): Path<i32>,
     _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    delete_shipment(&pool, id.into_inner()).await?;
-    Ok(HttpResponse::NoContent().finish())
+) -> Result<(), ServiceError> {
+    delete_shipment(&pool, id).await?;
+    Ok(())
 }
 
-#[get("")]
-async fn list_shipments(
-    pool: web::Data<DbPool>,
-    query: web::Query<PaginationParams>,
+async fn list_shipments_handler(
+    State(pool): State<DbPool>,
+    Query(params): Query<PaginationParams>,
     _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let shipments = list_shipments(&pool, query.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(shipments))
+) -> Result<Json<Vec<Shipment>>, ServiceError> {
+    let shipments = list_shipments(&pool, params).await?;
+    Ok(Json(shipments))
 }
 
-#[get("/search")]
-async fn search_shipments(
-    pool: web::Data<DbPool>,
-    query: web::Query<ShipmentSearchParams>,
+async fn search_shipments_handler(
+    State(pool): State<DbPool>,
+    Query(params): Query<ShipmentSearchParams>,
     _user: AuthenticatedUser,
-) -> Result<HttpResponse, ServiceError> {
-    let shipments = search_shipments(&pool, query.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(shipments))
+) -> Result<Json<Vec<Shipment>>, ServiceError> {
+    let shipments = search_shipments(&pool, params).await?;
+    Ok(Json(shipments))
+}
+
+pub fn shipment_routes() -> Router<DbPool> {
+    Router::new()
+        .route("/", post(create_shipment_handler))
+        .route("/:id", get(get_shipment_handler))
+        .route("/:id", put(update_shipment_handler))
+        .route("/:id", delete(delete_shipment_handler))
+        .route("/", get(list_shipments_handler))
+        .route("/search", get(search_shipments_handler))
 }

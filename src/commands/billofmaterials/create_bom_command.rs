@@ -1,10 +1,10 @@
-use async_trait::async_trait;
+use async_trait::async_trait;;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::{errors::ServiceError, db::DbPool, models::{BOM, NewBOM}};
+use crate::{errors::ServiceError, db::DbPool, models::bom, models::prelude::*};
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
-use diesel::prelude::*;
+use sea_orm::{entity::*, query::*, DbConn};
 use chrono::Utc;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -17,18 +17,13 @@ pub struct CreateBOMCommand {
 
 #[async_trait::async_trait]
 impl Command for CreateBOMCommand {
-    type Result = BOM;
+    type Result = bom::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let conn = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+        let db = db_pool.clone();
 
-        let bom = conn.transaction(|| {
-            self.create_bom(&conn)
-        }).map_err(|e| {
+        let bom = self.create_bom(&db).await.map_err(|e| {
             error!("Transaction failed for creating BOM for product ID {}: {}", self.product_id, e);
             e
         })?;
@@ -40,24 +35,25 @@ impl Command for CreateBOMCommand {
 }
 
 impl CreateBOMCommand {
-    fn create_bom(&self, conn: &PgConnection) -> Result<BOM, ServiceError> {
-        let new_bom = NewBOM {
-            product_id: self.product_id,
-            name: self.name.clone(),
-            description: self.description.clone(),
-            created_at: Utc::now(),
+    async fn create_bom(&self, db: &DbConn) -> Result<bom::Model, ServiceError> {
+        let new_bom = bom::ActiveModel {
+            product_id: Set(self.product_id),
+            name: Set(self.name.clone()),
+            description: Set(self.description.clone()),
+            created_at: Set(Utc::now().naive_utc()),
+            ..Default::default() // Other fields can be filled here as needed
         };
 
-        diesel::insert_into(boms::table)
-            .values(&new_bom)
-            .get_result::<BOM>(conn)
+        bom::Entity::insert(new_bom)
+            .exec_with_returning(db)
+            .await
             .map_err(|e| {
                 error!("Failed to create BOM for product ID {}: {}", self.product_id, e);
                 ServiceError::DatabaseError(format!("Failed to create BOM: {}", e))
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, bom: &BOM) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, bom: &bom::Model) -> Result<(), ServiceError> {
         info!("BOM created for product ID: {}. BOM ID: {}", self.product_id, bom.id);
         event_sender.send(Event::BOMCreated(bom.id))
             .await
