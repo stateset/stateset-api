@@ -6,6 +6,7 @@ use crate::{errors::ServiceError, db::DbPool, models::{order_entity, order_entit
 use crate::events::{Event, EventSender};
 use tracing::{info, error, instrument};
 use prometheus::IntCounter;
+use lazy_static::lazy_static
 
 lazy_static! {
     static ref ORDER_RELEASES_FROM_HOLD: IntCounter = 

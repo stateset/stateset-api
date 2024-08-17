@@ -12,6 +12,7 @@ use validator::Validate;
 use tracing::{info, error, instrument};
 use chrono::Utc;
 use prometheus::IntCounter;
+use lazy_static::lazy_static
 
 lazy_static! {
     static ref ORDER_CREATIONS: IntCounter = 

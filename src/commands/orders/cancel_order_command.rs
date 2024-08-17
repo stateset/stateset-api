@@ -8,6 +8,7 @@ use validator::Validate;
 use tracing::{info, error, instrument, warn};
 use chrono::Utc;
 use prometheus::{IntCounter, IntCounterVec};
+use lazy_static::lazy_static
 
 lazy_static! {
     static ref ORDER_CANCELLATIONS: IntCounter = 

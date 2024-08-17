@@ -7,6 +7,7 @@ use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
 use prometheus::IntCounter;
+use lazy_static::lazy_static
 
 lazy_static! {
     static ref ORDERS_SHIPPED: IntCounter = 

@@ -7,6 +7,7 @@ use validator::Validate;
 use tracing::{info, error, instrument};
 use sea_orm::{DatabaseConnection, EntityTrait, ActiveModelTrait, Set};
 use prometheus::IntCounter;
+use lazy_static::lazy_static
 
 lazy_static! {
     static ref ORDER_DISCOUNTS_APPLIED: IntCounter = 

@@ -7,7 +7,7 @@ use tracing::{info, error, instrument};
 use validator::Validate;
 use prometheus::IntCounter;
 use crate::{errors::ServiceError, events::{Event, EventSender}, models::order_shipment};
-
+use lazy_static::lazy_static
 
 lazy_static! {
     static ref TRACKING_INFO_ADDED: IntCounter = 

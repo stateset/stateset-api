@@ -14,6 +14,8 @@ use sea_orm::{
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
 
+use sea_orm::Order
+
 use crate::billofmaterials::BillOfMaterials;
 use crate::inventory_item::InventoryItem;
 use crate::order::Order;
@@ -24,9 +26,7 @@ use crate::return_entity::ReturnEntity;
 use crate::order_item::OrderItem;   
 use crate::product::Product;
 use crate::customer::Customer;
-use crate::order::Order;
 use crate::warehouse::Warehouse;
-use crate::component::Component;
 
 #[async_trait]
 pub trait Query: Send + Sync {
