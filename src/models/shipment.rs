@@ -21,6 +21,8 @@ pub struct Model {
     
     #[validate(length(min = 1, max = 255, message = "Shipping address must be between 1 and 255 characters"))]
     pub shipping_address: String,
+
+    pub shipping_method: String,
     
     pub shipped_at: Option<DateTimeWithTimeZone>,
     

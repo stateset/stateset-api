@@ -1,37 +1,7 @@
-use redis::{Client as RedisClient, AsyncCommands};
-use std::time::Duration;
-use axum::{
-    http::{Request, StatusCode},
-    response::{IntoResponse, Response},
-    body::Body,
-};
-use std::sync::Arc;
-use slog::{Logger, info, error};
-use thiserror::Error;
-use tower::{Service, Layer};
-use futures::future::BoxFuture;
-use std::task::{Context, Poll};
-use std::pin::Pin;
-
-#[derive(Debug, Error)]
-pub enum RateLimitError {
-    #[error("Redis error: {0}")]
-    RedisError(#[from] redis::RedisError),
-    #[error("Rate limit exceeded")]
-    LimitExceeded,
-}
-
-impl IntoResponse for RateLimitError {
-    fn into_response(self) -> Response {
-        match self {
-            RateLimitError::RedisError(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            RateLimitError::LimitExceeded => StatusCode::TOO_MANY_REQUESTS.into_response(),
-        }
-    }
-}
+use redis::aio::ConnectionManager;
 
 pub struct RateLimiter {
-    redis: Arc<RedisClient>,
+    redis: Arc<ConnectionManager>,
     key_prefix: String,
     max_requests: usize,
     window_seconds: usize,
@@ -39,18 +9,21 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    pub fn new(redis: Arc<RedisClient>, key_prefix: &str, max_requests: usize, window_seconds: usize, logger: Logger) -> Self {
-        Self {
-            redis,
+    pub async fn new(redis_url: &str, key_prefix: &str, max_requests: usize, window_seconds: usize, logger: Logger) -> Result<Self, redis::RedisError> {
+        let client = redis::Client::open(redis_url)?;
+        let conn_manager = ConnectionManager::new(client).await?;
+        
+        Ok(Self {
+            redis: Arc::new(conn_manager),
             key_prefix: key_prefix.to_string(),
             max_requests,
             window_seconds,
             logger,
-        }
+        })
     }
 
     pub async fn is_rate_limited(&self, key: &str) -> Result<bool, RateLimitError> {
-        let mut conn = self.redis.get_connection().await?;
+        let mut conn = self.redis.clone();
         let full_key = format!("{}:{}", self.key_prefix, key);
 
         let current: Option<usize> = conn.get(&full_key).await?;
@@ -70,80 +43,21 @@ impl RateLimiter {
 #[derive(Clone)]
 pub struct RateLimitLayer {
     limiter: Arc<RateLimiter>,
-    max_requests: usize,
-    window_seconds: usize,
     key_extractor: Arc<dyn Fn(&Request<Body>) -> String + Send + Sync>,
 }
 
 impl RateLimitLayer {
-    pub fn new<F>(limiter: Arc<RateLimiter>, max_requests: usize, window_seconds: usize, key_extractor: F) -> Self 
+    pub fn new<F>(limiter: Arc<RateLimiter>, key_extractor: F) -> Self 
     where
         F: Fn(&Request<Body>) -> String + Send + Sync + 'static,
     {
         Self {
             limiter,
-            max_requests,
-            window_seconds,
             key_extractor: Arc::new(key_extractor),
         }
     }
 }
 
-impl<S> Layer<S> for RateLimitLayer {
-    type Service = RateLimitService<S>;
-
-    fn layer(&self, service: S) -> Self::Service {
-        RateLimitService {
-            inner: service,
-            limiter: self.limiter.clone(),
-            max_requests: self.max_requests,
-            window_seconds: self.window_seconds,
-            key_extractor: self.key_extractor.clone(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct RateLimitService<S> {
-    inner: S,
-    limiter: Arc<RateLimiter>,
-    max_requests: usize,
-    window_seconds: usize,
-    key_extractor: Arc<dyn Fn(&Request<Body>) -> String + Send + Sync>,
-}
-
-impl<S> Service<Request<Body>> for RateLimitService<S>
-where
-    S: Service<Request<Body>, Response = Response> + Send + 'static,
-    S::Future: Send + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
-        let limiter = self.limiter.clone();
-        let key = (self.key_extractor)(&req);
-        let fut = self.inner.call(req);
-
-        Box::pin(async move {
-            match limiter.is_rate_limited(&key).await {
-                Ok(true) => {
-                    Ok(RateLimitError::LimitExceeded.into_response())
-                }
-                Ok(false) => fut.await,
-                Err(e) => {
-                    error!(limiter.logger, "Rate limiting error"; "error" => %e);
-                    fut.await
-                }
-            }
-        })
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -157,21 +71,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limiter() {
-        let redis_client = Arc::new(RedisClient::open("redis://127.0.0.1/").unwrap());
+        let redis_url = "redis://127.0.0.1/";
         let logger = Logger::root(slog::Discard.fuse(), slog::o!());
         
         let limiter = Arc::new(RateLimiter::new(
-            redis_client.clone(),
+            redis_url,
             "test",
             2,
             60,
             logger.clone(),
-        ));
+        ).await.unwrap());
 
         let layer = RateLimitLayer::new(
             limiter.clone(),
-            2,
-            60,
             |req: &Request<Body>| req.extensions().get::<String>().unwrap().clone(),
         );
 

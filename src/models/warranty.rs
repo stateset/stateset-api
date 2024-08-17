@@ -75,6 +75,8 @@ pub enum WarrantyStatus {
     Processed,
     #[sea_orm(string_value = "Completed")]
     Completed,
+    #[sea_orm(string_value = "Replaced")]
+    Replaced,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]

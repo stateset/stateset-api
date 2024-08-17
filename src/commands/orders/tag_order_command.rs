@@ -8,7 +8,7 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{order_entity, order_entity::Entity as Order, order_tag_entity, order_tag_entity::Entity as OrderTag},
+    models::{order, order::Entity as Order, order_tag, order_tag::Entity as OrderTag},
 };
 use chrono::{DateTime, Utc};
 
@@ -19,7 +19,7 @@ pub struct TagOrderCommand {
 
 #[async_trait]
 impl Command for TagOrderCommand {
-    type Result = Vec<order_entity::Model>;
+    type Result = Vec<order::Model>;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
@@ -28,7 +28,7 @@ impl Command for TagOrderCommand {
             ServiceError::DatabaseError
         })?;
 
-        let tagged_orders = db.transaction::<_, Vec<order_entity::Model>, ServiceError>(|txn| {
+        let tagged_orders = db.transaction::<_, Vec<order::Model>, ServiceError>(|txn| {
             Box::pin(async move {
                 self.tag_order_logic(txn).await
             })
@@ -44,7 +44,7 @@ impl Command for TagOrderCommand {
 }
 
 impl TagOrderCommand {
-    async fn tag_order_logic(&self, txn: &DatabaseTransaction) -> Result<Vec<order_entity::Model>, ServiceError> {
+    async fn tag_order_logic(&self, txn: &DatabaseTransaction) -> Result<Vec<order::Model>, ServiceError> {
         // Fetch the order
         let order = Order::find_by_id(self.order_id)
             .one(txn)
@@ -59,7 +59,7 @@ impl TagOrderCommand {
             })?;
 
         // Create a new order tag
-        let new_tag = order_tag_entity::ActiveModel {
+        let new_tag = order_tag::ActiveModel {
             order_id: Set(self.order_id),
             tag_id: Set(self.tag_id),
             created_at: Set(Utc::now().naive_utc()),
@@ -86,7 +86,7 @@ impl TagOrderCommand {
     async fn log_and_trigger_events(
         &self,
         event_sender: Arc<EventSender>,
-        tagged_orders: &[order_entity::Model],
+        tagged_orders: &[order::Model],
     ) -> Result<(), ServiceError> {
         for order in tagged_orders {
             info!("Order ID {} tagged with tag ID {}", order.id, self.tag_id);
