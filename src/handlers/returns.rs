@@ -18,8 +18,12 @@ use crate::commands::returns::{
     RejectReturnCommand,
     CancelReturnCommand,
     CompleteReturnCommand,
+    CloseReturnCommand,
+    ReOpenReturnCommand,
+    RestockReturnedItemsCommand,
     RefundReturnCommand,
     ProcessReturnCommand,
+    DeleteReturnCommand,
 };
 
 async fn create_return(
@@ -94,15 +98,16 @@ async fn reopen_return(
     Ok(Json(reopened_return))
 }
 
-async fn get_return(
+async fn delete_return(
     State(return_service): State<Arc<ReturnService>>,
     Path(id): Path<Uuid>,
     AuthenticatedUser(user): AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
-    let return_item = return_service.get_return(id, user.user_id)
-        .await
-        .map_err(|e| ServiceError::from(ReturnError::from(e)))?;
-    Ok(Json(return_item))
+
+    let command = DeleteReturnCommand { return_id: id };
+
+    let deleted_return = command.execute(return_service).await?;
+    Ok(Json(deleted_return))
 }
 
 async fn update_return(
@@ -152,21 +157,6 @@ async fn search_returns(
     })))
 }
 
-async fn process_return(
-    State(return_service): State<Arc<ReturnService>>,
-    Path(id): Path<Uuid>,
-    AuthenticatedUser(user): AuthenticatedUser,
-    Json(process_info): Json<ProcessReturnCommand>,
-) -> Result<impl IntoResponse, ServiceError> {
-    let command = ProcessReturnCommand {
-        return_id: id,
-        process_info,
-    };
-
-    let processed_return = command.execute(return_service).await?;
-    Ok(Json(processed_return))
-}
-
 pub fn returns_routes() -> Router {
     Router::new()
         .route("/", post(create_return))
@@ -176,6 +166,10 @@ pub fn returns_routes() -> Router {
         .route("/:id/approve", post(approve_return))
         .route("/:id/reject", post(reject_return))
         .route("/:id/cancel", post(cancel_return))
+        .route("/:id/delete", delete(delete_return))
+        .route("/:id/restock", post(restock_return))
+        .route("/:id/refund", post(refund_return))
+        .route("/:id/complete", post(complete_return))
         .route("/:id/close", post(close_return))
         .route("/:id/reopen", post(reopen_return))
         .route("/:id/process", post(process_return))

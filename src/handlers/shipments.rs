@@ -75,4 +75,7 @@ pub fn shipment_routes() -> Router<DbPool> {
         .route("/:id", delete(delete_shipment_handler))
         .route("/", get(list_shipments_handler))
         .route("/search", get(search_shipments_handler))
+        .route("/:id/assign", post(assign_shipment_handler))
+        .route("/:id/cancel", post(cancel_shipment_handler))
+
 }

@@ -171,4 +171,6 @@ pub fn work_order_routes() -> Router<Arc<DbPool>> {
         .route("/:id/issue", post(issue_work_order))
         .route("/:id/pick", post(pick_work_order))
         .route("/:id/yield", post(yield_work_order))
+        .route("/:id/cancel", post(cancel_work_order))
+        .route("/:id/start", post(start_work_order))
 }
