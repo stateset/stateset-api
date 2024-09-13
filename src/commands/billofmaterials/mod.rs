@@ -1,10 +1,7 @@
-pub mod add_bill_of_materials;
-pub mod update_bill_of_materials;
-pub mod delete_bill_of_materials;
-pub mod get_bill_of_materials;
-pub mod build_to_stock;
+pub mod delete_bom_command;
+pub mod get_bom_command;
+pub mod build_to_stock_command;
 
-pub use add_bill_of_materials::AddBillOfMaterials;
-pub use update_bill_of_materials::UpdateBillOfMaterials;
-pub use delete_bill_of_materials::DeleteBillOfMaterials;
-pub use build_to_stock::BuildToStock;
+pub use delete_bom_command::DeleteBomCommand;
+pub use get_bom_command::GetBomCommand;
+pub use build_to_stock_command::BuildToStockCommand;

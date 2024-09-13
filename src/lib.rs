@@ -11,6 +11,9 @@ pub mod queries;
 pub mod errors;
 pub mod cache;
 pub mod rate_limiter;
+pub mod db;
+pub mod events;
+
 
 // Public re-exports
 pub use models::*;
@@ -20,6 +23,9 @@ pub use queries::*;
 pub use errors::*;
 pub use cache::Cache;
 pub use rate_limiter::RateLimiter;
+pub use errors::ServiceError;
+pub use db::*;
+pub use events::*;
 
 pub use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter};
 pub use redis::Client as RedisClient;
@@ -28,8 +34,6 @@ pub use redis::Client as RedisClient;
 pub type DbPool = DatabaseConnection;
 
 /// Initializes the database connection
-pub async fn init_pool(database_url: &str) -> DbPool {
-    sea_orm::Database::connect(database_url)
-        .await
-        .expect("Failed to create database connection")
+pub async fn init_pool(database_url: &str) -> Result<DbPool, sea_orm::DbErr> {
+    sea_orm::Database::connect(database_url).await
 }

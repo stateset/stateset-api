@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use tokio::sync::broadcast;
 use std::sync::Arc;
 use tracing::{info, error};

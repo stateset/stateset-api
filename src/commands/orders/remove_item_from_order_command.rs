@@ -1,4 +1,4 @@
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::*;
@@ -7,7 +7,7 @@ use crate::events::{Event, EventSender};
 use validator::Validate;
 use tracing::{info, error, instrument};
 use prometheus::IntCounter;
-use lazy_static::lazy_static
+use lazy_static::lazy_static;
 
 lazy_static! {
     static ref ORDER_ITEMS_REMOVED: IntCounter = 

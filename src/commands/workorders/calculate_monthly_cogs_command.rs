@@ -1,4 +1,4 @@
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use crate::{errors::ServiceError, db::DbPool, models::{work_order_entity, cogs_data_entity}};

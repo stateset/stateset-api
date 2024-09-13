@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use thiserror::Error;
 use uuid::Uuid;
 

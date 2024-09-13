@@ -1,4 +1,4 @@
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::{
@@ -24,12 +24,13 @@ use crate::return_entity::Return;
 use crate::order_item::OrderItem;   
 use crate::product::Product;
 use crate::customer::Customer;
-use crate::order::Order;
+use crate::order::OrderLineItemRelation::Order;
 use crate::warehouse::Warehouse;
 use crate::manufacture_order_component_entity::ManufactureOrderComponent;
 use crate::manufacture_order_operation_entity::ManufactureOrderOperation;
 use crate::manufacture_order_entity::ManufactureOrder;
 use crate::manufacture_order_status::ManufactureOrderStatus;
+use crate::billofmaterials::BillOfMaterialsLineItemRelation::BillOfMaterials;
 
 #[async_trait]
 pub trait Query: Send + Sync {

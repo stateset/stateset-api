@@ -1,4 +1,4 @@
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::{
@@ -14,9 +14,9 @@ use sea_orm::{
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
 
-use crate::billofmaterials::BillOfMaterials;
+use crate::billofmaterials::BillOfMaterialsLineItemRelation::BillOfMaterials;
 use crate::inventory_item::InventoryItem;
-use crate::order::Order;
+use crate::order::OrderLineItemRelation::Order;
 use crate::shipment::Shipment;
 use crate::tracking_event::TrackingEvent;
 use crate::work_order::WorkOrder;
@@ -24,8 +24,7 @@ use crate::return_entity::ReturnEntity;
 use crate::order_item::OrderItem;   
 use crate::product::Product;
 use crate::customer::Customer;
-use crate::order::Order;
-use crate::warehouse::Warehouse;   
+use crate::warehouse::Warehouse;
 
 #[async_trait]
 pub trait Query: Send + Sync {

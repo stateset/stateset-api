@@ -1,4 +1,4 @@
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use redis::{Client as RedisClient, AsyncCommands};
 use serde::{Serialize, Deserialize};
 use std::time::Duration;

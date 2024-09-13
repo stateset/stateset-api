@@ -1,4 +1,4 @@
-use async_trait::async_trait;;
+use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::entity::prelude::*;
@@ -7,7 +7,7 @@ use tracing::{info, error, instrument};
 use validator::Validate;
 use prometheus::IntCounter;
 use crate::{errors::ServiceError, events::{Event, EventSender}, models::order_shipment};
-use lazy_static::lazy_static
+use lazy_static::lazy_static;
 
 lazy_static! {
     static ref TRACKING_INFO_ADDED: IntCounter = 

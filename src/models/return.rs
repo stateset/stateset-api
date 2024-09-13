@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
-#[sea_orm(table_name = "returns")]
+#[sea_orm(table_name = "return_entity")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
@@ -89,14 +89,14 @@ pub struct ReturnLineItem {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum ReturnLineItemRelation {
     #[sea_orm(
-        belongs_to = "super::return::Entity",
+        belongs_to = "super::return_entity::Entity",
         from = "Column::ReturnId",
-        to = "super::return::Column::Id"
+        to = "super::return_entity::Column::Id"
     )]
     Return,
 }
 
-impl Related<super::return::Entity> for ReturnLineItem {
+impl Related<super::return_entity::Entity> for ReturnLineItem {
     fn to() -> RelationDef {
         ReturnLineItemRelation::Return.def()
     }
