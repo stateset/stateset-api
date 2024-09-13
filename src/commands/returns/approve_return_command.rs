@@ -1,20 +1,27 @@
 use std::sync::Arc;
 use sea_orm::*;
-use crate::{errors::ServiceError, db::DbPool, models::{return_entity, return_entity::Entity as Return}};
-use crate::models::return_entity::ReturnStatus;
-use crate::events::{Event, EventSender};
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        return_entity::{self, Entity as Return},
+        return_entity::ReturnStatus,
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use tracing::{info, error, instrument};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ApproveReturnCommand {
-    pub return_id: i32,
+    pub return_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApproveReturnResult {
-    pub id: String,
+    pub id: Uuid,
     pub object: String,
     pub approved: bool,
 }
@@ -24,18 +31,20 @@ impl Command for ApproveReturnCommand {
     type Result = ApproveReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let db = db_pool.get().map_err(|e| {
-            error!("Database connection error: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
+        let db = db_pool.as_ref();
 
-        let approved_return = self.approve_return(&db).await?;
+        let approved_return = self.approve_return(db).await?;
 
-        self.log_and_trigger_event(event_sender, &approved_return).await?;
+        self.log_and_trigger_event(&event_sender, &approved_return)
+            .await?;
 
         Ok(ApproveReturnResult {
-            id: approved_return.id.to_string(),
+            id: approved_return.id,
             object: "return".to_string(),
             approved: true,
         })
@@ -43,38 +52,49 @@ impl Command for ApproveReturnCommand {
 }
 
 impl ApproveReturnCommand {
-    async fn approve_return(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
+    async fn approve_return(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<return_entity::Model, ServiceError> {
         let return_request = Return::find_by_id(self.return_id)
             .one(db)
             .await
             .map_err(|e| {
-                error!("Database error: {}", e);
-                ServiceError::DatabaseError(format!("Database error: {}", e))
+                let msg = format!("Failed to find return request: {}", e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
             })?
             .ok_or_else(|| {
-                error!("Return request not found: {}", self.return_id);
-                ServiceError::NotFound(format!("Return request with ID {} not found", self.return_id))
+                let msg = format!("Return request with ID {} not found", self.return_id);
+                error!("{}", msg);
+                ServiceError::NotFound(msg)
             })?;
 
         let mut return_request: return_entity::ActiveModel = return_request.into();
         return_request.status = Set(ReturnStatus::Approved.to_string());
 
-        return_request
-            .update(db)
-            .await
-            .map_err(|e| {
-                error!("Failed to approve return request: {}", e);
-                ServiceError::DatabaseError(format!("Database error: {}", e))
-            })
+        let updated_return = return_request.update(db).await.map_err(|e| {
+            let msg = format!("Failed to update return request: {}", e);
+            error!("{}", msg);
+            ServiceError::DatabaseError(msg)
+        })?;
+
+        Ok(updated_return)
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, approved_return: &return_entity::Model) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        approved_return: &return_entity::Model,
+    ) -> Result<(), ServiceError> {
         info!("Return request approved for return ID: {}", self.return_id);
-        event_sender.send(Event::ReturnApproved(self.return_id))
+        event_sender
+            .send(Event::ReturnApproved(self.return_id))
             .await
             .map_err(|e| {
-                error!("Failed to send event for approved return: {}", e);
-                ServiceError::EventError(e.to_string())
+                let msg = format!("Failed to send event for approved return: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
             })
     }
 }

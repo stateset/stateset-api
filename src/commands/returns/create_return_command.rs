@@ -1,65 +1,102 @@
 use std::sync::Arc;
 use sea_orm::*;
-use crate::{errors::ServiceError, db::DbPool, models::{return_entity, return_entity::Entity as Return}};
-use crate::events::{Event, EventSender};
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        return_entity::{self, Entity as Return},
+        return_entity::ReturnStatus,
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use tracing::{info, error, instrument};
-use serde::{Serialize, Deserialize};
-use async_trait::async_trait;;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct InitiateReturnCommand {
-    pub order_id: i32,
+    pub order_id: Uuid,
     
-    #[validate(length(min = 1))]
+    #[validate(length(min = 1, message = "Reason cannot be empty"))]
     pub reason: String,
 }
 
-#[async_trait]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InitiateReturnResult {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub reason: String,
+    pub status: String,
+}
+
+#[async_trait::async_trait]
 impl Command for InitiateReturnCommand {
-    type Result = return_entity::Model;
+    type Result = InitiateReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let db = db_pool.get().map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
+        self.validate().map_err(|e| {
+            let msg = format!("Invalid input: {}", e);
+            error!("{}", msg);
+            ServiceError::ValidationError(msg)
         })?;
 
-        let saved_return = self.create_return_request(&db).await?;
+        let db = db_pool.as_ref();
 
-        self.log_and_trigger_event(event_sender, &saved_return).await?;
+        let saved_return = self.create_return_request(db).await?;
 
-        Ok(saved_return)
+        self.log_and_trigger_event(&event_sender, &saved_return)
+            .await?;
+
+        Ok(InitiateReturnResult {
+            id: saved_return.id,
+            order_id: saved_return.order_id,
+            reason: saved_return.reason,
+            status: saved_return.status,
+        })
     }
 }
 
 impl InitiateReturnCommand {
-    async fn create_return_request(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
+    async fn create_return_request(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<return_entity::Model, ServiceError> {
         let return_request = return_entity::ActiveModel {
             order_id: Set(self.order_id),
             reason: Set(self.reason.clone()),
             status: Set(ReturnStatus::Pending.to_string()),
-            // Add other fields as necessary, like created_at, updated_at, etc.
-            ..Default::default() // This will set default values for other fields
+            ..Default::default()
         };
 
         return_request
             .insert(db)
             .await
             .map_err(|e| {
-                error!("Failed to initiate return for order ID {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(format!("Failed to initiate return: {}", e))
+                let msg = format!("Failed to initiate return for order ID {}: {}", self.order_id, e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
             })
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, saved_return: &return_entity::Model) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        saved_return: &return_entity::Model,
+    ) -> Result<(), ServiceError> {
         info!("Return initiated for order ID: {}. Reason: {}", self.order_id, self.reason);
-        event_sender.send(Event::ReturnInitiated(saved_return.id))
+        event_sender
+            .send(Event::ReturnInitiated(saved_return.id))
             .await
             .map_err(|e| {
-                error!("Failed to send ReturnInitiated event for return ID {}: {}", saved_return.id, e);
-                ServiceError::EventError(e.to_string())
+                let msg = format!("Failed to send event for initiated return: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
             })
     }
 }

@@ -1,18 +1,22 @@
-use async_trait::async_trait;;
-use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::*;
-use crate::{errors::ServiceError, db::DbPool, models::{
-    order_entity, order_entity::Entity as Order,
-    order_item_entity, order_item_entity::Entity as OrderItem,
-    OrderStatus
-}};
-use crate::events::{Event, EventSender};
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        order_entity::{self, Entity as Order},
+        order_item_entity::{self, Entity as OrderItem},
+        OrderStatus,
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use tracing::{info, error, instrument};
-use chrono::Utc;
 use prometheus::IntCounter;
-use lazy_static::lazy_static
+use lazy_static::lazy_static;
+use chrono::{DateTime, Utc};
 
 lazy_static! {
     static ref ORDER_CREATIONS: IntCounter = 
@@ -24,89 +28,123 @@ lazy_static! {
             .expect("metric can be created");
 }
 
-#[async_trait]
-pub trait Command: Send + Sync {
-    type Result: Send + Sync;
-
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError>;
-}
-
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct CreateOrderCommand {
-    #[validate(range(min = 1))]
-    pub customer_id: i32,
-
-    #[validate(length(min = 1))]
-    pub items: Vec<order_item_entity::Model>,
+    pub customer_id: Uuid,
+    #[validate(length(min = 1, message = "At least one item is required"))]
+    pub items: Vec<OrderItem>,
 }
 
-#[async_trait]
-impl Command for CreateOrderCommand {
-    type Result = order_entity::Model;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrderItem {
+    pub product_id: Uuid,
+    #[validate(range(min = 1))]
+    pub quantity: i32,
+}
 
-    #[instrument(skip(db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        // Validate command data
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateOrderResult {
+    pub id: Uuid,
+    pub customer_id: Uuid,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub items: Vec<OrderItem>,
+}
+
+#[async_trait::async_trait]
+impl Command for CreateOrderCommand {
+    type Result = CreateOrderResult;
+
+    #[instrument(skip(self, db_pool, event_sender))]
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
         self.validate().map_err(|e| {
             ORDER_CREATION_FAILURES.inc();
-            error!("Validation error: {}", e);
-            ServiceError::ValidationError(e.to_string())
+            let msg = format!("Invalid input: {}", e);
+            error!("{}", msg);
+            ServiceError::ValidationError(msg)
         })?;
 
-        let db = db_pool.get().map_err(|e| {
-            ORDER_CREATION_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
-        })?;
+        let db = db_pool.as_ref();
 
-        let result = db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
+        let saved_order = self.create_order(db).await?;
+
+        self.log_and_trigger_event(&event_sender, &saved_order).await?;
+
+        ORDER_CREATIONS.inc();
+
+        Ok(CreateOrderResult {
+            id: saved_order.id,
+            customer_id: saved_order.customer_id,
+            status: saved_order.status,
+            created_at: saved_order.created_at.and_utc(),
+            items: self.items.clone(),
+        })
+    }
+}
+
+impl CreateOrderCommand {
+    async fn create_order(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<order_entity::Model, ServiceError> {
+        db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
             Box::pin(async move {
-                // Create new order
                 let new_order = order_entity::ActiveModel {
                     customer_id: Set(self.customer_id),
                     status: Set(OrderStatus::Pending.to_string()),
-                    created_at: Set(Utc::now()),
-                    // Set other fields as needed
+                    created_at: Set(Utc::now().naive_utc()),
                     ..Default::default()
                 };
 
                 let saved_order = new_order.insert(txn).await.map_err(|e| {
-                    ORDER_CREATION_FAILURES.inc();
-                    error!("Failed to save order: {}", e);
-                    ServiceError::DatabaseError
+                    let msg = format!("Failed to save order: {}", e);
+                    error!("{}", msg);
+                    ServiceError::DatabaseError(msg)
                 })?;
 
-                // Insert order items
                 for item in &self.items {
                     let new_item = order_item_entity::ActiveModel {
                         order_id: Set(saved_order.id),
                         product_id: Set(item.product_id),
                         quantity: Set(item.quantity),
-                        // Set other fields as needed
                         ..Default::default()
                     };
                     new_item.insert(txn).await.map_err(|e| {
-                        ORDER_CREATION_FAILURES.inc();
-                        error!("Failed to save order item: {}", e);
-                        ServiceError::DatabaseError
+                        let msg = format!("Failed to save order item: {}", e);
+                        error!("{}", msg);
+                        ServiceError::DatabaseError(msg)
                     })?;
                 }
 
                 Ok(saved_order)
             })
-        }).await?;
+        }).await
+    }
 
-        // Trigger an event
-        if let Err(e) = event_sender.send(Event::OrderCreated(result.id)).await {
-            ORDER_CREATION_FAILURES.inc();
-            error!("Failed to send OrderCreated event: {}", e);
-            return Err(ServiceError::EventError(e.to_string()));
-        }
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        saved_order: &order_entity::Model,
+    ) -> Result<(), ServiceError> {
+        info!(
+            order_id = %saved_order.id,
+            customer_id = %self.customer_id,
+            items_count = %self.items.len(),
+            "Order created successfully"
+        );
 
-        ORDER_CREATIONS.inc();
-
-        info!("Order created successfully: {:?}", result);
-
-        Ok(result)
+        event_sender
+            .send(Event::OrderCreated(saved_order.id))
+            .await
+            .map_err(|e| {
+                ORDER_CREATION_FAILURES.inc();
+                let msg = format!("Failed to send event for created order: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
+            })
     }
 }

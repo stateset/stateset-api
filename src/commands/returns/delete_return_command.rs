@@ -1,19 +1,26 @@
 use std::sync::Arc;
 use sea_orm::*;
-use crate::{errors::ServiceError, db::DbPool, models::{return_entity, return_entity::Entity as Return}};
-use crate::events::{Event, EventSender};
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        return_entity::{self, Entity as Return},
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use tracing::{info, error, instrument};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct DeleteReturnCommand {
-    pub return_id: i32,
+    pub return_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeleteReturnResult {
-    pub id: String,
+    pub id: Uuid,
     pub object: String,
     pub deleted: bool,
 }
@@ -23,18 +30,20 @@ impl Command for DeleteReturnCommand {
     type Result = DeleteReturnResult;
 
     #[instrument(skip(self, db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let db = db_pool.get().map_err(|e| {
-            error!("Database connection error: {}", e);
-            ServiceError::DatabaseError("Failed to get database connection".into())
-        })?;
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
+        let db = db_pool.as_ref();
 
-        let deleted_return = self.delete_return(&db).await?;
+        let deleted_return = self.delete_return(db).await?;
 
-        self.log_and_trigger_event(event_sender, &deleted_return).await?;
+        self.log_and_trigger_event(&event_sender, &deleted_return)
+            .await?;
 
         Ok(DeleteReturnResult {
-            id: deleted_return.id.to_string(),
+            id: deleted_return.id,
             object: "return".to_string(),
             deleted: true,
         })
@@ -42,17 +51,22 @@ impl Command for DeleteReturnCommand {
 }
 
 impl DeleteReturnCommand {
-    async fn delete_return(&self, db: &DatabaseConnection) -> Result<return_entity::Model, ServiceError> {
+    async fn delete_return(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<return_entity::Model, ServiceError> {
         let return_request = Return::find_by_id(self.return_id)
             .one(db)
             .await
             .map_err(|e| {
-                error!("Database error: {}", e);
-                ServiceError::DatabaseError(format!("Database error: {}", e))
+                let msg = format!("Failed to find return request: {}", e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
             })?
             .ok_or_else(|| {
-                error!("Return request not found: {}", self.return_id);
-                ServiceError::NotFound(format!("Return request with ID {} not found", self.return_id))
+                let msg = format!("Return request with ID {} not found", self.return_id);
+                error!("{}", msg);
+                ServiceError::NotFound(msg)
             })?;
 
         // Store the return details before deletion
@@ -63,20 +77,27 @@ impl DeleteReturnCommand {
             .exec(db)
             .await
             .map_err(|e| {
-                error!("Failed to delete return request: {}", e);
-                ServiceError::DatabaseError(format!("Database error: {}", e))
+                let msg = format!("Failed to delete return request: {}", e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
             })?;
 
         Ok(deleted_return)
     }
 
-    async fn log_and_trigger_event(&self, event_sender: Arc<EventSender>, deleted_return: &return_entity::Model) -> Result<(), ServiceError> {
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        deleted_return: &return_entity::Model,
+    ) -> Result<(), ServiceError> {
         info!("Return request deleted for return ID: {}", self.return_id);
-        event_sender.send(Event::ReturnDeleted(self.return_id))
+        event_sender
+            .send(Event::ReturnDeleted(self.return_id))
             .await
             .map_err(|e| {
-                error!("Failed to send event for deleted return: {}", e);
-                ServiceError::EventError(e.to_string())
+                let msg = format!("Failed to send event for deleted return: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
             })
     }
 }

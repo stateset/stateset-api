@@ -1,13 +1,19 @@
-use async_trait::async_trait;;
-use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::*;
-use crate::{errors::ServiceError, db::DbPool, models::{order_item_entity, order_item_entity::Entity as OrderItem}};
-use crate::events::{Event, EventSender};
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        order_item_entity::{self, Entity as OrderItem},
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use tracing::{info, error, instrument};
 use prometheus::IntCounter;
-use lazy_static::lazy_static
+use lazy_static::lazy_static;
 
 lazy_static! {
     static ref ORDER_ITEMS_ADDED: IntCounter = 
@@ -19,50 +25,84 @@ lazy_static! {
             .expect("metric can be created");
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AddItemToOrderCommand {
-    pub order_id: i32,
-    pub product_id: i32,
+    pub order_id: Uuid,
+    pub product_id: Uuid,
+    #[validate(range(min = 1))]
     pub quantity: i32,
 }
 
-#[async_trait]
-impl Command for AddItemToOrderCommand {
-    type Result = order_item_entity::Model;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddItemToOrderResult {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub product_id: Uuid,
+    pub quantity: i32,
+    pub unit_price: f64,
+}
 
-    #[instrument(skip(db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let db = db_pool.get().map_err(|e| {
+#[async_trait::async_trait]
+impl Command for AddItemToOrderCommand {
+    type Result = AddItemToOrderResult;
+
+    #[instrument(skip(self, db_pool, event_sender))]
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
+        self.validate().map_err(|e| {
             ORDER_ITEM_ADD_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
+            let msg = format!("Invalid input: {}", e);
+            error!("{}", msg);
+            ServiceError::ValidationError(msg)
         })?;
 
-        // Create a new OrderItem to be added to the order
+        let db = db_pool.as_ref();
+
+        let saved_item = self.add_item_to_order(db).await?;
+
+        self.log_and_trigger_event(&event_sender, &saved_item).await?;
+
+        ORDER_ITEMS_ADDED.inc();
+
+        Ok(AddItemToOrderResult {
+            id: saved_item.id,
+            order_id: saved_item.order_id,
+            product_id: saved_item.product_id,
+            quantity: saved_item.quantity,
+            unit_price: saved_item.unit_price,
+        })
+    }
+}
+
+impl AddItemToOrderCommand {
+    async fn add_item_to_order(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<order_item_entity::Model, ServiceError> {
         let new_item = order_item_entity::ActiveModel {
             order_id: Set(self.order_id),
             product_id: Set(self.product_id),
             quantity: Set(self.quantity),
             unit_price: Set(0.0), // Assume price is calculated elsewhere
-            ..Default::default() // This will set default values for other fields
+            ..Default::default()
         };
 
-        // Insert the new item into the order_items table
-        let saved_item = new_item.insert(&db).await.map_err(|e| {
+        new_item.insert(db).await.map_err(|e| {
             ORDER_ITEM_ADD_FAILURES.inc();
-            error!("Failed to add item to order {}: {}", self.order_id, e);
-            ServiceError::DatabaseError
-        })?;
+            let msg = format!("Failed to add item to order {}: {}", self.order_id, e);
+            error!("{}", msg);
+            ServiceError::DatabaseError(msg)
+        })
+    }
 
-        // Trigger an event indicating that an item was added to the order
-        if let Err(e) = event_sender.send(Event::OrderItemAdded(self.order_id, saved_item.id)).await {
-            ORDER_ITEM_ADD_FAILURES.inc();
-            error!("Failed to send OrderItemAdded event for order {}: {}", self.order_id, e);
-            return Err(ServiceError::EventError(e.to_string()));
-        }
-
-        ORDER_ITEMS_ADDED.inc();
-
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        saved_item: &order_item_entity::Model,
+    ) -> Result<(), ServiceError> {
         info!(
             order_id = %self.order_id,
             product_id = %self.product_id,
@@ -70,6 +110,14 @@ impl Command for AddItemToOrderCommand {
             "Item added to order successfully"
         );
 
-        Ok(saved_item)
+        event_sender
+            .send(Event::OrderItemAdded(self.order_id, saved_item.id))
+            .await
+            .map_err(|e| {
+                ORDER_ITEM_ADD_FAILURES.inc();
+                let msg = format!("Failed to send event for added order item: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
+            })
     }
 }

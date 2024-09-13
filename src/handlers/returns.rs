@@ -24,6 +24,9 @@ use crate::commands::returns::{
     RefundReturnCommand,
     ProcessReturnCommand,
     DeleteReturnCommand,
+    CreateReturnCommand,
+    RefundReturnCommand,
+    UpdateReturnCommand,
 };
 
 async fn create_return(
@@ -42,10 +45,9 @@ async fn create_return(
 
 async fn approve_return(
     State(return_service): State<Arc<ReturnService>>,
-    Path(return_id): Path<i32>,
+    Path(return_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ServiceError> {
     let command = ApproveReturnCommand { return_id };
-
     let approved_return = command.execute(return_service).await?;
     Ok(Json(approved_return))
 }
@@ -110,6 +112,24 @@ async fn delete_return(
     Ok(Json(deleted_return))
 }
 
+async fn restock_return(
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let command = RestockReturnedItemsCommand { return_id };
+    let restocked_return = command.execute(return_service).await?;
+    Ok(Json(restocked_return))
+}
+
+async fn refund_return(
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let command = RefundReturnCommand { return_id };
+    let refunded_return = command.execute(return_service).await?;
+    Ok(Json(refunded_return))
+}
+
 async fn update_return(
     State(return_service): State<Arc<ReturnService>>,
     Path(id): Path<Uuid>,
@@ -121,6 +141,14 @@ async fn update_return(
         .await
         .map_err(|e| ServiceError::from(ReturnError::from(e)))?;
     Ok(Json(updated_return))
+}
+
+async fn get_return(
+    State(return_service): State<Arc<ReturnService>>,
+    Path(return_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let ret = return_service.get_return(return_id).await?;
+    Ok(Json(ret))
 }
 
 async fn list_returns(
@@ -159,14 +187,12 @@ async fn search_returns(
 
 pub fn returns_routes() -> Router {
     Router::new()
-        .route("/", post(create_return))
-        .route("/:id", get(get_return).put(update_return))
-        .route("/", get(list_returns))
+        .route("/", post(create_return).get(list_returns))
         .route("/search", get(search_returns))
+        .route("/:id", get(get_return).put(update_return).delete(delete_return))
         .route("/:id/approve", post(approve_return))
         .route("/:id/reject", post(reject_return))
         .route("/:id/cancel", post(cancel_return))
-        .route("/:id/delete", delete(delete_return))
         .route("/:id/restock", post(restock_return))
         .route("/:id/refund", post(refund_return))
         .route("/:id/complete", post(complete_return))

@@ -1,17 +1,23 @@
-use async_trait::async_trait;;
-use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use sea_orm::*;
-use crate::{errors::ServiceError, db::DbPool, models::{
-    order_entity, order_entity::Entity as Order,
-    order_item_entity, order_item_entity::Entity as OrderItem,
-    return_item_entity, return_item_entity::Entity as ReturnItem,
-    OrderStatus
-}};
-use crate::events::{Event, EventSender};
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        order_entity::{self, Entity as Order},
+        order_item_entity::{self, Entity as OrderItem},
+        return_item_entity::{self, Entity as ReturnItem},
+        OrderStatus,
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use tracing::{info, error, instrument};
 use prometheus::IntCounter;
+use lazy_static::lazy_static;
+use chrono::{DateTime, Utc};
 
 lazy_static! {
     static ref ORDER_EXCHANGES: IntCounter = 
@@ -25,104 +31,174 @@ lazy_static! {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ExchangeOrderCommand {
-    #[validate(range(min = 1))]
-    pub order_id: i32,
+    pub order_id: Uuid,
 
-    #[validate(length(min = 1))]
-    pub return_items: Vec<return_item_entity::Model>,
+    #[validate(length(min = 1, message = "At least one return item is required"))]
+    pub return_items: Vec<ReturnItemInput>,
 
-    #[validate(length(min = 1))]
-    pub new_items: Vec<order_item_entity::Model>,
+    #[validate(length(min = 1, message = "At least one new item is required"))]
+    pub new_items: Vec<OrderItemInput>,
 }
 
-#[async_trait]
-impl Command for ExchangeOrderCommand {
-    type Result = order_entity::Model;
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct ReturnItemInput {
+    pub product_id: Uuid,
+    #[validate(range(min = 1))]
+    pub quantity: i32,
+}
 
-    #[instrument(skip(db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        let db = db_pool.get().map_err(|e| {
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct OrderItemInput {
+    pub product_id: Uuid,
+    #[validate(range(min = 1))]
+    pub quantity: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExchangeOrderResult {
+    pub id: Uuid,
+    pub status: String,
+    pub exchanged_at: DateTime<Utc>,
+    pub returned_items_count: usize,
+    pub new_items_count: usize,
+}
+
+#[async_trait::async_trait]
+impl Command for ExchangeOrderCommand {
+    type Result = ExchangeOrderResult;
+
+    #[instrument(skip(self, db_pool, event_sender))]
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
+        self.validate().map_err(|e| {
             ORDER_EXCHANGE_FAILURES.inc();
-            error!("Failed to get database connection: {}", e);
-            ServiceError::DatabaseError
+            let msg = format!("Invalid input: {}", e);
+            error!("{}", msg);
+            ServiceError::ValidationError(msg)
         })?;
 
-        let updated_order = db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
-            Box::pin(async move {
-                // Insert return items into return_items table
-                for item in &self.return_items {
-                    let return_item = return_item_entity::ActiveModel {
-                        order_id: Set(self.order_id),
-                        product_id: Set(item.product_id),
-                        quantity: Set(item.quantity),
-                        // Set other fields as needed
-                        ..Default::default()
-                    };
-                    return_item.insert(txn).await.map_err(|e| {
-                        ORDER_EXCHANGE_FAILURES.inc();
-                        error!("Failed to insert return item for order ID {}: {}", self.order_id, e);
-                        ServiceError::DatabaseError
-                    })?;
-                }
+        let db = db_pool.as_ref();
 
-                // Insert new items into order_items table
-                for item in &self.new_items {
-                    let new_item = order_item_entity::ActiveModel {
-                        order_id: Set(self.order_id),
-                        product_id: Set(item.product_id),
-                        quantity: Set(item.quantity),
-                        // Set other fields as needed
-                        ..Default::default()
-                    };
-                    new_item.insert(txn).await.map_err(|e| {
-                        ORDER_EXCHANGE_FAILURES.inc();
-                        error!("Failed to insert new order item for order ID {}: {}", self.order_id, e);
-                        ServiceError::DatabaseError
-                    })?;
-                }
+        let updated_order = self.exchange_order(db).await?;
 
-                // Update order status to Exchanged
-                let order = Order::find_by_id(self.order_id)
-                    .one(txn)
-                    .await
-                    .map_err(|e| {
-                        ORDER_EXCHANGE_FAILURES.inc();
-                        error!("Failed to find order {}: {}", self.order_id, e);
-                        ServiceError::DatabaseError
-                    })?
-                    .ok_or_else(|| {
-                        ORDER_EXCHANGE_FAILURES.inc();
-                        error!("Order {} not found", self.order_id);
-                        ServiceError::NotFound
-                    })?;
-
-                let mut order: order_entity::ActiveModel = order.into();
-                order.status = Set(OrderStatus::Exchanged.to_string());
-
-                let updated_order = order.update(txn).await.map_err(|e| {
-                    ORDER_EXCHANGE_FAILURES.inc();
-                    error!("Failed to update order status to Exchanged for order ID {}: {}", self.order_id, e);
-                    ServiceError::DatabaseError
-                })?;
-
-                Ok(updated_order)
-            })
-        }).await?;
-
-        // Trigger an event
-        if let Err(e) = event_sender.send(Event::OrderExchanged(self.order_id)).await {
-            ORDER_EXCHANGE_FAILURES.inc();
-            error!("Failed to send OrderExchanged event for order ID {}: {}", self.order_id, e);
-            return Err(ServiceError::EventError(e.to_string()));
-        }
+        self.log_and_trigger_event(&event_sender, &updated_order).await?;
 
         ORDER_EXCHANGES.inc();
 
+        Ok(ExchangeOrderResult {
+            id: updated_order.id,
+            status: updated_order.status,
+            exchanged_at: updated_order.updated_at.and_utc(),
+            returned_items_count: self.return_items.len(),
+            new_items_count: self.new_items.len(),
+        })
+    }
+}
+
+impl ExchangeOrderCommand {
+    async fn exchange_order(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<order_entity::Model, ServiceError> {
+        db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
+            Box::pin(async move {
+                self.insert_return_items(txn).await?;
+                self.insert_new_items(txn).await?;
+                self.update_order_status(txn).await
+            })
+        }).await
+    }
+
+    async fn insert_return_items(&self, txn: &DatabaseTransaction) -> Result<(), ServiceError> {
+        for item in &self.return_items {
+            let return_item = return_item_entity::ActiveModel {
+                order_id: Set(self.order_id),
+                product_id: Set(item.product_id),
+                quantity: Set(item.quantity),
+                created_at: Set(Utc::now().naive_utc()),
+                ..Default::default()
+            };
+            return_item.insert(txn).await.map_err(|e| {
+                ORDER_EXCHANGE_FAILURES.inc();
+                let msg = format!("Failed to insert return item for order ID {}: {}", self.order_id, e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
+            })?;
+        }
+        Ok(())
+    }
+
+    async fn insert_new_items(&self, txn: &DatabaseTransaction) -> Result<(), ServiceError> {
+        for item in &self.new_items {
+            let new_item = order_item_entity::ActiveModel {
+                order_id: Set(self.order_id),
+                product_id: Set(item.product_id),
+                quantity: Set(item.quantity),
+                created_at: Set(Utc::now().naive_utc()),
+                ..Default::default()
+            };
+            new_item.insert(txn).await.map_err(|e| {
+                ORDER_EXCHANGE_FAILURES.inc();
+                let msg = format!("Failed to insert new order item for order ID {}: {}", self.order_id, e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
+            })?;
+        }
+        Ok(())
+    }
+
+    async fn update_order_status(&self, txn: &DatabaseTransaction) -> Result<order_entity::Model, ServiceError> {
+        let order = Order::find_by_id(self.order_id)
+            .one(txn)
+            .await
+            .map_err(|e| {
+                ORDER_EXCHANGE_FAILURES.inc();
+                let msg = format!("Failed to find order {}: {}", self.order_id, e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
+            })?
+            .ok_or_else(|| {
+                ORDER_EXCHANGE_FAILURES.inc();
+                let msg = format!("Order {} not found", self.order_id);
+                error!("{}", msg);
+                ServiceError::NotFound(msg)
+            })?;
+
+        let mut order: order_entity::ActiveModel = order.into();
+        order.status = Set(OrderStatus::Exchanged.to_string());
+        order.updated_at = Set(Utc::now().naive_utc());
+
+        order.update(txn).await.map_err(|e| {
+            ORDER_EXCHANGE_FAILURES.inc();
+            let msg = format!("Failed to update order status to Exchanged for order ID {}: {}", self.order_id, e);
+            error!("{}", msg);
+            ServiceError::DatabaseError(msg)
+        })
+    }
+
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        updated_order: &order_entity::Model,
+    ) -> Result<(), ServiceError> {
         info!(
             order_id = %self.order_id,
+            returned_items = %self.return_items.len(),
+            new_items = %self.new_items.len(),
             "Order exchanged successfully"
         );
 
-        Ok(updated_order)
+        event_sender
+            .send(Event::OrderExchanged(self.order_id))
+            .await
+            .map_err(|e| {
+                ORDER_EXCHANGE_FAILURES.inc();
+                let msg = format!("Failed to send event for exchanged order: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
+            })
     }
 }

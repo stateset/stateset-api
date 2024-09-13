@@ -16,6 +16,7 @@ pub mod merge_orders_command;
 pub mod update_shipping_address_command;
 pub mod refund_order_command;
 pub mod update_order_status_command;
+pub mod archive_order_command;
 
 
 // Re-export commands for easier access
@@ -37,3 +38,4 @@ pub use merge_orders_command::MergeOrdersCommand;
 pub use update_shipping_address_command::UpdateShippingAddressCommand;
 pub use refund_order_command::RefundOrderCommand;
 pub use update_order_status_command::UpdateOrderStatusCommand;
+pub use archive_order_command::ArchiveOrderCommand;
