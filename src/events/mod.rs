@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tracing::{info, error, warn};
 use futures::future::{join_all, BoxFuture};
 
+pub type EventSender = broadcast::Sender<Event>;
+
 // Define the various events that can occur in the system.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Event {
@@ -89,3 +91,5 @@ pub async fn process_events(
 
     warn!("Event processing loop has ended.");
 }
+
+pub type EventSender = broadcast::Sender<Event>;

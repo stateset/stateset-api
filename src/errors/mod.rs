@@ -34,6 +34,14 @@ pub enum ApiError {
     ServiceUnavailable(String),
 }
 
+#[derive(Error, Debug)]
+pub enum OrderError {
+    #[error("Order not found")]
+    NotFound,
+    
+    // Add other specific errors related to orders here
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         // Log the error before responding
@@ -48,6 +56,7 @@ impl IntoResponse for ApiError {
             ApiError::UnprocessableEntity(ref message) => (StatusCode::UNPROCESSABLE_ENTITY, "Unprocessable Entity"),
             ApiError::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests"),
             ApiError::ServiceUnavailable(ref message) => (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable"),
+            OrderError::NotFound => (StatusCode::NOT_FOUND, "Order not found"),
         };
 
         let body = Json(json!({
