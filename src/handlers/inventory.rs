@@ -13,13 +13,24 @@ use crate::utils::pagination::PaginationParams;
 use validator::Validate;
 use std::sync::Arc;
 
+use crate::commands::inventory::{
+    CreateProductCommand,
+    UpdateProductCommand,
+    DeleteProductCommand,
+    ReserveInventoryCommand,
+    ReleaseInventoryCommand,
+};
+
 async fn create_product(
     State(pool): State<Arc<DbPool>>,
     AuthenticatedUser(_user): AuthenticatedUser,
     Json(product_info): Json<NewProduct>,
 ) -> Result<impl IntoResponse, ServiceError> {
     product_info.validate()?;
-    let created_product = create_product(&pool, product_info).await?;
+    let created_product = CreateProductCommand {
+        product_info,
+        user_id: user.user_id,
+    }.execute(&pool).await?;
     Ok((axum::http::StatusCode::CREATED, Json(created_product)))
 }
 
@@ -88,6 +99,38 @@ async fn get_low_stock_products(
     Ok(Json(low_stock_products))
 }
 
+async fn get_inventory_movement(
+    State(pool): State<Arc<DbPool>>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> Result<impl IntoResponse, ServiceError> {
+    let inventory_movement = get_inventory_movement(&pool).await?;
+    Ok(Json(inventory_movement))
+}
+
+async fn reserve_inventory(
+    State(pool): State<Arc<DbPool>>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+    Json(command): Json<ReserveInventoryCommand>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let result = ReserveInventoryCommand {
+        command,
+        user_id: user.user_id,
+    }.execute(&pool).await?;
+    Ok(Json(result))
+}
+
+async fn release_inventory(
+    State(pool): State<Arc<DbPool>>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+    Json(command): Json<ReleaseInventoryCommand>,
+) -> Result<impl IntoResponse, ServiceError> {
+    let result = ReleaseInventoryCommand {
+        command,
+        user_id: user.user_id,
+    }.execute(&pool).await?;
+    Ok(Json(result))
+}
+
 pub fn inventory_routes() -> Router {
     Router::new()
         .route("/", post(create_product))
@@ -96,6 +139,9 @@ pub fn inventory_routes() -> Router {
         .route("/:id", get(get_product))
         .route("/:id", put(update_product))
         .route("/:id", delete(delete_product))
-        .route("/adjust-stock", post(adjust_stock))
+        .route("/adjust", post(adjust_stock))
         .route("/low-stock", get(get_low_stock_products))
+        .route("/reserve", post(reserve_inventory))
+        .route("/release", post(release_inventory))
+        .route("/movement", get(get_inventory_movement))
 }

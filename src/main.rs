@@ -197,6 +197,8 @@ async fn main() -> Result<(), AppError> {
         .nest("/manufacturing", handlers::manufacturing::routes())
         .nest("/manufacture_orders", handlers::manufacture_orders::routes())
         .nest("/manufacture_order_line_items", handlers::manufacture_order_line_items::routes())
+        .nest("/asn", handlers::asn::routes())
+        .nest("/asn_line_items", handlers::asn_line_items::routes())
         .nest("/suppliers", handlers::suppliers::routes())
         .nest("/customers", handlers::customers::routes())
         .nest("/procurement", handlers::procurement::routes())
