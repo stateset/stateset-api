@@ -6,6 +6,12 @@ pub mod complete_return_command;
 pub mod refund_return_command;
 pub mod approve_return_command;
 pub mod reject_return_command;
+pub mod receive_return_command;
+pub mod inspect_return_command;
+pub mod reopen_return_command;
+pub mod add_note_command;
+pub mod generate_shipping_label_command;
+pub mod update_return_command;
 
 // Re-export commands for easier access
 pub use create_return_command::InitiateReturnCommand;
@@ -16,3 +22,9 @@ pub use complete_return_command::CompleteReturnCommand;
 pub use refund_return_command::RefundReturnCommand;
 pub use approve_return_command::ApproveReturnCommand;
 pub use reject_return_command::RejectReturnCommand;
+pub use receive_return_command::ReceiveReturnCommand;
+pub use inspect_return_command::InspectReturnCommand;
+pub use reopen_return_command::ReopenReturnCommand;
+pub use add_note_command::AddNoteCommand;
+pub use generate_shipping_label_command::GenerateShippingLabelCommand;
+pub use update_return_command::UpdateReturnCommand;

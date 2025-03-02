@@ -3,22 +3,25 @@ use chrono::{DateTime, Utc};
 use async_trait::async_trait;
 use thiserror::Error;
 use uuid::Uuid;
-use redis::AsyncCommands;
+use redis::{AsyncCommands, Client, RedisResult};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use slog::{info, Logger};
+use tokio::sync::RwLock;
+use slog::{info, warn, Logger};
 use tracing::{instrument, error};
 
+/// Represents a notification
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Notification {
     pub id: Uuid,
     pub user_id: i32,
     pub message: String,
+    #[serde(rename = "type")]
     pub notification_type: NotificationType,
     pub read: bool,
     pub created_at: DateTime<Utc>,
 }
 
+/// Types of notifications
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum NotificationType {
     OrderStatus,
@@ -27,446 +30,275 @@ pub enum NotificationType {
     SystemMessage,
 }
 
+/// Notification service errors
 #[derive(Debug, Error)]
 pub enum NotificationError {
     #[error("Redis error: {0}")]
-    RedisError(#[from] redis::RedisError),
+    Redis(#[from] redis::RedisError),
     #[error("Serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
-    #[error("Notification not found")]
-    NotificationNotFound,
+    Serialization(#[from] serde_json::Error),
+    #[error("Notification not found: {0}")]
+    NotFound(Uuid),
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
-/// Trait defining the notification service operations.
+/// Trait for notification service operations
 #[async_trait]
 pub trait NotificationService: Send + Sync {
-    /// Sends a new notification.
-    async fn send_notification(&self, notification: Notification) -> Result<(), NotificationError>;
-
-    /// Retrieves a list of notifications for a specific user with a limit.
+    async fn send(&self, notification: Notification) -> Result<(), NotificationError>;
     async fn get_user_notifications(&self, user_id: i32, limit: usize) -> Result<Vec<Notification>, NotificationError>;
-
-    /// Marks a specific notification as read.
-    async fn mark_notification_as_read(&self, notification_id: Uuid) -> Result<(), NotificationError>;
-
-    /// Deletes a specific notification.
-    async fn delete_notification(&self, notification_id: Uuid) -> Result<(), NotificationError>;
+    async fn mark_as_read(&self, notification_id: Uuid) -> Result<(), NotificationError>;
+    async fn delete(&self, notification_id: Uuid) -> Result<(), NotificationError>;
 }
 
-/// Implementation of `NotificationService` using Redis as the backend.
+/// Redis-based notification service implementation
+#[derive(Clone)]
 pub struct RedisNotificationService {
-    redis_client: redis::Client,
+    redis: Arc<Client>,
     logger: Logger,
-    // Mutex to ensure thread-safe operations on notification keys.
-    locks: Arc<Mutex<std::collections::HashMap<Uuid, ()>>>,
+    locks: Arc<RwLock<Vec<Uuid>>>, // Simpler lock structure
 }
 
 impl RedisNotificationService {
-    /// Creates a new instance of `RedisNotificationService`.
-    pub fn new(redis_client: redis::Client, logger: Logger) -> Self {
-        Self {
-            redis_client,
+    pub async fn new(redis_url: &str, logger: Logger) -> Result<Self, NotificationError> {
+        let redis = Client::open(redis_url)
+            .map_err(NotificationError::Redis)?;
+        Ok(Self {
+            redis: Arc::new(redis),
             logger,
-            locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        }
+            locks: Arc::new(RwLock::new(Vec::new())),
+        })
     }
 
-    /// Generates the Redis key for storing user notifications.
-    fn get_user_notifications_key(user_id: i32) -> String {
-        format!("user:{}:notifications", user_id)
+    fn user_key(user_id: i32) -> String {
+        format!("notifications:user:{}", user_id)
     }
 
-    /// Generates the Redis key for storing individual notification data.
-    fn get_notification_key(notification_id: Uuid) -> String {
-        format!("notification:{}", notification_id)
+    fn notification_key(id: Uuid) -> String {
+        format!("notification:{}", id)
+    }
+
+    /// Efficiently updates notification in user's list
+    async fn update_user_list(
+        &self,
+        conn: &mut redis::aio::Connection,
+        user_id: i32,
+        notification: &Notification,
+    ) -> Result<(), NotificationError> {
+        let user_key = Self::user_key(user_id);
+        let json = serde_json::to_string(notification)?;
+        
+        // Use sorted set with timestamp as score for better ordering
+        conn.zadd(user_key, json, notification.created_at.timestamp())
+            .await?;
+        
+        // Trim to keep only recent notifications (e.g., last 1000)
+        conn.zremrangebyrank(&user_key, 0, -1001).await?;
+        
+        Ok(())
     }
 }
 
 #[async_trait]
 impl NotificationService for RedisNotificationService {
-    #[instrument(skip(self, notification))]
-    async fn send_notification(&self, notification: Notification) -> Result<(), NotificationError> {
-        let mut conn = self.redis_client.get_async_connection().await?;
-        let notification_json = serde_json::to_string(&notification)?;
+    #[instrument(skip(self, notification), fields(id = %notification.id, user_id = notification.user_id))]
+    async fn send(&self, notification: Notification) -> Result<(), NotificationError> {
+        let mut conn = self.redis.get_async_connection().await?;
+        let json = serde_json::to_string(&notification)?;
 
-        let user_notifications_key = Self::get_user_notifications_key(notification.user_id);
-        let notification_key = Self::get_notification_key(notification.id);
-
-        let pipeline = redis::pipe()
+        let notification_key = Self::notification_key(notification.id);
+        
+        redis::pipe()
             .atomic()
-            .cmd("LPUSH")
-            .arg(&user_notifications_key)
-            .arg(&notification_json)
-            .ignore()
-            .cmd("SET")
-            .arg(&notification_key)
-            .arg(&notification_json)
-            .ignore();
+            .set(&notification_key, &json)
+            .zadd(
+                Self::user_key(notification.user_id),
+                &json,
+                notification.created_at.timestamp()
+            )
+            .query_async(&mut conn)
+            .await?;
 
-        pipeline.query_async(&mut conn).await?;
-
-        info!(
-            self.logger,
-            "Sent notification"; 
-            "notification_id" => %notification.id, 
-            "user_id" => notification.user_id,
-            "notification_type" => format!("{:?}", notification.notification_type)
+        info!(self.logger, "Notification sent"; 
+            "type" => format!("{:?}", notification.notification_type)
         );
-
         Ok(())
     }
 
     #[instrument(skip(self))]
     async fn get_user_notifications(&self, user_id: i32, limit: usize) -> Result<Vec<Notification>, NotificationError> {
-        let mut conn = self.redis_client.get_async_connection().await?;
-        let user_notifications_key = Self::get_user_notifications_key(user_id);
+        let mut conn = self.redis.get_async_connection().await?;
+        let user_key = Self::user_key(user_id);
 
-        // Fetch the latest `limit` notifications
-        let notifications_json: Vec<String> = conn.lrange(&user_notifications_key, 0, (limit - 1) as isize).await?;
+        // Get latest notifications using ZREVRANGE
+        let notifications_json: Vec<String> = conn
+            .zrevrange(user_key, 0, limit as isize - 1)
+            .await?;
 
-        // Deserialize the notifications
-        let notifications: Result<Vec<Notification>, serde_json::Error> = notifications_json
+        let notifications: Vec<Notification> = notifications_json
             .into_iter()
             .map(|json| serde_json::from_str(&json))
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
-        notifications.map_err(NotificationError::SerializationError)
+        info!(self.logger, "Retrieved user notifications"; "count" => notifications.len());
+        Ok(notifications)
     }
 
     #[instrument(skip(self))]
-    async fn mark_notification_as_read(&self, notification_id: Uuid) -> Result<(), NotificationError> {
-        let mut conn = self.redis_client.get_async_connection().await?;
-        let notification_key = Self::get_notification_key(notification_id);
+    async fn mark_as_read(&self, notification_id: Uuid) -> Result<(), NotificationError> {
+        let mut locks = self.locks.write().await;
+        if locks.contains(&notification_id) {
+            return Err(NotificationError::Internal("Concurrent modification".to_string()));
+        }
+        locks.push(notification_id);
 
-        // Acquire a lock to prevent concurrent modifications
-        {
-            let mut locks = self.locks.lock().await;
-            if locks.contains_key(&notification_id) {
-                error!(self.logger, "Concurrent access detected for notification"; "notification_id" => %notification_id);
-                return Err(NotificationError::RedisError(redis::RedisError::from((redis::ErrorKind::IoError, "Concurrent access"))));
-            }
-            locks.insert(notification_id, ());
+        let mut conn = self.redis.get_async_connection().await?;
+        let notification_key = Self::notification_key(notification_id);
+        
+        let json: Option<String> = conn.get(&notification_key).await?;
+        let mut notification = json
+            .map(|j| serde_json::from_str(&j))
+            .transpose()?
+            .ok_or(NotificationError::NotFound(notification_id))?;
+
+        if !notification.read {
+            notification.read = true;
+            let updated_json = serde_json::to_string(&notification)?;
+            
+            let mut pipe = redis::pipe();
+            pipe.atomic()
+                .set(&notification_key, &updated_json)
+                .ignore();
+            
+            self.update_user_list(&mut pipe, notification.user_id, &notification).await?;
+            pipe.query_async(&mut conn).await?;
+            
+            info!(self.logger, "Notification marked as read");
         }
 
-        // Fetch the notification data
-        let notification_json: Option<String> = conn.get(&notification_key).await?;
-
-        let mut notification: Notification = match notification_json {
-            Some(json) => serde_json::from_str(&json)?,
-            None => {
-                // Release the lock before returning
-                let mut locks = self.locks.lock().await;
-                locks.remove(&notification_id);
-                return Err(NotificationError::NotificationNotFound);
-            }
-        };
-
-        if notification.read {
-            // Release the lock
-            let mut locks = self.locks.lock().await;
-            locks.remove(&notification_id);
-            return Ok(());
-        }
-
-        // Update the notification as read
-        notification.read = true;
-        let updated_json = serde_json::to_string(&notification)?;
-
-        // Save the updated notification
-        redis::cmd("SET")
-            .arg(&notification_key)
-            .arg(&updated_json)
-            .query_async(&mut conn)
-            .await?;
-
-        // Also update the notification in the user's notification list
-        let user_notifications_key = Self::get_user_notifications_key(notification.user_id);
-        let updated_notification_json = serde_json::to_string(&notification)?;
-        // Note: This assumes that the list stores notifications in JSON format and allows duplicate entries.
-        // For a more efficient update, consider using a different data structure or indexing mechanism.
-        // Alternatively, you can remove and re-add the updated notification, but it may not maintain order.
-
-        // Release the lock
-        let mut locks = self.locks.lock().await;
-        locks.remove(&notification_id);
-
+        locks.retain(|&id| id != notification_id);
         Ok(())
     }
 
     #[instrument(skip(self))]
-    async fn delete_notification(&self, notification_id: Uuid) -> Result<(), NotificationError> {
-        let mut conn = self.redis_client.get_async_connection().await?;
-        let notification_key = Self::get_notification_key(notification_id);
-
-        // Acquire a lock to prevent concurrent deletions
-        {
-            let mut locks = self.locks.lock().await;
-            if locks.contains_key(&notification_id) {
-                error!(self.logger, "Concurrent access detected for notification deletion"; "notification_id" => %notification_id);
-                return Err(NotificationError::RedisError(redis::RedisError::from((redis::ErrorKind::IoError, "Concurrent access"))));
-            }
-            locks.insert(notification_id, ());
+    async fn delete(&self, notification_id: Uuid) -> Result<(), NotificationError> {
+        let mut locks = self.locks.write().await;
+        if locks.contains(&notification_id) {
+            return Err(NotificationError::Internal("Concurrent modification".to_string()));
         }
+        locks.push(notification_id);
 
-        // Fetch the notification to get the user_id
-        let notification_json: Option<String> = conn.get(&notification_key).await?;
-        let notification: Notification = match notification_json {
-            Some(json) => serde_json::from_str(&json)?,
-            None => {
-                // Release the lock before returning
-                let mut locks = self.locks.lock().await;
-                locks.remove(&notification_id);
-                return Err(NotificationError::NotificationNotFound);
-            }
-        };
+        let mut conn = self.redis.get_async_connection().await?;
+        let notification_key = Self::notification_key(notification_id);
+        
+        let json: Option<String> = conn.get(&notification_key).await?;
+        let notification = json
+            .map(|j| serde_json::from_str(&j))
+            .transpose()?
+            .ok_or(NotificationError::NotFound(notification_id))?;
 
-        // Remove the notification from the user's notification list
-        let user_notifications_key = Self::get_user_notifications_key(notification.user_id);
-        // This assumes that notifications are stored as JSON strings in a list
-        // and that the same notification is not duplicated in the list.
-        let removed: i32 = redis::cmd("LREM")
-            .arg(&user_notifications_key)
-            .arg(0) // Remove all occurrences
-            .arg(&serde_json::to_string(&notification)?)
+        let user_key = Self::user_key(notification.user_id);
+        redis::pipe()
+            .atomic()
+            .del(&notification_key)
+            .zrem(&user_key, serde_json::to_string(&notification)?)
             .query_async(&mut conn)
             .await?;
 
-        // Delete the individual notification key
-        let deleted: i32 = conn.del(&notification_key).await?;
+        locks.retain(|&id| id != notification_id);
+        info!(self.logger, "Notification deleted");
+        Ok(())
+    }
+}
 
-        // Release the lock
-        let mut locks = self.locks.lock().await;
-        locks.remove(&notification_id);
+/// Notification creation helpers
+pub struct NotificationBuilder;
 
-        if deleted == 0 {
-            Err(NotificationError::NotificationNotFound)
-        } else {
-            info!(
-                self.logger,
-                "Deleted notification"; 
-                "notification_id" => %notification_id, 
-                "user_id" => notification.user_id
-            );
-            Ok(())
+impl NotificationBuilder {
+    pub fn order_status(user_id: i32, order_id: &str, status: &str) -> Notification {
+        Notification {
+            id: Uuid::new_v4(),
+            user_id,
+            message: format!("Order {} status updated to: {}", order_id, status),
+            notification_type: NotificationType::OrderStatus,
+            read: false,
+            created_at: Utc::now(),
         }
     }
-}
 
-// Utility functions for creating specific types of notifications.
-
-/// Creates an order status notification for a user.
-pub fn create_order_status_notification(user_id: i32, order_id: String, status: String) -> Notification {
-    Notification {
-        id: Uuid::new_v4(),
-        user_id,
-        message: format!("Your order {} status has been updated to: {}", order_id, status),
-        notification_type: NotificationType::OrderStatus,
-        read: false,
-        created_at: Utc::now(),
-    }
-}
-
-/// Creates a shipment update notification for a user.
-pub fn create_shipment_update_notification(user_id: i32, shipment_id: String, update: String) -> Notification {
-    Notification {
-        id: Uuid::new_v4(),
-        user_id,
-        message: format!("Shipment {} update: {}", shipment_id, update),
-        notification_type: NotificationType::ShipmentUpdate,
-        read: false,
-        created_at: Utc::now(),
+    pub fn shipment_update(user_id: i32, shipment_id: &str, update: &str) -> Notification {
+        Notification {
+            id: Uuid::new_v4(),
+            user_id,
+            message: format!("Shipment {} update: {}", shipment_id, update),
+            notification_type: NotificationType::ShipmentUpdate,
+            read: false,
+            created_at: Utc::now(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mockall::predicate::*;
-    use mockall::mock;
-    use redis::AsyncCommands;
-    use tokio::sync::Mutex as TokioMutex;
-    use std::collections::HashMap;
-    use uuid::Uuid;
-    use slog::Logger;
-    use slog::Drain;
-    use serde_json::json;
+    use redis::aio::Connection;
+    use slog::{o, Drain, Logger};
+    use slog_term::TermDecorator;
+    use tokio;
 
-    // Mock Redis for testing purposes
-    struct MockRedis {
-        data: Arc<TokioMutex<HashMap<String, Vec<String>>>>,
+    fn setup_logger() -> Logger {
+        let decorator = TermDecorator::new().build();
+        let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+        Logger::root(drain, o!())
     }
 
-    impl MockRedis {
-        fn new() -> Self {
-            Self {
-                data: Arc::new(TokioMutex::new(HashMap::new())),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl redis::AsyncCommands for MockRedis {
-        async fn get<T>(&mut self, key: &str) -> redis::RedisResult<T>
-        where
-            T: redis::FromRedisValue,
-        {
-            let data = self.data.lock().await;
-            if let Some(values) = data.get(key) {
-                if let Some(first) = values.first() {
-                    let value = serde_json::from_str(first).map_err(|e| {
-                        redis::RedisError::from((redis::ErrorKind::TypeError, "Failed to deserialize", e.to_string()))
-                    })?;
-                    Ok(value)
-                } else {
-                    Ok(serde_json::from_str("null").unwrap())
-                }
-            } else {
-                Ok(serde_json::from_str("null").unwrap())
-            }
-        }
-
-        async fn set<K: redis::ToRedisArgs, V: redis::ToRedisArgs>(&mut self, key: K, value: V) -> redis::RedisResult<()> {
-            let mut data = self.data.lock().await;
-            let key_str = std::str::from_utf8(&key.to_redis_args()[0]).unwrap().to_string();
-            let value_str = std::str::from_utf8(&value.to_redis_args()[0]).unwrap().to_string();
-            data.insert(key_str, vec![value_str]);
-            Ok(())
-        }
-
-        async fn lrange<K: redis::ToRedisArgs, V: redis::FromRedisValue>(&mut self, key: K, start: isize, stop: isize) -> redis::RedisResult<Vec<V>> {
-            let data = self.data.lock().await;
-            let key_str = std::str::from_utf8(&key.to_redis_args()[0]).unwrap();
-            if let Some(values) = data.get(key_str) {
-                let slice = if stop >= 0 {
-                    &values[start as usize..=stop as usize]
-                } else {
-                    &values[start as usize..]
-                };
-                let deserialized = slice.iter().map(|v| serde_json::from_str(v)).collect::<Result<Vec<V>, _>>()?;
-                Ok(deserialized)
-            } else {
-                Ok(Vec::new())
-            }
-        }
-
-        async fn lpush<K: redis::ToRedisArgs, V: redis::ToRedisArgs>(&mut self, key: K, value: V) -> redis::RedisResult<i64> {
-            let mut data = self.data.lock().await;
-            let key_str = std::str::from_utf8(&key.to_redis_args()[0]).unwrap().to_string();
-            let value_str = std::str::from_utf8(&value.to_redis_args()[0]).unwrap().to_string();
-            let entry = data.entry(key_str).or_insert_with(Vec::new);
-            entry.insert(0, value_str);
-            Ok(entry.len() as i64)
-        }
-
-        async fn del<K: redis::ToRedisArgs>(&mut self, key: K) -> redis::RedisResult<i32> {
-            let mut data = self.data.lock().await;
-            let key_str = std::str::from_utf8(&key.to_redis_args()[0]).unwrap().to_string();
-            let removed = data.remove(&key_str).map(|_| 1).unwrap_or(0);
-            Ok(removed)
-        }
-
-        async fn eval<K: redis::ToRedisArgs, KEYS: redis::ToRedisArgs, ARGS: redis::ToRedisArgs>(&mut self, script: K, keys: &[KEYS], args: &[ARGS]) -> redis::RedisResult<usize> {
-            // For simplicity, we'll mock the Lua script execution related to rate limiting
-            // Since this is a notification service, we don't need to implement eval
-            Ok(0)
-        }
-
-        // Implement other required methods as no-ops or default
-        // ...
+    async fn setup_service() -> (RedisNotificationService, Connection) {
+        let logger = setup_logger();
+        let client = Client::open("redis://localhost:6379").unwrap();
+        let conn = client.get_async_connection().await.unwrap();
+        let service = RedisNotificationService::new("redis://localhost:6379", logger).await.unwrap();
+        (service, conn)
     }
 
     #[tokio::test]
-    async fn test_send_notification() {
-        // Setup logger
-        let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-        let logger = Logger::root(drain, slog::o!());
+    async fn test_notification_lifecycle() {
+        let (service, mut conn) = setup_service().await;
+        let notification = NotificationBuilder::order_status(1, "ORDER123", "Shipped");
 
-        // Setup mock Redis client
-        let mock_redis = MockRedis::new();
-        let client = redis::Client::open("redis://127.0.0.1/").unwrap(); // URL is irrelevant for the mock
-
-        // Initialize the service
-        let service = RedisNotificationService {
-            redis_client: client,
-            logger: logger.clone(),
-            locks: Arc::new(Mutex::new(HashMap::new())),
-        };
-
-        // Create a notification
-        let notification = create_order_status_notification(1, "ORDER123".to_string(), "Shipped".to_string());
-
-        // Send the notification
-        let result = service.send_notification(notification.clone()).await;
-        assert!(result.is_ok());
-
-        // Retrieve notifications
+        // Send notification
+        service.send(notification.clone()).await.unwrap();
+        
+        // Get notifications
         let notifications = service.get_user_notifications(1, 10).await.unwrap();
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].message, notification.message);
+        assert!(!notifications[0].read);
+
+        // Mark as read
+        service.mark_as_read(notification.id).await.unwrap();
+        let notifications = service.get_user_notifications(1, 10).await.unwrap();
+        assert!(notifications[0].read);
+
+        // Delete
+        service.delete(notification.id).await.unwrap();
+        let notifications = service.get_user_notifications(1, 10).await.unwrap();
+        assert_eq!(notifications.len(), 0);
+
+        // Cleanup
+        conn.del(Self::user_key(1)).await.unwrap();
+        conn.del(Self::notification_key(notification.id)).await.unwrap();
     }
 
     #[tokio::test]
-    async fn test_mark_notification_as_read() {
-        // Setup logger
-        let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-        let logger = Logger::root(drain, slog::o!());
+    async fn test_not_found() {
+        let (service, mut conn) = setup_service().await;
+        let fake_id = Uuid::new_v4();
 
-        // Setup mock Redis client
-        let mock_redis = MockRedis::new();
-        let client = redis::Client::open("redis://127.0.0.1/").unwrap(); // URL is irrelevant for the mock
+        let result = service.mark_as_read(fake_id).await;
+        assert!(matches!(result, Err(NotificationError::NotFound(_))));
 
-        // Initialize the service
-        let service = RedisNotificationService {
-            redis_client: client.clone(),
-            logger: logger.clone(),
-            locks: Arc::new(Mutex::new(HashMap::new())),
-        };
-
-        // Create and send a notification
-        let notification = create_order_status_notification(1, "ORDER123".to_string(), "Shipped".to_string());
-        service.send_notification(notification.clone()).await.unwrap();
-
-        // Mark the notification as read
-        let result = service.mark_notification_as_read(notification.id).await;
-        assert!(result.is_ok());
-
-        // Retrieve the notification to verify it's marked as read
-        let user_notifications = service.get_user_notifications(1, 10).await.unwrap();
-        assert_eq!(user_notifications.len(), 1);
-        assert!(user_notifications[0].read);
-    }
-
-    #[tokio::test]
-    async fn test_delete_notification() {
-        // Setup logger
-        let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-        let logger = Logger::root(drain, slog::o!());
-
-        // Setup mock Redis client
-        let mock_redis = MockRedis::new();
-        let client = redis::Client::open("redis://127.0.0.1/").unwrap(); // URL is irrelevant for the mock
-
-        // Initialize the service
-        let service = RedisNotificationService {
-            redis_client: client.clone(),
-            logger: logger.clone(),
-            locks: Arc::new(Mutex::new(HashMap::new())),
-        };
-
-        // Create and send a notification
-        let notification = create_order_status_notification(1, "ORDER123".to_string(), "Shipped".to_string());
-        service.send_notification(notification.clone()).await.unwrap();
-
-        // Delete the notification
-        let result = service.delete_notification(notification.id).await;
-        assert!(result.is_ok());
-
-        // Attempt to retrieve notifications
-        let user_notifications = service.get_user_notifications(1, 10).await.unwrap();
-        assert_eq!(user_notifications.len(), 1); // Still in the list
-        // Depending on implementation, the notification might still exist in the list. Consider removing it as well.
+        let result = service.delete(fake_id).await;
+        assert!(matches!(result, Err(NotificationError::NotFound(_))));
     }
 }

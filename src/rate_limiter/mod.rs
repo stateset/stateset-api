@@ -1,217 +1,275 @@
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, Response},
     response::IntoResponse,
 };
-use redis::AsyncCommands;
-use slog::{info, Logger};
+use redis::{AsyncCommands, Script};
+use slog::{info, warn, Logger};
 use std::{
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 use thiserror::Error;
-use tokio::sync::Mutex;
 use tower::{Layer, Service};
+use tokio::sync::Semaphore;
+use futures::future::BoxFuture;
+use std::task::{Context as TaskContext, Poll};
 
-// Define a custom error type for rate limiting
+/// Rate limiting errors
 #[derive(Error, Debug)]
 pub enum RateLimitError {
-    #[error("Redis error: {0}")]
-    RedisError(#[from] redis::RedisError),
-
+    #[error("Redis connection error: {0}")]
+    RedisConnection(#[from] redis::RedisError),
     #[error("Rate limit exceeded")]
-    RateLimitExceeded,
+    Exceeded,
+    #[error("Internal rate limiter error: {0}")]
+    Internal(String),
 }
 
-// RateLimiter struct encapsulating Redis connection and rate limiting parameters
+impl IntoResponse for RateLimitError {
+    fn into_response(self) -> Response<Body> {
+        match self {
+            Self::Exceeded => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "Rate limit exceeded".to_string(),
+            ).into_response(),
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ).into_response(),
+        }
+    }
+}
+
+/// Configuration for rate limiter
+#[derive(Clone)]
+pub struct RateLimitConfig {
+    max_requests: usize,
+    window: Duration,
+    key_prefix: String,
+}
+
+/// Rate limiter implementation
+#[derive(Clone)]
 pub struct RateLimiter {
     redis: Arc<redis::aio::ConnectionManager>,
-    key_prefix: String,
-    max_requests: usize,
-    window_seconds: usize,
+    config: RateLimitConfig,
     logger: Logger,
-    // To prevent multiple Lua scripts from running simultaneously for the same key
-    locks: Arc<Mutex<std::collections::HashMap<String, ()>>>,
+    semaphore: Arc<Semaphore>,
+    script: Arc<Script>,
 }
 
 impl RateLimiter {
-    /// Creates a new RateLimiter instance.
+    /// Creates a new RateLimiter instance
     pub async fn new(
         redis_url: &str,
         key_prefix: &str,
         max_requests: usize,
-        window_seconds: usize,
+        window: Duration,
         logger: Logger,
-    ) -> Result<Self, redis::RedisError> {
-        let client = redis::Client::open(redis_url)?;
-        let conn_manager = redis::aio::ConnectionManager::new(client).await?;
+    ) -> Result<Self, RateLimitError> {
+        let client = redis::Client::open(redis_url)
+            .map_err(RateLimitError::RedisConnection)?;
+        let redis = redis::aio::ConnectionManager::new(client)
+            .await
+            .map_err(RateLimitError::RedisConnection)?;
 
-        Ok(Self {
-            redis: Arc::new(conn_manager),
-            key_prefix: key_prefix.to_string(),
-            max_requests,
-            window_seconds,
-            logger,
-            locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        })
-    }
-
-    /// Checks if the given key has exceeded the rate limit.
-    pub async fn is_rate_limited(&self, key: &str) -> Result<bool, RateLimitError> {
-        let full_key = format!("{}:{}", self.key_prefix, key);
-        let redis = self.redis.clone();
-
-        // Acquire a lock for the specific key to prevent race conditions
-        {
-            let mut locks = self.locks.lock().await;
-            if locks.contains_key(&full_key) {
-                // Another request is processing this key, consider rate limited to prevent excessive load
-                info!(
-                    self.logger,
-                    "Concurrent rate limit check for key"; "key" => &full_key
-                );
-                return Ok(true);
-            }
-            locks.insert(full_key.clone(), ());
-        }
-
-        // Define the Lua script for atomic INCR and EXPIRE
-        let lua_script = r#"
-            local current
-            current = redis.call("INCR", KEYS[1])
+        let script = Script::new(r#"
+            local current = redis.call("INCR", KEYS[1])
             if tonumber(current) == 1 then
                 redis.call("EXPIRE", KEYS[1], ARGV[1])
             end
             return current
-        "#;
+        "#);
 
-        // Execute the Lua script
-        let current: usize = redis
-            .eval(lua_script, &[&full_key], &[self.window_seconds.to_string()])
-            .await?;
+        Ok(Self {
+            redis: Arc::new(redis),
+            config: RateLimitConfig {
+                max_requests,
+                window,
+                key_prefix: key_prefix.to_string(),
+            },
+            logger,
+            semaphore: Arc::new(Semaphore::new(100)), // Limit concurrent evaluations
+            script: Arc::new(script),
+        })
+    }
 
-        // Release the lock
-        {
-            let mut locks = self.locks.lock().await;
-            locks.remove(&full_key);
-        }
+    /// Checks if a key exceeds the rate limit
+    pub async fn check(&self, key: &str) -> Result<bool, RateLimitError> {
+        let full_key = format!("{}:{}", self.config.key_prefix, key);
+        let _permit = self.semaphore.acquire().await
+            .map_err(|e| RateLimitError::Internal(e.to_string()))?;
 
-        if current > self.max_requests {
-            info!(
-                self.logger,
-                "Rate limit exceeded"; "key" => key, "current" => current
+        let current: usize = self.script
+            .key(&full_key)
+            .arg(self.config.window.as_secs().to_string())
+            .invoke_async(&mut self.redis.clone())
+            .await
+            .map_err(RateLimitError::RedisConnection)?;
+
+        let exceeded = current > self.config.max_requests;
+        if exceeded {
+            warn!(self.logger, "Rate limit exceeded";
+                "key" => key,
+                "current" => current,
+                "max" => self.config.max_requests
             );
-            Ok(true)
         } else {
-            Ok(false)
+            info!(self.logger, "Rate limit check";
+                "key" => key,
+                "current" => current,
+                "max" => self.config.max_requests
+            );
         }
+
+        Ok(exceeded)
     }
 }
 
-// Implement Clone for RateLimiter to allow sharing across threads
-impl Clone for RateLimiter {
-    fn clone(&self) -> Self {
-        Self {
-            redis: Arc::clone(&self.redis),
-            key_prefix: self.key_prefix.clone(),
-            max_requests: self.max_requests,
-            window_seconds: self.window_seconds,
-            logger: self.logger.clone(),
-            locks: Arc::clone(&self.locks),
-        }
-    }
-}
-
-/// Middleware layer for rate limiting
-pub struct RateLimitLayer {
+/// Rate limit middleware layer
+#[derive(Clone)]
+pub struct RateLimitLayer<F> {
     limiter: Arc<RateLimiter>,
-    key_extractor: Arc<dyn Fn(&Request<Body>) -> String + Send + Sync>,
+    key_extractor: F,
 }
 
-impl RateLimitLayer {
-    /// Creates a new RateLimitLayer
-    pub fn new<F>(limiter: Arc<RateLimiter>, key_extractor: F) -> Self
-    where
-        F: Fn(&Request<Body>) -> String + Send + Sync + 'static,
-    {
-        Self {
-            limiter,
-            key_extractor: Arc::new(key_extractor),
-        }
+impl<F> RateLimitLayer<F>
+where
+    F: Fn(&Request<Body>) -> String + Send + Sync + 'static,
+{
+    pub fn new(limiter: Arc<RateLimiter>, key_extractor: F) -> Self {
+        Self { limiter, key_extractor }
     }
 }
 
-impl<S> Layer<S> for RateLimitLayer {
-    type Service = RateLimitMiddleware<S>;
+impl<S, F> Layer<S> for RateLimitLayer<F>
+where
+    F: Fn(&Request<Body>) -> String + Send + Sync + 'static,
+{
+    type Service = RateLimitService<S, F>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        RateLimitMiddleware {
+        RateLimitService {
             inner,
-            limiter: Arc::clone(&self.limiter),
-            key_extractor: Arc::clone(&self.key_extractor),
+            limiter: self.limiter.clone(),
+            key_extractor: self.key_extractor.clone(),
         }
     }
 }
 
-/// Middleware service that enforces rate limiting
-pub struct RateLimitMiddleware<S> {
+/// Rate limit service implementation
+#[derive(Clone)]
+pub struct RateLimitService<S, F> {
     inner: S,
     limiter: Arc<RateLimiter>,
-    key_extractor: Arc<dyn Fn(&Request<Body>) -> String + Send + Sync>,
+    key_extractor: F,
 }
 
-impl<S, B> Service<Request<B>> for RateLimitMiddleware<S>
+impl<S, F> Service<Request<Body>> for RateLimitService<S, F>
 where
-    S: Service<Request<B>, Response = axum::response::Response> + Send + 'static,
+    S: Service<Request<Body>, Response = Response<Body>, Error = axum::Error> + Send + Clone + 'static,
     S::Future: Send + 'static,
+    F: Fn(&Request<Body>) -> String + Send + Sync + 'static,
 {
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = tokio::task::JoinHandle<Result<Self::Response, Self::Error>>;
+    type Response = Response<Body>;
+    type Error = axum::Error;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, cx: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<B>) -> Self::Future {
-        let limiter = Arc::clone(&self.limiter);
-        let key_extractor = Arc::clone(&self.key_extractor);
-        let mut inner = self.inner.call(req);
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let limiter = self.limiter.clone();
+        let key = (self.key_extractor)(&req);
+        let inner = self.inner.clone();
 
-        tokio::spawn(async move {
-            let req = inner.get_ref();
-            let key = (key_extractor)(req);
-
-            match limiter.is_rate_limited(&key).await {
-                Ok(true) => {
-                    // Rate limit exceeded
-                    Ok(
-                        (StatusCode::TOO_MANY_REQUESTS, "Too many requests")
-                            .into_response(),
-                    )
-                }
-                Ok(false) => {
-                    // Proceed to the inner service
-                    inner.await
-                }
+        Box::pin(async move {
+            match limiter.check(&key).await {
+                Ok(true) => Ok(RateLimitError::Exceeded.into_response()),
+                Ok(false) => inner.call(req).await,
                 Err(e) => {
-                    // Handle rate limiter error, log and respond with 500
-                    info!(
-                        limiter.logger,
-                        "Rate limiter error"; "error" => %e
-                    );
-                    Ok(
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Internal Server Error",
-                        )
-                            .into_response(),
-                    )
+                    warn!(limiter.logger, "Rate limiter error"; "error" => %e);
+                    Ok(e.into_response())
                 }
             }
         })
+    }
+}
+
+/// Default key extractor using client IP
+pub fn ip_key_extractor(req: &Request<Body>) -> String {
+    req.headers()
+        .get("X-Forwarded-For")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{routing::get, Router};
+    use slog::{o, Drain, Logger};
+    use slog_term::TermDecorator;
+    use slog_async::Async;
+    use tower::ServiceExt;
+    use tokio::time::{sleep, Duration};
+
+    fn setup_logger() -> Logger {
+        let decorator = TermDecorator::new().build();
+        let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+        let drain = Async::new(drain).build().fuse();
+        Logger::root(drain, o!())
+    }
+
+    async fn dummy_handler() -> impl IntoResponse {
+        "OK"
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter() {
+        let logger = setup_logger();
+        let limiter = RateLimiter::new(
+            "redis://localhost:6379",
+            "test",
+            2, // 2 requests
+            Duration::from_secs(1),
+            logger,
+        ).await.unwrap();
+
+        let layer = RateLimitLayer::new(
+            Arc::new(limiter),
+            |_| "test_key".to_string(),
+        );
+
+        let app = Router::new()
+            .route("/", get(dummy_handler))
+            .layer(layer);
+
+        let req = Request::builder()
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+
+        // First request - should pass
+        let resp = app.clone().oneshot(req.clone()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Second request - should pass
+        let resp = app.clone().oneshot(req.clone()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Third request - should be rate limited
+        let resp = app.clone().oneshot(req.clone()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+
+        // Wait for window to expire
+        sleep(Duration::from_secs(2)).await;
+
+        // After window - should pass again
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

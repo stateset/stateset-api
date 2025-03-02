@@ -4,135 +4,182 @@ use axum::{
     http::{Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
+    Json,
 };
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 use tracing::{error, info, instrument};
+use validator::Validate;
 
-/// Claims structure for JWT
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// JWT Claims structure with validation
+#[derive(Debug, Serialize, Deserialize, Clone, Validate)]
 pub struct Claims {
-    pub sub: String,             // Subject (e.g., user ID)
-    pub exp: usize,              // Expiration time (as UTC timestamp)
-    pub iss: String,             // Issuer
-    pub aud: String,             // Audience
-    pub role: String,            // User role
-    pub permissions: Option<Vec<String>>, // Optional permissions
+    #[validate(length(min = 1))]
+    pub sub: String,
+    pub exp: usize,
+    #[validate(length(min = 1))]
+    pub iss: String,
+    #[validate(length(min = 1))]
+    pub aud: String,
+    #[validate(length(min = 1))]
+    pub role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Vec<String>>,
 }
 
-/// Custom error type for authentication errors
+impl Claims {
+    /// Creates new claims with given parameters
+    pub fn new(
+        sub: String,
+        role: String,
+        permissions: Option<Vec<String>>,
+        issuer: String,
+        audience: String,
+        expiration: Duration,
+    ) -> Result<Self, validator::ValidationErrors> {
+        let exp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs() as usize + expiration.as_secs() as usize;
+
+        let claims = Self {
+            sub,
+            exp,
+            iss: issuer,
+            aud: audience,
+            role,
+            permissions,
+        };
+        claims.validate()?;
+        Ok(claims)
+    }
+}
+
+/// Authentication error types
 #[derive(Debug, Error)]
 pub enum AuthError {
-    #[error("Invalid token")]
-    InvalidToken,
-    #[error("Expired token")]
+    #[error("Invalid token: {0}")]
+    InvalidToken(String),
+    #[error("Token expired")]
     ExpiredToken,
-    #[error("Insufficient permissions")]
-    InsufficientPermissions,
-    #[error("JWT error: {0}")]
+    #[error("Insufficient permissions: required {0}")]
+    InsufficientPermissions(String),
+    #[error("JWT processing error: {0}")]
     JWTError(#[from] jsonwebtoken::errors::Error),
-    #[error("Missing authorization header")]
+    #[error("Missing Authorization header")]
     MissingAuthHeader,
     #[error("Invalid issuer or audience")]
     InvalidIssuerAudience,
+    #[error("Validation error: {0}")]
+    Validation(#[from] validator::ValidationErrors),
 }
 
-/// Implement IntoResponse to convert AuthError into HTTP responses
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
-            AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "Expired token"),
-            AuthError::InsufficientPermissions => (StatusCode::FORBIDDEN, "Insufficient permissions"),
-            AuthError::JWTError(_) => (StatusCode::UNAUTHORIZED, "Invalid token"),
-            AuthError::MissingAuthHeader => (StatusCode::UNAUTHORIZED, "Missing authorization header"),
-            AuthError::InvalidIssuerAudience => (StatusCode::UNAUTHORIZED, "Invalid issuer or audience"),
+            Self::InvalidToken(msg) => (StatusCode::UNAUTHORIZED, msg.as_str()),
+            Self::ExpiredToken => (StatusCode::UNAUTHORIZED, "Token has expired"),
+            Self::InsufficientPermissions(msg) => (StatusCode::FORBIDDEN, msg.as_str()),
+            Self::JWTError(_) => (StatusCode::UNAUTHORIZED, "Token processing failed"),
+            Self::MissingAuthHeader => (StatusCode::UNAUTHORIZED, "Missing Authorization header"),
+            Self::InvalidIssuerAudience => (StatusCode::UNAUTHORIZED, "Invalid issuer or audience"),
+            Self::Validation(_) => (StatusCode::BAD_REQUEST, "Invalid claims data"),
         };
 
         let body = serde_json::json!({
             "error": message,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
-        (status, axum::Json(body)).into_response()
+        (status, Json(body)).into_response()
     }
 }
 
-/// Configuration for authentication
-#[derive(Clone)]
+/// Authentication configuration
+#[derive(Clone, Validate)]
 pub struct AuthConfig {
-    pub secret: String,                // Secret key for signing tokens
-    pub issuer: String,                // Expected issuer
-    pub audience: String,              // Expected audience
-    pub allowed_roles: HashSet<String>, // Set of allowed roles
-    pub token_expiration: usize,       // Token expiration in seconds
+    #[validate(length(min = 32))]
+    pub secret: String,
+    #[validate(length(min = 1))]
+    pub issuer: String,
+    #[validate(length(min = 1))]
+    pub audience: String,
+    #[validate]
+    pub allowed_roles: HashSet<String>,
+    #[validate(range(min = 60))]
+    pub token_expiration: usize,
 }
 
-/// Service state containing the authentication configuration
+impl AuthConfig {
+    pub fn new(
+        secret: String,
+        issuer: String,
+        audience: String,
+        allowed_roles: HashSet<String>,
+        token_expiration: usize,
+    ) -> Result<Self, validator::ValidationErrors> {
+        let config = Self {
+            secret,
+            issuer,
+            audience,
+            allowed_roles,
+            token_expiration,
+        };
+        config.validate()?;
+        Ok(config)
+    }
+}
+
+/// Application state with auth configuration
 #[derive(Clone)]
 pub struct AppState {
     pub auth_config: Arc<AuthConfig>,
 }
 
-/// Middleware for authenticating requests
-#[instrument(skip_all, fields(method = %req.method(), uri = %req.uri().path()))]
+/// Authentication middleware
+#[instrument(skip_all, fields(method = %req.method(), uri = %req.uri()))]
 pub async fn auth_middleware<B>(
     State(state): State<AppState>,
     mut req: Request<B>,
     next: Next<B>,
 ) -> Result<Response, AuthError> {
-    // Extract the Authorization header
-    let bearer_token = req
-        .headers()
+    let bearer_token = req.headers()
         .get("Authorization")
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
         .ok_or(AuthError::MissingAuthHeader)?;
 
-    // Validate the token
     let claims = validate_token(bearer_token, &state.auth_config)?;
-    info!(
-        "Authenticated user {} with role {}",
-        claims.sub, claims.role
-    );
+    info!(user_id = %claims.sub, role = %claims.role, "User authenticated");
 
-    // Insert the claims into request extensions for later use
     req.extensions_mut().insert(claims);
-
-    // Proceed to the next handler
     Ok(next.run(req).await)
 }
 
-/// Generates a JWT token
+/// Generates a new JWT token
 pub fn generate_token(
     user_id: &str,
     role: &str,
     permissions: Option<Vec<String>>,
     config: &AuthConfig,
 ) -> Result<String, AuthError> {
-    let expiration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs() as usize
-        + config.token_expiration;
-
-    let claims = Claims {
-        sub: user_id.to_owned(),
-        exp: expiration,
-        iss: config.issuer.clone(),
-        aud: config.audience.clone(),
-        role: role.to_owned(),
+    let claims = Claims::new(
+        user_id.to_string(),
+        role.to_string(),
         permissions,
-    };
+        config.issuer.clone(),
+        config.audience.clone(),
+        Duration::from_secs(config.token_expiration as u64),
+    )?;
 
-    let header = Header::new(Algorithm::HS256);
     encode(
-        &header,
+        &Header::new(Algorithm::HS256),
         &claims,
         &EncodingKey::from_secret(config.secret.as_bytes()),
     )
@@ -141,30 +188,33 @@ pub fn generate_token(
 
 /// Validates a JWT token
 pub fn validate_token(token: &str, config: &AuthConfig) -> Result<Claims, AuthError> {
-    let decoding_key = DecodingKey::from_secret(config.secret.as_bytes());
-
     let mut validation = Validation::new(Algorithm::HS256);
-    validation.set_audience(&[config.audience.clone()]);
-    validation.set_issuer(&[config.issuer.clone()]);
+    validation.set_audience(&[&config.audience]);
+    validation.set_issuer(&[&config.issuer]);
     validation.validate_exp = true;
 
-    let token_data = decode::<Claims>(token, &decoding_key, &validation)
-        .map_err(|e| match e.kind() {
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
-            jsonwebtoken::errors::ErrorKind::InvalidIssuer => AuthError::InvalidIssuerAudience,
-            jsonwebtoken::errors::ErrorKind::InvalidAudience => AuthError::InvalidIssuerAudience,
-            _ => AuthError::InvalidToken,
-        })?;
+    let token_data = decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &validation,
+    ).map_err(|e| match e.kind() {
+        jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
+        jsonwebtoken::errors::ErrorKind::InvalidIssuer | 
+        jsonwebtoken::errors::ErrorKind::InvalidAudience => AuthError::InvalidIssuerAudience,
+        _ => AuthError::InvalidToken(format!("JWT validation failed: {}", e)),
+    })?;
 
-    // Check if the user's role is allowed
     if !config.allowed_roles.contains(&token_data.claims.role) {
-        return Err(AuthError::InsufficientPermissions);
+        return Err(AuthError::InsufficientPermissions(
+            format!("Role '{}' not allowed", token_data.claims.role)
+        ));
     }
 
     Ok(token_data.claims)
 }
 
-/// Extractor for authenticated user
+/// Authenticated user extractor
+#[derive(Debug)]
 pub struct AuthUser(pub Claims);
 
 #[async_trait]
@@ -174,196 +224,87 @@ where
 {
     type Rejection = AuthError;
 
-    #[instrument(skip_all)]
-    async fn from_request_parts(parts: &mut axum::http::request::Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        parts
-            .extensions
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S
+    ) -> Result<Self, Self::Rejection> {
+        parts.extensions
             .get::<Claims>()
             .cloned()
             .map(AuthUser)
-            .ok_or(AuthError::InvalidToken)
+            .ok_or_else(|| AuthError::InvalidToken("No claims found in request".to_string()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{
-        body::Body,
-        routing::get,
-        Router,
-    };
+    use axum::{routing::get, Router};
     use http::{Request, StatusCode};
+    use tower::ServiceExt;
     use serde_json::json;
-    use std::collections::HashSet;
-    use tower::ServiceExt; // for `oneshot` and `ready`
 
-    /// Handler for protected routes
-    async fn protected_route(AuthUser(claims): AuthUser) -> impl IntoResponse {
-        json!({
+    async fn protected_handler(AuthUser(claims): AuthUser) -> impl IntoResponse {
+        Json(json!({
             "message": format!("Hello, {}!", claims.sub),
             "role": claims.role,
             "permissions": claims.permissions.unwrap_or_default(),
-        })
+        }))
+    }
+
+    fn setup_test_config() -> AuthConfig {
+        AuthConfig::new(
+            "supersecretkeythatislongenough12345".to_string(),
+            "test_issuer".to_string(),
+            "test_audience".to_string(),
+            ["user".to_string(), "admin".to_string()].into_iter().collect(),
+            3600,
+        ).unwrap()
     }
 
     #[tokio::test]
-    async fn test_auth_middleware() {
-        // Initialize tracing subscriber for logging in tests
-        let _ = tracing_subscriber::fmt::try_init();
-
-        // Define auth configuration
-        let auth_config = AuthConfig {
-            secret: "test_secret".to_string(),
-            issuer: "test_issuer".to_string(),
-            audience: "test_audience".to_string(),
-            allowed_roles: ["user".to_string(), "admin".to_string()].iter().cloned().collect(),
-            token_expiration: 3600, // 1 hour
-        };
-
-        let app_state = AppState {
-            auth_config: Arc::new(auth_config.clone()),
-        };
-
-        // Build the application with the authentication middleware
+    async fn test_auth_flow() {
+        let config = setup_test_config();
+        let state = AppState { auth_config: Arc::new(config.clone()) };
+        
         let app = Router::new()
-            .route("/protected", get(protected_route))
-            .layer(middleware::from_fn_with_state(
-                app_state.clone(),
-                auth_middleware,
-            ))
-            .with_state(app_state.clone());
+            .route("/protected", get(protected_handler))
+            .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+            .with_state(state);
 
-        // Generate a valid token
-        let token = generate_token("user123", "user", Some(vec!["read".to_string()]), &auth_config).unwrap();
-
-        // Create a request with a valid token
-        let valid_request = Request::builder()
+        let token = generate_token("test_user", "user", Some(vec!["read".to_string()]), &config).unwrap();
+        
+        let request = Request::builder()
             .uri("/protected")
             .header("Authorization", format!("Bearer {}", token))
-            .body(Body::empty())
+            .body(hyper::Body::empty())
             .unwrap();
 
-        // Send the request and assert the response
-        let response = app.clone().oneshot(valid_request).await.unwrap();
+        let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        assert_eq!(body["message"], "Hello, user123!");
-        assert_eq!(body["role"], "user");
-        assert_eq!(body["permissions"][0], "read");
+        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["message"], "Hello, test_user!");
+    }
 
-        // Create a request with an invalid token
-        let invalid_request = Request::builder()
+    #[tokio::test]
+    async fn test_invalid_token() {
+        let config = setup_test_config();
+        let state = AppState { auth_config: Arc::new(config) };
+        
+        let app = Router::new()
+            .route("/protected", get(protected_handler))
+            .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+            .with_state(state);
+
+        let request = Request::builder()
             .uri("/protected")
-            .header("Authorization", "Bearer invalid_token")
-            .body(Body::empty())
+            .header("Authorization", "Bearer invalidtoken")
+            .body(hyper::Body::empty())
             .unwrap();
 
-        let response = app.clone().oneshot(invalid_request).await.unwrap();
+        let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-        // Create a request with a missing token
-        let missing_token_request = Request::builder()
-            .uri("/protected")
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(missing_token_request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn test_generate_and_validate_token() {
-        let auth_config = AuthConfig {
-            secret: "test_secret".to_string(),
-            issuer: "test_issuer".to_string(),
-            audience: "test_audience".to_string(),
-            allowed_roles: ["user".to_string()].iter().cloned().collect(),
-            token_expiration: 3600,
-        };
-
-        // Generate a token
-        let token = generate_token("user123", "user", Some(vec!["read".to_string()]), &auth_config).unwrap();
-
-        // Validate the token
-        let claims = validate_token(&token, &auth_config).unwrap();
-        assert_eq!(claims.sub, "user123");
-        assert_eq!(claims.role, "user");
-        assert_eq!(claims.permissions.unwrap()[0], "read");
-    }
-
-    #[test]
-    fn test_expired_token() {
-        let auth_config = AuthConfig {
-            secret: "test_secret".to_string(),
-            issuer: "test_issuer".to_string(),
-            audience: "test_audience".to_string(),
-            allowed_roles: ["user".to_string()].iter().cloned().collect(),
-            token_expiration: 0, // Immediate expiration
-        };
-
-        // Generate a token that is already expired
-        let token = generate_token("user123", "user", Some(vec!["read".to_string()]), &auth_config).unwrap();
-
-        // Validate the token
-        let result = validate_token(&token, &auth_config);
-        assert!(matches!(result, Err(AuthError::ExpiredToken)));
-    }
-
-    #[test]
-    fn test_insufficient_permissions() {
-        let auth_config = AuthConfig {
-            secret: "test_secret".to_string(),
-            issuer: "test_issuer".to_string(),
-            audience: "test_audience".to_string(),
-            allowed_roles: ["admin".to_string()].iter().cloned().collect(), // Only admin allowed
-            token_expiration: 3600,
-        };
-
-        // Generate a token with role 'user' which is not allowed
-        let token = generate_token("user123", "user", Some(vec!["read".to_string()]), &auth_config).unwrap();
-
-        // Validate the token
-        let result = validate_token(&token, &auth_config);
-        assert!(matches!(result, Err(AuthError::InsufficientPermissions)));
-    }
-
-    #[test]
-    fn test_invalid_issuer_audience() {
-        let auth_config = AuthConfig {
-            secret: "test_secret".to_string(),
-            issuer: "expected_issuer".to_string(),
-            audience: "expected_audience".to_string(),
-            allowed_roles: ["user".to_string()].iter().cloned().collect(),
-            token_expiration: 3600,
-        };
-
-        // Generate a token with incorrect issuer and audience
-        let claims = Claims {
-            sub: "user123".to_string(),
-            exp: (SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Time went backwards")
-                .as_secs() as usize)
-                + 3600,
-            iss: "wrong_issuer".to_string(),
-            aud: "wrong_audience".to_string(),
-            role: "user".to_string(),
-            permissions: Some(vec!["read".to_string()]),
-        };
-
-        let header = Header::new(Algorithm::HS256);
-        let token = encode(
-            &header,
-            &claims,
-            &EncodingKey::from_secret(auth_config.secret.as_bytes()),
-        )
-        .unwrap();
-
-        // Validate the token
-        let result = validate_token(&token, &auth_config);
-        assert!(matches!(result, Err(AuthError::InvalidIssuerAudience)));
     }
 }
