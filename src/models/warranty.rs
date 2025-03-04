@@ -11,8 +11,7 @@ pub struct Model {
     pub id: i32,
     pub action_needed: bool,
     pub advanced_replacement: bool,
-    #[validate(range(min = 0, message = "Amount must be non-negative"))]
-    pub amount: Decimal,
+        pub amount: Decimal,
     pub condition: Option<String>,
     pub condition_date: Option<DateTime<Utc>>,
     pub country: Option<String>,
@@ -40,9 +39,7 @@ pub struct Model {
     pub sso_id: Option<String>,
     pub status: WarrantyStatus,
     pub stripe_invoice_id: Option<String>,
-    #[validate(range(min = 0, message = "Tax refunded must be non-negative"))]
-    pub tax_refunded: Decimal,
-    #[validate(range(min = 0, message = "Total refunded must be non-negative"))]
+        pub tax_refunded: Decimal,
     pub total_refunded: Decimal,
     pub tracking_number: Option<String>,
     pub warehouse_received_date: Option<DateTime<Utc>>,
@@ -79,23 +76,9 @@ pub enum WarrantyStatus {
     Replaced,
 }
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
-#[sea_orm(table_name = "warranty_line_items")]
-pub struct WarrantyLineItem {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    #[validate(range(min = 0, message = "Amount must be non-negative"))]
-    pub amount: Decimal,
-    pub condition: Option<String>,
-    pub flat_rate_shipping: bool,
-    pub name: String,
-    #[validate(range(min = 0, message = "Price must be non-negative"))]
-    pub price: Decimal,
-    pub warranty_id: i32,
-    pub serial_number: Option<String>,
-    pub sales_order_sku: String,
-}
+// Warranty line items moved to separate file warranty_line_item.rs
 
+// Note: This enum should also be in warranty_line_item.rs
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum WarrantyLineItemRelation {
     #[sea_orm(
@@ -106,13 +89,11 @@ pub enum WarrantyLineItemRelation {
     Warranty,
 }
 
-impl Related<super::warranty::Entity> for WarrantyLineItem {
+impl Related<super::warranty::Entity> for super::warranty_line_item::Entity {
     fn to() -> RelationDef {
         WarrantyLineItemRelation::Warranty.def()
     }
 }
-
-impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
     pub fn new(
@@ -170,7 +151,7 @@ impl Model {
         Ok(())
     }
 
-    pub fn add_line_item(&self, line_item: WarrantyLineItem) -> Result<(), ValidationError> {
+    pub fn add_line_item(&self, line_item: super::warranty_line_item::Model) -> Result<(), ValidationError> {
         // Here you would typically save the line item to the database
         // For this example, we'll just validate the line item
         line_item.validate()?;
@@ -195,26 +176,3 @@ impl WarrantyStatus {
     }
 }
 
-impl WarrantyLineItem {
-    pub fn new(
-        warranty_id: i32,
-        amount: Decimal,
-        name: String,
-        price: Decimal,
-        sales_order_sku: String,
-    ) -> Result<Self, ValidationError> {
-        let item = Self {
-            id: 0, // Assuming database will auto-increment this
-            amount,
-            condition: None,
-            flat_rate_shipping: false,
-            name,
-            price,
-            warranty_id,
-            serial_number: None,
-            sales_order_sku,
-        };
-        item.validate()?;
-        Ok(item)
-    }
-}

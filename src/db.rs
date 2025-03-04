@@ -37,11 +37,44 @@ impl Default for DbConfig {
 /// Establishes a connection pool to the database
 ///
 /// # Arguments
+/// * `database_url` - Database connection URL string
+///
+/// # Errors
+/// Returns an `AppError` if the connection cannot be established
+pub async fn establish_connection(database_url: &str) -> Result<DbPool, AppError> {
+    let mut opt = ConnectOptions::new(database_url);
+    opt.max_connections(10)
+       .min_connections(1)
+       .connect_timeout(Duration::from_secs(30))
+       .idle_timeout(Duration::from_secs(600))
+       .sqlx_logging(true)
+       .to_owned();
+
+    Database::connect(opt)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to connect to database: {}", e)))
+        .context("Database connection establishment failed")
+}
+
+/// Simple function to create a database connection
+/// 
+/// # Arguments
+/// * `database_url` - Database connection URL string
+///
+/// # Errors
+/// Returns an error if the connection cannot be established
+pub async fn connect(database_url: &str) -> Result<DbPool, anyhow::Error> {
+    establish_connection(database_url).await.map_err(Into::into)
+}
+
+/// Establishes a connection pool to the database with custom configuration
+///
+/// # Arguments
 /// * `config` - Database configuration settings
 ///
 /// # Errors
 /// Returns an `AppError` if the connection cannot be established
-pub async fn establish_connection(config: &DbConfig) -> Result<DbPool, AppError> {
+pub async fn establish_connection_with_config(config: &DbConfig) -> Result<DbPool, AppError> {
     let opt = ConnectOptions::new(&config.url)
         .max_connections(config.max_connections)
         .min_connections(config.min_connections)
@@ -122,12 +155,7 @@ mod tests {
         let database_url = env::var("DATABASE_URL")
             .expect("DATABASE_URL must be set for tests");
         
-        let config = DbConfig {
-            url: database_url,
-            ..Default::default()
-        };
-        
-        establish_connection(&config).await
+        establish_connection(&database_url).await
     }
 
     #[tokio::test]

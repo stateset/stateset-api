@@ -35,11 +35,15 @@ pub struct RabbitMQ {
 }
 
 impl RabbitMQ {
-    pub fn new(channel: Channel, retry_delay: Duration, max_retries: u32) -> Self {
+    pub fn new(connection: lapin::Connection) -> Self {
+        let channel = connection.create_channel().now_or_never()
+            .expect("Failed to create channel")
+            .expect("Failed to create channel");
+        
         Self {
             channel: Arc::new(channel),
-            retry_delay,
-            max_retries,
+            retry_delay: Duration::from_secs(5),
+            max_retries: 3,
         }
     }
 
@@ -158,12 +162,47 @@ impl MessageQueue for RabbitMQ {
 
 // Utility functions
 
+pub async fn connect_rabbitmq(url: &str) -> Result<lapin::Connection, LapinError> {
+    info!("Connecting to RabbitMQ at {}", url);
+    let connection = lapin::Connection::connect(url, lapin::ConnectionProperties::default()).await?;
+    info!("Connected to RabbitMQ successfully");
+    Ok(connection)
+}
+
 pub async fn create_rabbitmq_connection(url: &str) -> Result<lapin::Connection, LapinError> {
-    lapin::Connection::connect(url, lapin::ConnectionProperties::default()).await
+    connect_rabbitmq(url).await
 }
 
 pub async fn create_rabbitmq_channel(connection: &lapin::Connection) -> Result<lapin::Channel, LapinError> {
     connection.create_channel().await
+}
+
+#[cfg(test)]
+pub struct MockMessageQueue;
+
+#[cfg(test)]
+impl MockMessageQueue {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl MessageQueue for MockMessageQueue {
+    async fn publish<T: Serialize + Send + Sync>(&self, queue: &str, _message: &T) -> Result<(), MessageQueueError> {
+        info!("Mock publishing to queue: {}", queue);
+        Ok(())
+    }
+
+    async fn consume<T, F>(&self, queue: &str, _callback: F) -> Result<(), MessageQueueError>
+    where
+        T: for<'de> Deserialize<'de> + Send + 'static,
+        F: Fn(T) -> Result<(), MessageQueueError> + Send + Sync + 'static 
+    {
+        info!("Mock consuming from queue: {}", queue);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -180,7 +219,7 @@ mod tests {
     async fn test_publish_and_consume() {
         let connection = create_rabbitmq_connection("amqp://localhost").await.unwrap();
         let channel = create_rabbitmq_channel(&connection).await.unwrap();
-        let mq = RabbitMQ::new(channel, Duration::from_secs(1), 3);
+        let mq = RabbitMQ::new(connection);
 
         let queue = "test_queue";
         let test_message = TestMessage {
@@ -203,5 +242,22 @@ mod tests {
 
         let received_message = rx.recv().await.unwrap();
         assert_eq!(received_message, test_message);
+    }
+
+    #[tokio::test]
+    async fn test_mock_message_queue() {
+        let mq = MockMessageQueue::new();
+        let queue = "test_queue";
+        let test_message = TestMessage {
+            content: "Hello, World!".to_string(),
+        };
+
+        // Test publish
+        let result = mq.publish(queue, &test_message).await;
+        assert!(result.is_ok());
+
+        // Test consume
+        let result = mq.consume::<TestMessage, _>(queue, |_| Ok(())).await;
+        assert!(result.is_ok());
     }
 }

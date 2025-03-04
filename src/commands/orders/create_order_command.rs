@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 use validator::Validate;
-use prometheus::IntCounter;
+use prometheus::{IntCounter, Counter};
 use lazy_static::lazy_static;
 use chrono::{DateTime, Utc};
 

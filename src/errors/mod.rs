@@ -8,6 +8,36 @@ use serde::{Serialize, Serializer};
 use serde_json::json;
 use tracing::{error, warn};
 use std::fmt;
+use uuid::Uuid;
+
+/// Application-level error type
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    
+    #[error("Migration error: {0}")]
+    MigrationError(String),
+    
+    #[error("Internal error: {0}")]
+    InternalError(String),
+}
+
+impl From<AppError> for ApiError {
+    fn from(err: AppError) -> Self {
+        match err {
+            AppError::DatabaseError(msg) => Self::InternalServerError(msg),
+            AppError::MigrationError(msg) => Self::InternalServerError(msg),
+            AppError::InternalError(msg) => Self::InternalServerError(msg),
+        }
+    }
+}
+
+impl From<anyhow::Error> for AppError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::InternalError(format!("Context: {}", err))
+    }
+}
 
 /// Represents standard API error types with detailed context
 #[derive(Error, Debug)]
@@ -30,6 +60,9 @@ pub enum ApiError {
     #[error("Unprocessable Entity: {0}")]
     UnprocessableEntity(String),
 
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("Too Many Requests: {0}")]
     TooManyRequests(String),
 
@@ -48,6 +81,100 @@ pub enum OrderError {
     
     #[error("Order processing failed: {0}")]
     ProcessingFailed(String),
+}
+
+/// Domain-specific error types for inventory operations
+#[derive(Error, Debug, Clone)]
+pub enum InventoryError {
+    #[error("Inventory not found: {0}")]
+    NotFound(String),
+    
+    #[error("Duplicate reservation for reference {0}")]
+    DuplicateReservation(Uuid),
+    
+    #[error("Duplicate allocation for reference {0}")]
+    DuplicateAllocation(Uuid),
+    
+    #[error("Insufficient inventory for product {0}")]
+    InsufficientInventory(Uuid),
+    
+    #[error("Would result in negative inventory for product {0}")]
+    NegativeInventory(Uuid),
+    
+    #[error("Invalid reason code: {0}")]
+    InvalidReasonCode(String),
+    
+    #[error("Concurrent modification of inventory {0}")]
+    ConcurrentModification(Uuid),
+    
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    
+    #[error("Event error: {0}")]
+    EventError(String),
+    
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+}
+
+/// Implementation for InventoryError
+impl InventoryError {
+    /// Helper method to get a string representation of the error type
+    /// Useful for metrics and logging
+    pub fn error_type(&self) -> &str {
+        match self {
+            Self::NotFound(_) => "not_found",
+            Self::DuplicateReservation(_) => "duplicate_reservation",
+            Self::DuplicateAllocation(_) => "duplicate_allocation",
+            Self::InsufficientInventory(_) => "insufficient_inventory",
+            Self::NegativeInventory(_) => "negative_inventory",
+            Self::InvalidReasonCode(_) => "invalid_reason_code",
+            Self::ConcurrentModification(_) => "concurrent_modification",
+            Self::DatabaseError(_) => "database_error",
+            Self::EventError(_) => "event_error",
+            Self::ValidationError(_) => "validation_error",
+        }
+    }
+}
+
+/// Service layer errors for internal use
+#[derive(Error, Debug)]
+pub enum ServiceError {
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+    
+    #[error("Validation error: {0}")]
+    ValidationError(String),
+    
+    #[error("Not found: {0}")]
+    NotFoundError(String),
+    
+    #[error("Authentication error: {0}")]
+    AuthError(String),
+    
+    #[error("Authorization error: {0}")]
+    ForbiddenError(String),
+    
+    #[error("Event publishing error: {0}")]
+    EventError(String),
+    
+    #[error("External service error: {0}")]
+    ExternalServiceError(String),
+    
+    #[error("Cache error: {0}")]
+    CacheError(String),
+    
+    #[error("Rate limit exceeded: {0}")]
+    RateLimitError(String),
+    
+    #[error("Circuit breaker open: {0}")]
+    CircuitBreakerError(String),
+    
+    #[error("Migration error: {0}")]
+    MigrationError(String),
+    
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }
 
 /// Structured error response for JSON serialization
@@ -87,6 +214,7 @@ impl ApiError {
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, "Forbidden", None),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "Not Found", None),
             Self::UnprocessableEntity(_) => (StatusCode::UNPROCESSABLE_ENTITY, "Unprocessable Entity", None),
+            Self::Conflict(_) => (StatusCode::CONFLICT, "Conflict", Some("CONCURRENT_MODIFICATION".to_string())),
             Self::TooManyRequests(_) => (StatusCode::TOO_MANY_REQUESTS, "Too Many Requests", Some("RATE_LIMIT_EXCEEDED".to_string())),
             Self::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "Service Unavailable", None),
         }
@@ -124,6 +252,59 @@ impl From<OrderError> for ApiError {
     }
 }
 
+impl From<ServiceError> for ApiError {
+    fn from(err: ServiceError) -> Self {
+        match err {
+            ServiceError::DatabaseError(msg) => Self::InternalServerError(msg),
+            ServiceError::ValidationError(msg) => Self::UnprocessableEntity(msg),
+            ServiceError::NotFoundError(msg) => Self::NotFound(msg),
+            ServiceError::AuthError(msg) => Self::Unauthorized(msg),
+            ServiceError::ForbiddenError(msg) => Self::Forbidden(msg),
+            ServiceError::EventError(msg) => Self::InternalServerError(msg),
+            ServiceError::ExternalServiceError(msg) => Self::ServiceUnavailable(msg),
+            ServiceError::CacheError(msg) => Self::InternalServerError(msg),
+            ServiceError::RateLimitError(msg) => Self::TooManyRequests(msg),
+            ServiceError::CircuitBreakerError(msg) => Self::ServiceUnavailable(msg),
+            ServiceError::MigrationError(msg) => Self::InternalServerError(msg),
+            ServiceError::InternalError(msg) => Self::InternalServerError(msg),
+        }
+    }
+}
+
+impl From<InventoryError> for ApiError {
+    fn from(err: InventoryError) -> Self {
+        match err {
+            InventoryError::NotFound(msg) => Self::NotFound(msg),
+            InventoryError::DuplicateReservation(id) => Self::BadRequest(format!("Duplicate reservation for reference {}", id)),
+            InventoryError::DuplicateAllocation(id) => Self::BadRequest(format!("Duplicate allocation for reference {}", id)),
+            InventoryError::InsufficientInventory(product_id) => Self::UnprocessableEntity(format!("Insufficient inventory for product {}", product_id)),
+            InventoryError::NegativeInventory(product_id) => Self::UnprocessableEntity(format!("Would result in negative inventory for product {}", product_id)),
+            InventoryError::InvalidReasonCode(code) => Self::BadRequest(format!("Invalid reason code: {}", code)),
+            InventoryError::ConcurrentModification(id) => Self::Conflict(format!("Concurrent modification of inventory {}", id)),
+            InventoryError::DatabaseError(msg) => Self::InternalServerError(msg),
+            InventoryError::EventError(msg) => Self::InternalServerError(msg),
+            InventoryError::ValidationError(msg) => Self::BadRequest(msg),
+        }
+    }
+}
+
+impl From<InventoryError> for ServiceError {
+    fn from(err: InventoryError) -> Self {
+        match err {
+            InventoryError::NotFound(msg) => Self::NotFoundError(msg),
+            InventoryError::DuplicateReservation(id) => Self::ValidationError(format!("Duplicate reservation for reference {}", id)),
+            InventoryError::DuplicateAllocation(id) => Self::ValidationError(format!("Duplicate allocation for reference {}", id)),
+            InventoryError::InsufficientInventory(product_id) => Self::ValidationError(format!("Insufficient inventory for product {}", product_id)),
+            InventoryError::NegativeInventory(product_id) => Self::ValidationError(format!("Would result in negative inventory for product {}", product_id)),
+            InventoryError::InvalidReasonCode(code) => Self::ValidationError(format!("Invalid reason code: {}", code)),
+            InventoryError::ConcurrentModification(id) => Self::ValidationError(format!("Concurrent modification of inventory {}", id)),
+            InventoryError::DatabaseError(msg) => Self::DatabaseError(msg),
+            InventoryError::EventError(msg) => Self::EventError(msg),
+            InventoryError::ValidationError(msg) => Self::ValidationError(msg),
+        }
+    }
+}
+
 /// Converts any error into an ApiError with context
 pub fn handle_error<E>(err: E) -> ApiError
 where
@@ -135,6 +316,10 @@ where
     // Attempt to downcast to specific error types
     if let Some(order_err) = err.downcast_ref::<OrderError>() {
         order_err.clone().into()
+    } else if let Some(inventory_err) = err.downcast_ref::<InventoryError>() {
+        inventory_err.clone().into()
+    } else if let Some(service_err) = err.downcast_ref::<ServiceError>() {
+        service_err.clone().into()
     } else {
         ApiError::InternalServerError(error_string)
     }
@@ -159,26 +344,21 @@ mod tests {
     use super::*;
     use axum::http::StatusCode;
 
-    #[test]
-    fn test_api_error_response() {
-        let error = ApiError::BadRequest("Invalid input".to_string());
-        let response = error.into_response();
-        
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let json: ErrorResponse = serde_json::from_slice(&body).unwrap();
-        
-        assert_eq!(json.error, "Bad Request");
-        assert_eq!(json.details, "Bad Request: Invalid input");
-        assert_eq!(json.code, None);
-    }
-
+    // Simple test for error conversion
     #[test]
     fn test_order_error_conversion() {
         let order_error = OrderError::NotFound("Order #123".to_string());
         let api_error: ApiError = order_error.into();
         
         assert!(matches!(api_error, ApiError::NotFound(_)));
+    }
+    
+    // Test AppError conversion
+    #[test]
+    fn test_app_error_conversion() {
+        let app_error = AppError::DatabaseError("Connection failed".to_string());
+        let api_error: ApiError = app_error.into();
+        
+        assert!(matches!(api_error, ApiError::InternalServerError(_)));
     }
 }

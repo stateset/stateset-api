@@ -77,41 +77,6 @@ pub enum WorkOrderPriority {
     Urgent,
 }
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
-#[sea_orm(table_name = "work_order_line_items")]
-pub struct WorkOrderLineItem {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    pub line_status: String,
-    pub line_type: String,
-    pub part_name: String,
-    pub part_number: String,
-    #[validate(range(min = 0.0, message = "Total quantity must be non-negative"))]
-    pub total_quantity: f64,
-    #[validate(range(min = 0.0, message = "Unit quantity must be non-negative"))]
-    pub unit_quantity: f64,
-    pub work_order_number: String,
-    #[sea_orm(column_type = "Uuid")]
-    pub work_order_id: Uuid,
-}
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum WorkOrderLineItemRelation {
-    #[sea_orm(
-        belongs_to = "super::work_order::Entity",
-        from = "Column::WorkOrderId",
-        to = "super::work_order::Column::Id"
-    )]
-    WorkOrder,
-}
-
-impl Related<super::work_order::Entity> for WorkOrderLineItem {
-    fn to() -> RelationDef {
-        WorkOrderLineItemRelation::WorkOrder.def()
-    }
-}
-
-impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
     pub fn new(
@@ -169,37 +134,10 @@ impl Model {
         Ok(())
     }
 
-    pub fn add_line_item(&self, line_item: WorkOrderLineItem) -> Result<(), ValidationError> {
+    pub fn add_line_item(&self, line_item: super::work_order_line_item::Model) -> Result<(), ValidationError> {
         // Here you would typically save the line item to the database
         // For this example, we'll just validate the line item
         line_item.validate()?;
         Ok(())
-    }
-}
-
-impl WorkOrderLineItem {
-    pub fn new(
-        work_order_id: Uuid,
-        line_status: String,
-        line_type: String,
-        part_name: String,
-        part_number: String,
-        total_quantity: f64,
-        unit_quantity: f64,
-        work_order_number: String,
-    ) -> Result<Self, ValidationError> {
-        let item = Self {
-            id: 0, // Assuming database will auto-increment this
-            line_status,
-            line_type,
-            part_name,
-            part_number,
-            total_quantity,
-            unit_quantity,
-            work_order_number,
-            work_order_id,
-        };
-        item.validate()?;
-        Ok(item)
     }
 }

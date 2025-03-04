@@ -1,264 +1,163 @@
-use axum::{
-    routing::{get, post},
-    Router, Extension,
-};
-use std::sync::Arc;
-use tokio::sync::broadcast;
-use slog::{info, o, Drain, Logger};
-use dotenv::dotenv;
-use opentelemetry::global;
-use tower_http::{compression::CompressionLayer, trace::TraceLayer};
-use anyhow::{Result, Context};
-
-mod config;
-mod services;
-mod models;
-mod handlers;
-mod events;
-mod commands;
-mod queries;
-mod errors;
-mod logging;
-mod cache;
-mod rate_limiter;
-mod message_queue;
-mod circuit_breaker;
-mod tracing;
-mod health;
-mod db;
-mod proto;
 mod auth;
-mod grpc_server;
+mod config;
+mod db;
+mod errors;
+mod health;
+mod handlers;
+mod entities;
+mod repositories;
+// Using the migrations crate now instead of internal migrator
 
-use config::AppConfig;
-use errors::AppError;
+use axum::{
+    Router,
+    routing::get,
+    extract::Extension,
+};
+use tower::ServiceBuilder;
+use tower_http::{
+    trace::TraceLayer,
+    cors::{CorsLayer, Any},
+};
+use dotenv::dotenv;
+use sea_orm::DatabaseConnection;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tracing::{info, error};
+use crate::errors::AppError;
+use crate::repositories::order_repository::OrderRepository;
+use crate::services::{
+    work_orders::WorkOrderService,
+    orders::OrderService,
+    inventory::InventoryService,
+    returns::ReturnService,
+    shipments::ShipmentService,
+    warranties::WarrantyService,
+};
+use crate::events::EventSender;
 
-// Constants
-const EVENT_CHANNEL_CAPACITY: usize = 100;
-const DEFAULT_RATE_LIMIT: usize = 1000;
-const RATE_LIMIT_WINDOW_SECS: u64 = 60;
-
-/// Application State holding shared resources and services
-#[derive(Clone)]
-struct AppState {
-    config: Arc<AppConfig>,
-    db_pool: Arc<db::DbPool>,
-    redis_client: Arc<redis::Client>,
-    event_sender: broadcast::Sender<events::Event>,
-    logger: Logger,
-    services: Arc<Services>,
+/// Services layer that encapsulates business logic
+#[derive(Debug, Clone)]
+pub struct AppServices {
+    pub work_orders: WorkOrderService,
+    pub orders: OrderService,
+    pub inventory: InventoryService,
+    pub returns: ReturnService,
+    pub shipments: ShipmentService,
+    pub warranties: WarrantyService,
 }
 
-/// Grouped Services for better organization
-#[derive(Clone)]
-struct Services {
-    // Core business services
-    orders: Arc<services::orders::OrderService>,
-    inventory: Arc<services::inventory::InventoryService>,
-    returns: Arc<services::returns::ReturnService>,
-    warranties: Arc<services::warranties::WarrantyService>,
-    shipments: Arc<services::shipments::ShipmentService>,
-    
-    // Manufacturing and Supply Chain
-    work_orders: Arc<services::work_orders::WorkOrderService>,
-    bill_of_materials: Arc<services::billofmaterials::BillOfMaterialsService>,
-    suppliers: Arc<services::suppliers::SupplierService>,
-    procurement: Arc<services::procurement::ProcurementService>,
-    
-    // Customer Management
-    customers: Arc<services::customers::CustomerService>,
-    leads: Arc<services::leads::LeadsService>,
-    accounts: Arc<services::accounts::AccountService>,
-    
-    // Financial Services
-    invoicing: Arc<services::invoicing::InvoicingService>,
-    payments: Arc<services::payments::PaymentService>,
-    accounting: Arc<services::accounting::AccountingService>,
-    
-    // Analytics and Reporting
-    business_intelligence: Arc<services::business_intelligence::BusinessIntelligenceService>,
-    forecasting: Arc<services::forecasting::ForecastingService>,
-    reports: Arc<services::reports::ReportService>,
+impl AppServices {
+    pub fn new(db_pool: Arc<DatabaseConnection>, event_sender: Arc<EventSender>) -> Self {
+        Self {
+            work_orders: WorkOrderService::new(db_pool.clone(), event_sender.clone()),
+            orders: OrderService::new(db_pool.clone(), event_sender.clone()),
+            inventory: InventoryService::new(db_pool.clone(), event_sender.clone()),
+            returns: ReturnService::new(db_pool.clone(), event_sender.clone()),
+            shipments: ShipmentService::new(db_pool.clone(), event_sender.clone()),
+            warranties: WarrantyService::new(db_pool.clone(), event_sender.clone()),
+        }
+    }
+}
+
+/// Application state that will be shared with handlers
+#[derive(Debug)]
+pub struct AppState {
+    db: Arc<DatabaseConnection>,
+    config: config::AppConfig,
+    order_repository: OrderRepository,
+    // Add other repositories as needed
+    services: AppServices,
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    // Initialize environment and configuration
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load environment variables from .env file
     dotenv().ok();
-    let config = Arc::new(config::load().context("Failed to load configuration")?);
-    let logger = setup_logger(&config)?;
-
-    // Log startup information
-    info!(logger, "Starting StateSet API";
-        "environment" => &config.environment,
-        "version" => env!("CARGO_PKG_VERSION")
-    );
-
-    // Build application state
-    let app_state = build_app_state(&config, &logger)
-        .await
-        .context("Failed to build application state")?;
-
-    // Setup telemetry
-    setup_telemetry(&config).context("Failed to setup telemetry")?;
-
-    // Spawn background tasks
-    spawn_background_tasks(app_state.clone(), logger.clone());
-
-    // Setup HTTP server
-    let app = setup_router(app_state)
-        .layer(axum::middleware::from_fn(auth::auth_middleware))
-        .layer(axum::middleware::from_fn(rate_limiter::rate_limit_middleware));
-
-    // Start server
-    let addr = format!("{}:{}", config.host, config.port);
-    info!(logger, "StateSet API server running"; "address" => &addr);
-
-    axum::Server::bind(&addr.parse()?)
-        .serve(app.into_make_service())
-        .await
-        .context("Server failed to start")?;
-
-    info!(logger, "Shutting down");
-    Ok(())
-}
-
-fn setup_router(state: AppState) -> Router {
-    let schema = Arc::new(graphql::create_schema(state.services.clone()));
     
-    Router::new()
-        .route("/health", get(handlers::health::health_check))
-        .nest("/api", api_routes())
-        .route("/proto_endpoint", post(handle_proto_request))
-        .layer(Extension(state))
-        .layer(Extension(schema))
-        .layer(TraceLayer::new_for_http())
-        .layer(CompressionLayer::new())
-}
-
-fn api_routes() -> Router {
-    Router::new()
-        .nest("/orders", handlers::orders::routes())
-        .nest("/inventory", handlers::inventory::routes())
-        .nest("/returns", handlers::returns::routes())
-        .nest("/warranties", handlers::warranties::routes())
-        .nest("/shipments", handlers::shipments::routes())
-}
-
-fn setup_logger(config: &AppConfig) -> Result<Logger> {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    let drain = slog::LevelFilter::new(drain, config.log_level.parse()?).fuse();
-    Ok(slog::Logger::root(drain, o!()))
-}
-
-async fn build_app_state(config: &Arc<AppConfig>, logger: &Logger) -> Result<AppState> {
-    let db_pool = Arc::new(db::establish_connection(&config.database_url).await?);
-    let redis_client = Arc::new(redis::Client::open(&config.redis_url)?);
-    let rabbit_conn = message_queue::connect_rabbitmq(&config.rabbitmq_url).await?;
-    let (event_sender, _) = broadcast::channel::<events::Event>(EVENT_CHANNEL_CAPACITY);
-
-    let services = Arc::new(initialize_services(
-        db_pool.clone(),
-        redis_client.clone(),
-        rabbit_conn,
-        event_sender.clone(),
-        logger.clone(),
-    ).await?);
-
-    Ok(AppState {
+    // Initialize tracing with more structured configuration
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            // Use RUST_LOG environment variable, or default to info for our code and warn for others
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "stateset_api=info,tower_http=debug,info".into())
+        )
+        .init();
+    
+    info!("Stateset API starting...");
+    
+    // Load configuration from environment variables
+    let config = config::load_config()?;
+    
+    // Connect to the database
+    info!("Connecting to database...");
+    let db = db::establish_connection(&config.db_url).await
+        .map_err(|e| {
+            error!("Failed to connect to database: {}", e);
+            e
+        })?;
+    
+    // Skip database migrations for now to simplify development
+    info!("Skipping database migrations for development...");
+    
+    // Wrap the database connection in an Arc for sharing
+    let db_arc = Arc::new(db);
+    
+    // Create event channel for domain events
+    let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
+    let event_sender = Arc::new(EventSender::new(event_tx));
+    
+    // Start event processor in the background
+    tokio::spawn(async move {
+        events::process_events(event_rx).await;
+    });
+    
+    // Initialize repositories
+    let order_repository = OrderRepository::new(db_arc.clone());
+    
+    // Initialize services
+    let services = AppServices::new(db_arc.clone(), event_sender.clone());
+    
+    // Create application state
+    let state = Arc::new(AppState { 
+        db: db_arc,
         config: config.clone(),
-        db_pool,
-        redis_client,
-        event_sender,
-        logger: logger.clone(),
+        order_repository,
         services,
-    })
-}
-
-async fn initialize_services(
-    db_pool: Arc<db::DbPool>,
-    redis_client: Arc<redis::Client>,
-    rabbit_conn: lapin::Connection,
-    event_sender: broadcast::Sender<events::Event>,
-    logger: Logger,
-) -> Result<Services> {
-    let message_queue = Arc::new(message_queue::RabbitMQ::new(rabbit_conn));
-    let circuit_breaker = Arc::new(circuit_breaker::CircuitBreaker::new(5, std::time::Duration::from_secs(60)));
-
-    macro_rules! new_service {
-        ($module:ident) => {
-            Arc::new(services::$module::new(
-                db_pool.clone(),
-                event_sender.clone(),
-                redis_client.clone(),
-                message_queue.clone(),
-                circuit_breaker.clone(),
-                logger.clone(),
-            ))
-        };
-    }
-
-    Ok(Services {
-        orders: new_service!(orders),
-        inventory: new_service!(inventory),
-        returns: new_service!(returns),
-        warranties: new_service!(warranties),
-        shipments: new_service!(shipments),
-        work_orders: new_service!(work_orders),
-        bill_of_materials: new_service!(billofmaterials),
-        suppliers: new_service!(suppliers),
-        procurement: new_service!(procurement),
-        customers: new_service!(customers),
-        leads: new_service!(leads),
-        accounts: new_service!(accounts),
-        invoicing: new_service!(invoicing),
-        payments: new_service!(payments),
-        accounting: new_service!(accounting),
-        business_intelligence: new_service!(business_intelligence),
-        forecasting: new_service!(forecasting),
-        reports: new_service!(reports),
-    })
-}
-
-fn spawn_background_tasks(state: AppState, logger: Logger) {
-    tokio::spawn(events::process_events(
-        state.event_sender.subscribe(),
-        state.services.clone(),
-        logger.clone(),
-    ));
-
-    #[cfg(feature = "grpc")]
-    tokio::spawn(grpc_server::start(
-        state.config.clone(),
-        state.services.clone(),
-    ));
-}
-
-async fn handle_proto_request(
-    Extension(state): Extension<AppState>,
-    payload: axum::body::Bytes,
-) -> Result<axum::response::Response, axum::http::StatusCode> {
-    let request = proto::SomeRequest::decode(payload.as_ref())
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
-
-    let response = proto::SomeResponse {
-        message: format!("Processed request with id: {}", request.id),
-    };
-
-    let mut buf = Vec::new();
-    response.encode(&mut buf)
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(axum::response::Response::new(axum::body::Body::from(buf)))
-}
-
-fn setup_telemetry(config: &AppConfig) -> Result<()> {
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_service_name("stateset-api")
-        .with_endpoint(&config.jaeger_endpoint)
-        .install_simple()?;
-    global::set_tracer_provider(tracer);
+    });
+    
+    // Configure middleware layers
+    let middleware = ServiceBuilder::new()
+        .layer(TraceLayer::new_for_http())
+        .layer(CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any));
+    
+    // Set up API routes
+    let app = Router::new()
+        // Health routes
+        .nest("/health", health::health_routes())
+        // API v1 routes
+        .nest("/api/v1", Router::new()
+            .nest("/orders", handlers::orders::orders_routes())
+            .nest("/inventory", handlers::inventory::inventory_routes())
+            .nest("/returns", handlers::returns::returns_routes())
+            .nest("/shipments", handlers::shipments::shipments_routes())
+            .nest("/warranties", handlers::warranties::warranties_routes())
+            .nest("/work-orders", handlers::work_orders::work_orders_routes())
+            // Add other API routes here
+        )
+        // Configure middleware and state
+        .layer(middleware)
+        .with_state(state);
+    
+    // Start the server
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    info!("Listening on {}", addr);
+    
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+    
     Ok(())
 }
+

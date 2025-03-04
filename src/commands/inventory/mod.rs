@@ -9,11 +9,13 @@ pub mod release_inventory_command;
 pub mod cycle_count_command;
 pub mod set_inventory_levels_command;
 pub mod get_stock_safety_command;
-pub mod add_lot_command;
-pub mod update_lot_command;
-pub mod mark_lot_expired_command;
-pub mod quarantine_inventory_command;
-pub mod release_from_quarantine_command;
+
+// Commented out unimplemented modules
+// pub mod add_lot_command;
+// pub mod update_lot_command;
+// pub mod mark_lot_expired_command;
+// pub mod quarantine_inventory_command;
+// pub mod release_from_quarantine_command;
 
 // Re-export commands
 pub use adjust_inventory_command::AdjustInventoryCommand;
@@ -27,8 +29,12 @@ pub use release_inventory_command::ReleaseInventoryCommand;
 pub use cycle_count_command::CycleCountCommand;
 pub use set_inventory_levels_command::SetInventoryLevelsCommand;
 pub use get_stock_safety_command::GetStockSafetyCommand;
+
+// Commented out unimplemented re-exports
+/*
 pub use add_lot_command::AddLotCommand;
 pub use update_lot_command::UpdateLotCommand;
 pub use mark_lot_expired_command::MarkLotExpiredCommand;
 pub use quarantine_inventory_command::QuarantineInventoryCommand;
 pub use release_from_quarantine_command::ReleaseFromQuarantineCommand;
+*/

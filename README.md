@@ -6,71 +6,73 @@ StateSet API is a comprehensive, scalable, and robust backend system for order m
 
 - **Order Management**: 
   - Create, retrieve, update, and delete orders
-  - Support for complex order workflows and statuses
+  - Support for complex order workflows (hold, cancel, archive, merge)
+  - Order item management and tracking
 
 - **Inventory Control**: 
   - Real-time inventory tracking across multiple locations
-  - Automated reorder point notifications
+  - Allocation, reservation, and release workflows
+  - Lot tracking and cycle counting
+  - Safety stock and reorder alerts
 
 - **Returns Processing**: 
   - Streamlined return authorization and processing
-  - Integration with refund and exchange systems
+  - Approval, rejection, and restocking workflows
+  - Refund integration
 
 - **Warranty Management**: 
   - Track and manage product warranties
-  - Automated claim processing and resolution
+  - Warranty claim processing with approval/rejection flows
 
 - **Shipment Tracking**: 
-  - Real-time tracking integration with major carriers
-  - Custom shipment status notifications
+  - Carrier assignment and tracking integration
+  - Advanced shipping notice (ASN) creation and management
+  - Delivery confirmation workflows
 
 - **Manufacturing & Production**: 
-  - Supplier management and communication
-  - Bill of materials (BOM) tracking and version control
-
-- **Work Order Handling**: 
-  - Create and manage work orders for repairs or modifications
-  - Track work order progress and resource allocation
+  - Bill of materials (BOM) creation and management
+  - Work order scheduling and tracking
+  - Component and raw material management
 
 ## Tech Stack
 
 Our carefully selected tech stack ensures high performance, scalability, and maintainability:
 
 ### Core Technologies
-- **Language**: Rust (for performance and safety)
-- **Web Framework**: [Axum](https://github.com/tokio-rs/axum/) (lightweight and fast asynchronous web framework)
-- **Database**: PostgreSQL with SQLx (for robust, async operations)
+- **Language**: Rust (for performance, safety, and concurrency)
+- **Web Framework**: [Axum](https://github.com/tokio-rs/axum/) (async web framework from the Tokio team)
+- **Database**: PostgreSQL with [SeaORM](https://www.sea-ql.org/SeaORM) (async ORM)
+- **Async Runtime**: Tokio (efficient async runtime for Rust)
 
-### ORM and Query Building
-- [SeaORM](https://www.sea-ql.org/SeaORM) (async ORM for Rust, providing powerful database operations)
-
-### API Protocols and Services
-- **REST**: Handled natively by Axum
-- **GraphQL**: [Async-Graphql](https://async-graphql.github.io/) (high-performance GraphQL server library for Rust)
-- **gRPC**: [Tonic](https://github.com/hyperium/tonic) (for efficient, type-safe gRPC support)
-
-### Caching and Messaging
-- **Caching**: Redis (for high-speed data caching)
-- **Message Queue**: RabbitMQ (for reliable async processing)
+### API Protocols
+- **REST API**: Primary interface for client applications
+- **gRPC**: Interface for service-to-service communication with Protocol Buffers
 
 ### Observability
-- **Metrics**: Prometheus (for detailed system monitoring)
-- **Tracing**: OpenTelemetry with Jaeger (for distributed tracing)
-- **Logging**: slog (for structured, efficient logging)
+- **Tracing**: OpenTelemetry integration for distributed request tracing
+- **Health Checks**: Comprehensive service health monitoring
+- **Error Handling**: Structured error system with detailed context
 
-## Architecture
+## Project Structure
 
-StateSet API follows a modular, event-driven architecture designed for scalability and maintainability.
-
-### Key Components
-
-- **Services**: Implement core business logic
-- **Handlers**: Process HTTP requests
-- **Commands**: Handle write operations
-- **Queries**: Manage read operations
-- **Events**: Enable asynchronous processing
-- **Models**: Represent domain entities
-- **Middleware**: Provide cross-cutting concerns (auth, rate limiting, etc.)
+```
+stateset-api/
+├── migrations/           # Database migrations
+├── proto/                # Protocol Buffer definitions
+├── src/
+│   ├── bin/              # Binary executables
+│   ├── commands/         # Command handlers (write operations)
+│   ├── entities/         # Database entity definitions
+│   ├── errors/           # Error types and handling
+│   ├── events/           # Event definitions and processing
+│   ├── handlers/         # HTTP request handlers
+│   ├── models/           # Domain models
+│   ├── queries/          # Query handlers (read operations)
+│   ├── repositories/     # Data access layer
+│   ├── services/         # Business logic services
+│   └── config.rs         # Application configuration
+└── tests/                # Integration tests
+```
 
 ## Getting Started
 
@@ -78,129 +80,127 @@ StateSet API follows a modular, event-driven architecture designed for scalabili
 
 Ensure you have the following installed:
 - Rust (latest stable version)
-- PostgreSQL
-- Redis
-- RabbitMQ
-- Jaeger (for distributed tracing)
+- PostgreSQL 14+
+- Protocol Buffer compiler (for gRPC)
 
-### Installation
+### Quick Install
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/yourusername/stateset-api.git
+   git clone https://github.com/stateset/stateset-api.git
    cd stateset-api
    ```
 
-2. Set up the environment variables:
+2. Create a `.env` file with your configuration:
    ```sh
-   cp .env.example .env
-   # Edit .env with your configuration
+   DATABASE_URL=postgres://username:password@localhost/stateset
+   SERVER_HOST=0.0.0.0
+   SERVER_PORT=8080
+   JWT_SECRET=your_jwt_secret
    ```
 
-3. Build the project:
+3. Run database migrations:
    ```sh
-   cargo build
+   cargo run --bin migration
    ```
 
-4. Run database migrations:
-   ```sh
-   cargo run --bin migrate
-   ```
-
-5. Start the server:
+4. Build and run the project:
    ```sh
    cargo run
    ```
 
 The API will be available at `http://localhost:8080`.
 
-### Troubleshooting
+## API Endpoints
 
-- If you encounter database connection issues, ensure PostgreSQL is running and the connection details in `.env` are correct.
-- For RabbitMQ connection problems, verify that the service is running and the credentials are set correctly.
+StateSet API provides a rich set of RESTful endpoints:
 
-## API Documentation
+### Authentication
+- `POST /auth/login` - Authenticate user and get JWT token
+- `POST /auth/register` - Register a new user
 
-Comprehensive API documentation is available at `https://docs.stateset.com/api-reference/authentication`.
+### Orders
+- `GET /orders` - List all orders
+- `GET /orders/:id` - Get order details
+- `POST /orders` - Create a new order
+- `PUT /orders/:id` - Update an order
+- `POST /orders/:id/hold` - Place an order on hold
+- `POST /orders/:id/cancel` - Cancel an order
+- `POST /orders/:id/archive` - Archive an order
 
-### Quick Start
+### Inventory
+- `GET /inventory` - Get current inventory levels
+- `POST /inventory/adjust` - Adjust inventory quantity
+- `POST /inventory/allocate` - Allocate inventory
+- `POST /inventory/reserve` - Reserve inventory
+- `POST /inventory/release` - Release reserved inventory
 
-1. Authenticate:
-   ```sh
-   curl -X POST https://api.stateset.com/v1/auth/login \
-     -H "Content-Type: application/json" \
-     -d '{"email": "user@example.com", "password": "your_password"}'
-   ```
+### Returns
+- `POST /returns` - Create a return request
+- `GET /returns/:id` - Get return details
+- `POST /returns/:id/approve` - Approve a return
+- `POST /returns/:id/reject` - Reject a return
+- `POST /returns/:id/restock` - Restock returned items
 
-2. Create an order:
-   ```sh
-   curl -X POST https://api.stateset.com/v1/orders \
-     -H "Authorization: Bearer YOUR_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"customer_id": "cust_123", "items": [{"product_id": "prod_456", "quantity": 2}]}'
-   ```
+### Warranties
+- `POST /warranties` - Create a warranty
+- `POST /warranties/claim` - Submit a warranty claim
+- `POST /warranties/claims/:id/approve` - Approve a warranty claim
+- `POST /warranties/claims/:id/reject` - Reject a warranty claim
+
+### Work Orders
+- `POST /work-orders` - Create a work order
+- `GET /work-orders/:id` - Get work order details
+- `POST /work-orders/:id/start` - Start a work order
+- `POST /work-orders/:id/complete` - Complete a work order
 
 ## Testing
 
-Run the comprehensive test suite:
+Run the test suite with:
 
 ```sh
+# Run all tests
 cargo test
-```
 
-For integration tests:
-
-```sh
+# Run integration tests
 cargo test --features integration
+
+# Run a specific test with backtrace
+RUST_BACKTRACE=1 cargo test test_name
 ```
 
-## Deployment
+## Development Tools
 
-Deploy using Docker:
+- **Linting**: `cargo clippy`
+- **Formatting**: `cargo fmt`
+- **Documentation**: `cargo doc --open`
 
-```sh
-docker build -t stateset-api .
-docker run -p 8080:8080 stateset-api
+## Error Handling
+
+StateSet API uses a structured error system with detailed context. API errors are returned as:
+
+```json
+{
+  "error": {
+    "code": "ORDER_NOT_FOUND",
+    "message": "The requested order could not be found",
+    "status": 404,
+    "details": { "order_id": "123" }
+  }
+}
 ```
 
-For production deployments, we recommend using Kubernetes for orchestration and scaling.
+## Performance Considerations
 
-## Performance
-
-StateSet API is designed for high performance and scalability:
-
-- Handles 10,000+ requests per second on a single node
-- Scales horizontally for increased load
-- 99.99% uptime SLA
-
-## Roadmap
-
-Our upcoming features and improvements:
-
-- [ ] Advanced analytics and reporting dashboard
-- [ ] Machine learning-based demand forecasting
-- [ ] Blockchain integration for supply chain transparency
-- [ ] Expanded international shipping and compliance features
+- The API is designed for high throughput and low latency
+- Connection pooling is used for database operations
+- Async/await patterns are used throughout for non-blocking I/O
+- Entity caching is implemented for frequently accessed data
 
 ## Contributing
 
-We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
-
-## Support
-
-For support:
-- Check our [FAQ](https://docs.stateset.com/faq)
-- Join our [Community Forum](https://community.stateset.com)
-- Email support@stateset.com for direct assistance
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
-
-## Acknowledgments
-
-We're grateful to the open-source community and especially:
-- [Axum](https://github.com/tokio-rs/axum/) for the web framework
-- [SeaORM](https://www.sea-ql.org/SeaORM) for ORM functionality
-- [Tonic](https://github.com/hyperium/tonic) for gRPC support
-- [Async-Graphql](https://async-graphql.github.io/) for GraphQL

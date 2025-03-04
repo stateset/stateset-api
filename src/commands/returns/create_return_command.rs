@@ -100,3 +100,37 @@ impl InitiateReturnCommand {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mockall::predicate::*;
+    use mockall::mock;
+    use tokio::sync::broadcast;
+
+    mock! {
+        pub Database {}
+        impl Clone for Database {
+            fn clone(&self) -> Self;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_validate_return_command() {
+        // Test with valid data
+        let valid_command = InitiateReturnCommand {
+            order_id: Uuid::new_v4(),
+            reason: "Product is damaged".to_string(),
+        };
+
+        assert!(valid_command.validate().is_ok());
+
+        // Test with invalid data - empty reason
+        let invalid_command = InitiateReturnCommand {
+            order_id: Uuid::new_v4(),
+            reason: "".to_string(),
+        };
+
+        assert!(invalid_command.validate().is_err());
+    }
+}

@@ -224,34 +224,4 @@ impl AdjustInventoryCommand {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum InventoryError {
-    #[error("Inventory not found: {0}")]
-    NotFound(String),
-    #[error("Invalid reason code: {0}")]
-    InvalidReasonCode(String),
-    #[error("Would result in negative inventory for product {0}")]
-    NegativeInventory(Uuid),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-    #[error("Event error: {0}")]
-    EventError(String),
-    #[error("Concurrent modification of inventory {0}")]
-    ConcurrentModification(Uuid),
-    #[error("Validation error: {0}")]
-    ValidationError(String),
-}
-
-impl InventoryError {
-    pub fn error_type(&self) -> &str {
-        match self {
-            InventoryError::NotFound(_) => "not_found",
-            InventoryError::InvalidReasonCode(_) => "invalid_reason_code",
-            InventoryError::NegativeInventory(_) => "negative_inventory",
-            InventoryError::DatabaseError(_) => "database_error",
-            InventoryError::EventError(_) => "event_error",
-            InventoryError::ConcurrentModification(_) => "concurrent_modification",
-            InventoryError::ValidationError(_) => "validation_error",
-        }
-    }
-}
+// InventoryError is now centrally defined in crate::errors::InventoryError

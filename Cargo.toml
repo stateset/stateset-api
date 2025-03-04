@@ -3,7 +3,8 @@ name = "stateset-api"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = [".", "migrations", "standalone-test"]
 
 [dependencies]
 async-graphql = "4.0"
@@ -14,7 +15,7 @@ axum-macros = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 rust_decimal = { version = "1.30", features = ["serde"] }
 tower = "0.4.13"
-tower-http = { version = "0.5.0", features = ["fs"] }
+tower-http = { version = "0.5.0", features = ["fs", "trace", "cors"] }
 juniper = "0.15"
 juniper_actix = "0.6"
 jsonwebtoken = "8.0"
@@ -31,7 +32,24 @@ tonic-web = "0.5"
 validator = { version = "0.14", features = ["derive"] }
 thiserror = "1.0"
 uuid = { version = "1.4", features = ["fast-rng", "v4", "serde"] }
-sea-orm = "1.0.0"
+sea-orm = { version = "1.0.0", features = ["runtime-tokio-rustls", "sqlx-sqlite", "sqlx-postgres", "debug-print", "with-chrono", "with-uuid", "with-rust_decimal", "with-time"] }
+sea-orm-migration = "1.0.0"
+anyhow = "1.0"
+futures = "0.3"
+prometheus = { version = "0.13", features = ["push"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_info"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "postgres", "uuid", "chrono", "time", "json"] }
+migrations = { path = "migrations" }
 
 [build-dependencies]
 tonic-build = "0.8"
+
+[[bin]]
+name = "stateset-api"
+path = "src/main.rs"
+
+[[bin]]
+name = "simple-server"
+path = "src/bin/simple_server.rs"

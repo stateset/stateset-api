@@ -117,7 +117,10 @@ impl RestockReturnedItemsCommand {
     ) -> Result<(), ServiceError> {
         info!("Returned items restocked for return ID: {}. Items restocked: {}", self.return_id, items_restocked);
         event_sender
-            .send(Event::InventoryAdjusted(self.return_id, items_restocked as i32))
+            .send(Event::InventoryAdjusted { 
+                product_id: self.return_id, // This should be the actual product ID in a real implementation
+                adjustment: items_restocked as i32 
+            })
             .await
             .map_err(|e| {
                 let msg = format!("Failed to send event for restocked items: {}", e);

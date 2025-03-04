@@ -114,7 +114,7 @@ impl AddItemToASNCommand {
             quantity_shipped: Set(self.quantity_shipped),
             package_number: Set(self.package_number.clone()),
             lot_number: Set(self.lot_number.clone()),
-            serial_numbers: Set(self.serial_numbers.clone()),
+            serial_numbers: Set(self.serial_numbers.iter().collect::<Vec<_>>().join(",").into()),
             expiration_date: Set(self.expiration_date.clone()),
             customs_value: Set(self.customs_value),
             country_of_origin: Set(self.country_of_origin.clone()),

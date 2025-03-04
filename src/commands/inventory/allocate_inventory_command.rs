@@ -339,18 +339,4 @@ impl ToString for AllocationType {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum InventoryError {
-    #[error("Inventory not found: {0}")]
-    NotFound(String),
-    #[error("Duplicate allocation for reference {0}")]
-    DuplicateAllocation(Uuid),
-    #[error("Insufficient inventory for product {0}")]
-    InsufficientInventory(Uuid),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-    #[error("Event error: {0}")]
-    EventError(String),
-    #[error("Validation error: {0}")]
-    ValidationError(String),
-}
+// InventoryError is now centrally defined in crate::errors::InventoryError

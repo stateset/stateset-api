@@ -108,20 +108,6 @@ impl Model {
 }
 
 // You might want to implement these in separate files
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "work_orders")]
-pub struct WorkOrder {
-    #[sea_orm(primary_key, column_type = "Uuid")]
-    pub id: Uuid,
-    // Add other fields as needed
-}
-
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "parts")]
-pub struct Part {
-    #[sea_orm(primary_key, column_type = "Uuid")]
-    pub id: Uuid,
-    // Add other fields as needed
-}
-
-impl ActiveModelBehavior for ActiveModel {}
+// Work order entity is defined in work_order.rs
+// Parts entity should be defined in a separate file
+// Part entity should be in its own file part.rs

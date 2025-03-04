@@ -18,7 +18,7 @@ lazy_static! {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ArchiveOrderCommand {
-    pub order_id: i32,
+    pub order_id: uuid::Uuid,
     #[validate(length(min = 1, max = 500, message = "Reason must be between 1 and 500 characters"))]
     pub reason: String,
     pub version: i32,  // Added for optimistic locking
@@ -50,7 +50,7 @@ impl Command for ArchiveOrderCommand {
     }
 }
 
-async fn archive_order_in_db(db: &DatabaseConnection, order_id: i32, reason: &str, version: i32) -> Result<order_entity::Model, OrderError> {
+async fn archive_order_in_db(db: &DatabaseConnection, order_id: uuid::Uuid, reason: &str, version: i32) -> Result<order_entity::Model, OrderError> {
     let transaction_result = db.transaction::<_, order_entity::Model, OrderError>(|txn| {
         Box::pin(async move {
             let order = Order::find_by_id(order_id)
@@ -88,16 +88,4 @@ async fn archive_order_in_db(db: &DatabaseConnection, order_id: i32, reason: &st
 }
 
 // Assuming you have defined this error type
-#[derive(thiserror::Error, Debug)]
-pub enum OrderError {
-    #[error("Order {0} not found")]
-    NotFound(i32),
-    #[error("Cannot put order {0} on hold in current status")]
-    InvalidStatus(i32),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-    #[error("Event error: {0}")]
-    EventError(String),
-    #[error("Concurrent modification of order {0}")]
-    ConcurrentModification(i32),
-}
+// Using the OrderError from crate::errors

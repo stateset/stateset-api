@@ -131,71 +131,12 @@ impl Model {
         }
     }
 
-    pub async fn get_pick_items(&self, db: &DatabaseConnection) -> Result<Vec<pick_item::Model>, DbErr> {
-        PickItem::find()
-            .filter(pick_item::Column::PickId.eq(self.id))
+    pub async fn get_pick_items(&self, db: &DatabaseConnection) -> Result<Vec<super::pick_item::Model>, DbErr> {
+        super::pick_item::Entity::find()
+            .filter(super::pick_item::Column::PickId.eq(self.id))
             .all(db)
             .await
     }
 }
 
-// You might want to create a separate file for this model
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "pick_items")]
-pub struct PickItem {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    #[sea_orm(column_type = "Uuid")]
-    pub pick_id: Uuid,
-    pub item_number: String,
-    pub quantity: i32,
-    pub picked_quantity: i32,
-    pub location: String,
-    pub status: String,
-}
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum PickItemRelation {
-    #[sea_orm(
-        belongs_to = "super::pick::Entity",
-        from = "Column::PickId",
-        to = "super::pick::Column::Id"
-    )]
-    Pick,
-}
-
-impl Related<super::pick::Entity> for PickItem {
-    fn to() -> RelationDef {
-        PickItemRelation::Pick.def()
-    }
-}
-
-impl ActiveModelBehavior for ActiveModel {}
-
-impl PickItem {
-    pub fn new(pick_id: Uuid, item_number: String, quantity: i32, location: String) -> Self {
-        Self {
-            id: 0, // This will be set by the database
-            pick_id,
-            item_number,
-            quantity,
-            picked_quantity: 0,
-            location,
-            status: "Pending".to_string(),
-        }
-    }
-
-    pub fn update_picked_quantity(&mut self, quantity: i32) -> Result<(), String> {
-        if quantity <= self.quantity {
-            self.picked_quantity = quantity;
-            if self.picked_quantity == self.quantity {
-                self.status = "Completed".to_string();
-            } else {
-                self.status = "Partial".to_string();
-            }
-            Ok(())
-        } else {
-            Err("Picked quantity cannot exceed required quantity".to_string())
-        }
-    }
-}
+// PickItem entity has been moved to its own file: pick_item.rs

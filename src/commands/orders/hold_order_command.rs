@@ -138,18 +138,4 @@ impl HoldOrderCommand {
 }
 
 // Updated OrderError enum
-#[derive(thiserror::Error, Debug)]
-pub enum OrderError {
-    #[error("Order {0} not found")]
-    NotFound(Uuid),
-    #[error("Cannot put order {0} on hold in current status")]
-    InvalidStatus(Uuid),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-    #[error("Event error: {0}")]
-    EventError(String),
-    #[error("Concurrent modification of order {0}")]
-    ConcurrentModification(Uuid),
-    #[error("Validation error: {0}")]
-    ValidationError(String),
-}
+// Using the OrderError from crate::errors

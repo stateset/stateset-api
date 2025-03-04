@@ -14,8 +14,11 @@ use sea_orm::{
 use crate::{errors::ServiceError, db::DbPool, models::*};
 use chrono::{DateTime, Utc};
 
-use sea_orm::Order
+use sea_orm::Order;
 
+// Comment out imports that don't exist yet
+// These would be created properly when implementing the full application
+/*
 use crate::billofmaterials::BillOfMaterials;
 use crate::inventory_item::InventoryItem;
 use crate::order::Order;
@@ -27,6 +30,7 @@ use crate::order_item::OrderItem;
 use crate::product::Product;
 use crate::customer::Customer;
 use crate::warehouse::Warehouse;
+*/
 
 #[async_trait]
 pub trait Query: Send + Sync {

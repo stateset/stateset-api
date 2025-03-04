@@ -129,66 +129,7 @@ impl fmt::Display for LineItemStatus {
     }
 }
 
-/// Line item model
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
-#[sea_orm(table_name = "bill_of_materials_line_items")]
-pub struct LineItemModel {
-    #[sea_orm(primary_key)]
-    pub id: i32,
-    
-    #[validate(length(min = 1, max = 50, message = "BOM number must be between 1-50 characters"))]
-    pub bill_of_materials_number: String,
-    
-    pub line_type: LineType,
-    
-    #[validate(length(min = 1, max = 50, message = "Part number must be between 1-50 characters"))]
-    pub part_number: String,
-    
-    #[validate(length(min = 1, max = 100, message = "Part name must be between 1-100 characters"))]
-    pub part_name: String,
-    
-    pub purchase_supply_type: SupplyType,
-    
-    #[validate(range(min = 0.0, message = "Quantity must be non-negative"))]
-    pub quantity: f64,
-    
-    pub status: LineItemStatus,
-    
-    pub bill_of_materials_id: i32,
-    
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum LineItemRelation {
-    #[sea_orm(
-        belongs_to = "super::bill_of_materials::Entity",
-        from = "Column::BillOfMaterialsId",
-        to = "super::bill_of_materials::Column::Id"
-    )]
-    BillOfMaterials,
-}
-
-impl Related<super::bill_of_materials::Entity> for LineItemEntity {
-    fn to() -> RelationDef {
-        LineItemRelation::BillOfMaterials.def()
-    }
-}
-
-impl ActiveModelBehavior for LineItemActiveModel {
-    /// Hook that is triggered before insert/update
-    fn before_save(mut self, insert: bool) -> Result<Self, DbErr> {
-        let now = Utc::now();
-        self.updated_at = Set(now);
-        
-        if insert {
-            self.created_at = Set(now);
-        }
-        
-        Ok(self)
-    }
-}
+// LineItem model moved to models/bom_line_item/mod.rs
 
 impl Model {
     /// Create a new Bill of Materials
@@ -217,11 +158,11 @@ impl Model {
     pub async fn add_line_item(
         &self, 
         db: &DatabaseConnection,
-        line_item: LineItemModel
-    ) -> Result<LineItemModel, Box<dyn std::error::Error>> {
+        line_item: crate::models::bom_line_item::Model
+    ) -> Result<crate::models::bom_line_item::Model, Box<dyn std::error::Error>> {
         line_item.validate()?;
         
-        let mut active_model: LineItemActiveModel = line_item.into();
+        let mut active_model: crate::models::bom_line_item::ActiveModel = line_item.into();
         active_model.bill_of_materials_id = Set(self.id);
         active_model.bill_of_materials_number = Set(self.number.clone());
         
@@ -249,58 +190,12 @@ impl Model {
     pub async fn find_line_items(
         &self,
         db: &DatabaseConnection
-    ) -> Result<Vec<LineItemModel>, DbErr> {
-        LineItemEntity::find()
-            .filter(LineItemColumn::BillOfMaterialsId.eq(self.id))
+    ) -> Result<Vec<crate::models::bom_line_item::Model>, DbErr> {
+        crate::models::bom_line_item::Entity::find()
+            .filter(crate::models::bom_line_item::Column::BillOfMaterialsId.eq(self.id))
             .all(db)
             .await
     }
 }
 
-impl LineItemModel {
-    /// Create a new line item
-    pub fn new(
-        bill_of_materials_number: String,
-        line_type: LineType,
-        part_number: String,
-        part_name: String,
-        purchase_supply_type: SupplyType,
-        quantity: f64,
-        status: LineItemStatus,
-        bill_of_materials_id: i32,
-    ) -> Result<Self, ValidationError> {
-        let now = Utc::now();
-        let item = Self {
-            id: 0,
-            bill_of_materials_number,
-            line_type,
-            part_number,
-            part_name,
-            purchase_supply_type,
-            quantity,
-            status,
-            bill_of_materials_id,
-            created_at: now,
-            updated_at: now,
-        };
-        item.validate()?;
-        Ok(item)
-    }
-
-    /// Update the status of this line item
-    pub async fn update_status(
-        &mut self,
-        db: &DatabaseConnection,
-        new_status: LineItemStatus
-    ) -> Result<Self, DbErr> {
-        self.status = new_status;
-        self.updated_at = Utc::now();
-        
-        let mut active_model: LineItemActiveModel = self.clone().into();
-        active_model.status = Set(new_status);
-        active_model.updated_at = Set(Utc::now());
-        
-        let result = active_model.update(db).await?;
-        Ok(result)
-    }
-}
+// LineItemModel implementation moved to bom_line_item module

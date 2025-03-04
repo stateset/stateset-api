@@ -18,6 +18,10 @@ pub struct AppConfig {
     /// Database connection URL
     #[validate(url(message = "Must be a valid URL"))]
     pub database_url: String,
+    
+    /// Database URL alias (for backward compatibility)
+    #[serde(skip)]
+    pub db_url: String,
 
     /// Redis connection URL
     #[validate(url(message = "Must be a valid URL"))]
@@ -58,6 +62,26 @@ impl AppConfig {
     /// Gets database URL reference
     pub fn database_url(&self) -> &str {
         &self.database_url
+    }
+    
+    /// Creates a new configuration
+    pub fn new(database_url: String, redis_url: String, jwt_secret: String, 
+               jwt_expiration: usize, refresh_token_expiration: usize, 
+               host: String, port: u16, environment: String) -> Self {
+        let mut config = Self {
+            database_url: database_url.clone(),
+            db_url: database_url,
+            redis_url,
+            jwt_secret,
+            jwt_expiration,
+            refresh_token_expiration,
+            host,
+            port,
+            environment,
+            log_level: default_log_level(),
+        };
+        config.db_url = config.database_url.clone();
+        config
     }
 
     /// Gets Redis URL reference

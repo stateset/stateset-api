@@ -326,9 +326,9 @@ impl ReserveInventoryCommand {
             reference_id: Set(self.reference_id),
             reference_type: Set(self.reference_type.clone()),
             quantity: Set(quantity),
-            status: Set(ReservationStatus::Active.to_string()),
-            reservation_type: Set(self.reservation_type.to_string()),
-            lot_numbers: Set(request.lot_numbers.clone()),
+            status: Set("Active".to_string()),
+            reservation_type: Set(self.reservation_type.clone()),
+            lot_numbers: Set(request.lot_numbers.iter().collect::<Vec<_>>().join(",").into()),
             location_id: Set(request.location_id.clone()),
             priority: Set(self.priority),
             notes: Set(self.notes.clone()),
@@ -354,7 +354,7 @@ impl ReserveInventoryCommand {
             reference_id = %self.reference_id,
             reference_type = %self.reference_type,
             warehouse_id = %self.warehouse_id,
-            reservation_count = %results.reservations.len(),
+            reservation_count = %results.reservations.len,
             fully_reserved = %results.fully_reserved,
             "Inventory reservation completed"
         );

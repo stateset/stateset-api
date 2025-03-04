@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use sea_orm::{
-    query::{Condition, Expr, Function, QuerySelect, QueryFilter, QueryOrder, QuerySelect},
+    query::{Condition, Expr, Function, QuerySelect, QueryFilter, QueryOrder},
     EntityTrait, RelationTrait, DatabaseConnection,
 };
 use chrono::{DateTime, Utc};

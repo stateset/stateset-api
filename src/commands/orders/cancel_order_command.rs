@@ -145,32 +145,4 @@ impl CancelOrderCommand {
     }
 }
 
-// Extend the OrderError enum to include a ValidationError variant
-#[derive(thiserror::Error, Debug)]
-pub enum OrderError {
-    #[error("Order {0} not found")]
-    NotFound(Uuid),
-    #[error("Cannot cancel order {0} in current status")]
-    InvalidStatus(Uuid),
-    #[error("Database error: {0}")]
-    DatabaseError(String),
-    #[error("Event error: {0}")]
-    EventError(String),
-    #[error("Concurrent modification of order {0}")]
-    ConcurrentModification(Uuid),
-    #[error("Validation error: {0}")]
-    ValidationError(String),
-}
-
-impl OrderError {
-    pub fn error_type(&self) -> &str {
-        match self {
-            OrderError::NotFound(_) => "not_found",
-            OrderError::InvalidStatus(_) => "invalid_status",
-            OrderError::DatabaseError(_) => "database_error",
-            OrderError::EventError(_) => "event_error",
-            OrderError::ConcurrentModification(_) => "concurrent_modification",
-            OrderError::ValidationError(_) => "validation_error",
-        }
-    }
-}
+// Using the OrderError from crate::errors
