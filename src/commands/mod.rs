@@ -45,16 +45,14 @@ pub mod picking;
 pub mod receiving;
 // Comment out unimplemented modules to allow compilation
 // Uncomment as they're implemented
-/*
-pub mod quality;
+// pub mod quality;
 pub mod suppliers;
-pub mod warehouses;
-pub mod carriers;
-pub mod packaging;
-pub mod transfers;
-pub mod kitting;
-pub mod maintenance;
-pub mod forecasting;
-pub mod audit;
-pub mod analytics;
-*/
+// pub mod warehouses;
+// pub mod carriers;
+// pub mod packaging;
+// pub mod transfers;
+// pub mod kitting;
+// pub mod maintenance;
+// pub mod forecasting;
+// pub mod audit;
+// pub mod analytics;
