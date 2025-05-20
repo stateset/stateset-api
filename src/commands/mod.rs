@@ -56,3 +56,4 @@ pub mod forecasting;
 pub mod audit;
 pub mod analytics;
 pub mod payments;
+pub mod customers;
