@@ -1,117 +1,123 @@
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
 use std::sync::Arc;
-use sea_orm::entity::prelude::*;
-use sea_orm::{DatabaseConnection, Set};
-use tracing::{info, error, instrument};
+use sea_orm::*;
+use crate::{
+    db::DbPool,
+    errors::ServiceError,
+    events::{Event, EventSender},
+    models::{
+        order_entity::{self, Entity as Order},
+        OrderStatus,
+    },
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 use prometheus::IntCounter;
-use crate::{errors::ServiceError, events::{Event, EventSender}, models::order_shipment};
 use lazy_static::lazy_static;
+use chrono::{DateTime, Utc};
 
 lazy_static! {
-    static ref TRACKING_INFO_ADDED: IntCounter = 
-        IntCounter::new("tracking_info_added_total", "Total number of tracking information added to orders")
+    static ref ORDER_STATUS_UPDATES: IntCounter =
+        IntCounter::new("order_status_updates_total", "Total number of order status updates")
             .expect("metric can be created");
 
-    static ref TRACKING_INFO_ADD_FAILURES: IntCounter = 
-        IntCounter::new("tracking_info_add_failures_total", "Total number of failed tracking information additions to orders")
+    static ref ORDER_STATUS_UPDATE_FAILURES: IntCounter =
+        IntCounter::new("order_status_update_failures_total", "Total number of failed order status updates")
             .expect("metric can be created");
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
-pub struct AddTrackingInformationCommand {
-    pub order_id: i32,
-    #[validate(length(min = 1, max = 100))]
-    pub tracking_number: String,
-    #[validate(length(min = 1, max = 100))]
-    pub carrier: String,
-    pub expected_delivery_date: Option<chrono::NaiveDate>,
+pub struct UpdateOrderStatusCommand {
+    pub order_id: Uuid,
+    pub new_status: OrderStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateOrderStatusResult {
+    pub id: Uuid,
+    pub status: String,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[async_trait::async_trait]
-impl Command for AddTrackingInformationCommand {
-    type Result = order_shipment::Model;
+impl Command for UpdateOrderStatusCommand {
+    type Result = UpdateOrderStatusResult;
 
-    #[instrument(skip(db_pool, event_sender))]
-    async fn execute(&self, db_pool: Arc<DatabaseConnection>, event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
-        // Validate the command
-        if let Err(e) = self.validate() {
-            TRACKING_INFO_ADD_FAILURES.inc();
-            error!("Invalid AddTrackingInformationCommand: {}", e);
-            return Err(ServiceError::ValidationError(e.to_string()));
-        }
+    #[instrument(skip(self, db_pool, event_sender))]
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
+        let db = db_pool.as_ref();
 
-        // Transaction to add or update tracking information
-        let txn = db_pool.begin().await.map_err(|e| {
-            TRACKING_INFO_ADD_FAILURES.inc();
-            error!("Failed to start transaction: {}", e);
-            ServiceError::DatabaseError("Failed to start transaction".into())
-        })?;
+        let updated_order = self.update_order_status(db).await?;
 
-        let shipment = match order_shipment::Entity::find()
-            .filter(order_shipment::Column::OrderId.eq(self.order_id))
-            .one(db_pool.as_ref())
+        self.log_and_trigger_event(&event_sender, &updated_order).await?;
+
+        ORDER_STATUS_UPDATES.inc();
+
+        Ok(UpdateOrderStatusResult {
+            id: updated_order.id,
+            status: updated_order.status,
+            updated_at: updated_order.updated_at.and_utc(),
+        })
+    }
+}
+
+impl UpdateOrderStatusCommand {
+    async fn update_order_status(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<order_entity::Model, ServiceError> {
+        let order = Order::find_by_id(self.order_id)
+            .one(db)
             .await
             .map_err(|e| {
-                TRACKING_INFO_ADD_FAILURES.inc();
-                error!("Failed to find shipment for order {}: {}", self.order_id, e);
-                ServiceError::DatabaseError
-            })? {
-            Some(mut existing_shipment) => {
-                existing_shipment.tracking_number = Set(self.tracking_number.clone());
-                existing_shipment.carrier = Set(self.carrier.clone());
-                existing_shipment.expected_delivery_date = Set(self.expected_delivery_date);
-                existing_shipment.updated_at = Set(chrono::Utc::now().naive_utc());
+                ORDER_STATUS_UPDATE_FAILURES.inc();
+                let msg = format!("Failed to find order {}: {}", self.order_id, e);
+                error!("{}", msg);
+                ServiceError::DatabaseError(msg)
+            })?
+            .ok_or_else(|| {
+                ORDER_STATUS_UPDATE_FAILURES.inc();
+                let msg = format!("Order {} not found", self.order_id);
+                error!("{}", msg);
+                ServiceError::NotFound(msg)
+            })?;
 
-                existing_shipment.update(db_pool.as_ref()).await.map_err(|e| {
-                    TRACKING_INFO_ADD_FAILURES.inc();
-                    error!("Failed to update shipment for order {}: {}", self.order_id, e);
-                    ServiceError::DatabaseError
-                })?
-            }
-            None => {
-                let new_shipment = order_shipment::ActiveModel {
-                    id: Set(0), // Assuming ID is auto-incremented
-                    order_id: Set(self.order_id),
-                    tracking_number: Set(self.tracking_number.clone()),
-                    carrier: Set(self.carrier.clone()),
-                    expected_delivery_date: Set(self.expected_delivery_date),
-                    created_at: Set(chrono::Utc::now().naive_utc()),
-                    updated_at: Set(chrono::Utc::now().naive_utc()),
-                    ..Default::default()
-                };
+        let mut order: order_entity::ActiveModel = order.into();
+        order.status = Set(self.new_status.to_string());
+        order.updated_at = Set(Utc::now().naive_utc());
 
-                new_shipment.insert(db_pool.as_ref()).await.map_err(|e| {
-                    TRACKING_INFO_ADD_FAILURES.inc();
-                    error!("Failed to create new shipment for order {}: {}", self.order_id, e);
-                    ServiceError::DatabaseError
-                })?
-            }
-        };
+        order.update(db).await.map_err(|e| {
+            ORDER_STATUS_UPDATE_FAILURES.inc();
+            let msg = format!("Failed to update order status for order {}: {}", self.order_id, e);
+            error!("{}", msg);
+            ServiceError::DatabaseError(msg)
+        })
+    }
 
-        txn.commit().await.map_err(|e| {
-            TRACKING_INFO_ADD_FAILURES.inc();
-            error!("Failed to commit transaction: {}", e);
-            ServiceError::DatabaseError("Failed to commit transaction".into())
-        })?;
-
-        // Trigger an event indicating that tracking information was added/updated
-        if let Err(e) = event_sender.send(Event::TrackingInformationUpdated(self.order_id, shipment.id)).await {
-            TRACKING_INFO_ADD_FAILURES.inc();
-            error!("Failed to send TrackingInformationUpdated event for order {}: {}", self.order_id, e);
-            return Err(ServiceError::EventError(e.to_string()));
-        }
-
-        TRACKING_INFO_ADDED.inc();
-
+    async fn log_and_trigger_event(
+        &self,
+        event_sender: &EventSender,
+        updated_order: &order_entity::Model,
+    ) -> Result<(), ServiceError> {
         info!(
             order_id = %self.order_id,
-            tracking_number = %self.tracking_number,
-            carrier = %self.carrier,
-            "Tracking information added/updated successfully"
+            new_status = %self.new_status.to_string(),
+            "Order status updated successfully"
         );
 
-        Ok(shipment)
+        event_sender
+            .send(Event::OrderUpdated(self.order_id))
+            .await
+            .map_err(|e| {
+                ORDER_STATUS_UPDATE_FAILURES.inc();
+                let msg = format!("Failed to send event for updated order: {}", e);
+                error!("{}", msg);
+                ServiceError::EventError(msg)
+            })
     }
 }
