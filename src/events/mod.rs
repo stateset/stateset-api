@@ -154,7 +154,13 @@ pub enum Event {
     WorkOrderYielded(Uuid),
     WorkOrderScheduled(Uuid),
     WorkOrderNoteAdded(Uuid, i32),
-    
+
+    // Payment Events
+    PaymentAuthorized(Uuid),
+    PaymentCaptured(Uuid),
+    PaymentRefunded(Uuid),
+    PaymentFailed(Uuid),
+
     // Generic event with data
     with_data(String),
 }
@@ -227,6 +233,18 @@ pub async fn process_events(
                 if let Err(e) = handle_partial_reservation_warning(reference_id, &reference_type, &warehouse_id, &reservations).await {
                     error!("Failed to handle partial reservation warning: reference_id={}, error={}", reference_id, e);
                 }
+            },
+            Event::PaymentAuthorized(payment_id) => {
+                info!("Payment authorized: {}", payment_id);
+            },
+            Event::PaymentCaptured(payment_id) => {
+                info!("Payment captured: {}", payment_id);
+            },
+            Event::PaymentRefunded(payment_id) => {
+                info!("Payment refunded: {}", payment_id);
+            },
+            Event::PaymentFailed(payment_id) => {
+                warn!("Payment failed: {}", payment_id);
             },
             // Add more event handlers as needed
             _ => {
