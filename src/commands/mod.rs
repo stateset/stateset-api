@@ -55,3 +55,4 @@ pub mod maintenance;
 pub mod forecasting;
 pub mod audit;
 pub mod analytics;
+pub mod payments;
