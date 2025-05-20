@@ -11,8 +11,8 @@ pub mod reopen_return_command;
 pub mod receive_return_command;
 pub mod add_note_command;
 pub mod update_return_command;
-// pub mod inspect_return_command;
-// pub mod generate_shipping_label_command;
+pub mod inspect_return_command;
+pub mod generate_shipping_label_command;
 
 // Re-export commands for easier access
 pub use create_return_command::InitiateReturnCommand;
@@ -28,5 +28,5 @@ pub use reopen_return_command::ReopenReturnCommand;
 pub use receive_return_command::ReceiveReturnCommand;
 pub use add_note_command::AddNoteCommand;
 pub use update_return_command::UpdateReturnCommand;
-// pub use inspect_return_command::InspectReturnCommand;
-// pub use generate_shipping_label_command::GenerateShippingLabelCommand;
+pub use inspect_return_command::InspectReturnCommand;
+pub use generate_shipping_label_command::GenerateShippingLabelCommand;
