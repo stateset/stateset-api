@@ -160,6 +160,7 @@ pub enum Event {
     PaymentCaptured(Uuid),
     PaymentRefunded(Uuid),
     PaymentFailed(Uuid),
+    PaymentVoided(Uuid),
 
     // Generic event with data
     with_data(String),
@@ -245,6 +246,9 @@ pub async fn process_events(
             },
             Event::PaymentFailed(payment_id) => {
                 warn!("Payment failed: {}", payment_id);
+            },
+            Event::PaymentVoided(payment_id) => {
+                info!("Payment voided: {}", payment_id);
             },
             // Add more event handlers as needed
             _ => {
