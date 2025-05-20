@@ -13,6 +13,10 @@ pub mod yield_work_order_command;
 pub mod issue_work_order_command;
 pub mod add_note_to_work_order_command;
 pub mod schedule_work_order_command;
+pub mod calculate_average_cost_command;
+pub mod calculate_cogs_command;
+pub mod calculate_monthly_cogs_command;
+pub mod calculate_weighted_average_cogs_command;
 
 pub use create_work_order_command::CreateWorkOrderCommand;
 pub use update_work_order_command::UpdateWorkOrderCommand;
@@ -26,6 +30,11 @@ pub use yield_work_order_command::YieldWorkOrderCommand;
 pub use issue_work_order_command::IssueWorkOrderCommand;
 pub use add_note_to_work_order_command::AddNoteToWorkOrderCommand;
 pub use schedule_work_order_command::ScheduleWorkOrderCommand;
+pub use calculate_average_cost_command::CalculateAverageCostCommand;
+pub use calculate_cogs_command::CalculateCOGSCommand;
+pub use calculate_monthly_cogs_command::CalculateMonthlyCOGSCommand;
+pub use calculate_weighted_average_cogs_command::CalculateWeightedAverageCOGSCommand;
 pub use get_work_order_command::GetWorkOrderCommand;
 pub use list_work_orders::ListWorkOrdersCommand;
 pub use delete_work_order_command::DeleteWorkOrderCommand;
+
