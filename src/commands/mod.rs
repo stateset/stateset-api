@@ -47,8 +47,8 @@ pub mod receiving;
 // Uncomment as they're implemented
 // pub mod quality;
 pub mod suppliers;
-// pub mod warehouses;
-// pub mod carriers;
+pub mod warehouses;
+pub mod carriers;
 // pub mod packaging;
 // pub mod transfers;
 // pub mod kitting;
