@@ -40,11 +40,12 @@ pub mod shipments;
 pub mod warranties;
 pub mod workorders;
 
+// Newly added command modules
+pub mod picking;
+pub mod receiving;
 // Comment out unimplemented modules to allow compilation
 // Uncomment as they're implemented
 /*
-pub mod picking;
-pub mod receiving;
 pub mod quality;
 pub mod suppliers;
 pub mod warehouses;
