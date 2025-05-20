@@ -50,6 +50,9 @@ pub enum Event {
     OrderItemAdded(Uuid),
     OrderArchived(i32),
     ShippingAddressUpdated(Uuid),
+    BillingAddressUpdated(Uuid),
+    PaymentMethodUpdated(Uuid),
+    ShippingMethodUpdated(Uuid),
     
     // Return Events
     ReturnCreated(Uuid),
