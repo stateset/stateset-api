@@ -10,6 +10,10 @@ pub mod activate_customer_command;
 pub mod deactivate_customer_command;
 pub mod add_customer_note_command;
 pub mod flag_customer_command;
+pub mod suspend_customer_command;
+pub mod unsuspend_customer_command;
+pub mod merge_customers_command;
+pub mod archive_customer_command;
 
 pub use create_customer_command::CreateCustomerCommand;
 pub use update_customer_command::UpdateCustomerCommand;
@@ -23,3 +27,7 @@ pub use activate_customer_command::ActivateCustomerCommand;
 pub use deactivate_customer_command::DeactivateCustomerCommand;
 pub use add_customer_note_command::AddCustomerNoteCommand;
 pub use flag_customer_command::FlagCustomerCommand;
+pub use suspend_customer_command::SuspendCustomerCommand;
+pub use unsuspend_customer_command::UnsuspendCustomerCommand;
+pub use merge_customers_command::MergeCustomersCommand;
+pub use archive_customer_command::ArchiveCustomerCommand;
