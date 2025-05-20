@@ -1,7 +1,17 @@
 pub mod create_customer_command;
 pub mod update_customer_command;
 pub mod delete_customer_command;
+pub mod get_customer_command;
+pub mod get_customer_by_email_command;
+pub mod list_customers_command;
+pub mod search_customers_command;
+pub mod count_customers_command;
 
 pub use create_customer_command::CreateCustomerCommand;
 pub use update_customer_command::UpdateCustomerCommand;
 pub use delete_customer_command::DeleteCustomerCommand;
+pub use get_customer_command::GetCustomerCommand;
+pub use get_customer_by_email_command::GetCustomerByEmailCommand;
+pub use list_customers_command::ListCustomersCommand;
+pub use search_customers_command::SearchCustomersCommand;
+pub use count_customers_command::CountCustomersCommand;
