@@ -1,7 +1,19 @@
+pub mod create_bom_command;
+pub mod update_bom_command;
 pub mod delete_bom_command;
 pub mod get_bom_command;
+pub mod add_component_to_bom_command;
+pub mod remove_component_from_bom_command;
+pub mod duplicate_bom_command;
+pub mod audit_bom_command;
 pub mod build_to_stock_command;
 
+pub use create_bom_command::CreateBomCommand;
+pub use update_bom_command::UpdateBomCommand;
 pub use delete_bom_command::DeleteBomCommand;
 pub use get_bom_command::GetBomCommand;
+pub use add_component_to_bom_command::AddComponentToBOMCommand;
+pub use remove_component_from_bom_command::RemoveComponentFromBOMCommand;
+pub use duplicate_bom_command::DuplicateBOMCommand;
+pub use audit_bom_command::AuditBOMCommand;
 pub use build_to_stock_command::BuildToStockCommand;
