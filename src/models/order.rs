@@ -12,6 +12,8 @@ pub enum OrderStatus {
     Pending,
     #[sea_orm(string_value = "Processing")]
     Processing,
+    #[sea_orm(string_value = "OnHold")]
+    OnHold,
     #[sea_orm(string_value = "Shipped")]
     Shipped,
     #[sea_orm(string_value = "Delivered")]
