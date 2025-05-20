@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 use async_trait::async_trait;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
+use sea_orm::*;
+use crate::models::order_entity::{self, Entity as Order};
 
 use crate::{
     db::DbPool,
@@ -30,25 +32,36 @@ pub struct GenerateCustomerActivityReportResult {
 impl Command for GenerateCustomerActivityReportCommand {
     type Result = GenerateCustomerActivityReportResult;
 
-    #[instrument(skip(self, _db_pool, event_sender))]
+    #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
         &self,
-        _db_pool: Arc<DbPool>,
+        db_pool: Arc<DbPool>,
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         self.validate()
             .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
-        // Placeholder orders count
-        let orders = 0usize;
-        info!(customer_id = %self.customer_id, "Generating customer activity report");
+        let db = db_pool.as_ref();
+
+        let orders = Order::find()
+            .filter(order_entity::Column::CustomerId.eq(self.customer_id))
+            .filter(order_entity::Column::CreatedAt.gte(self.start.naive_utc()))
+            .filter(order_entity::Column::CreatedAt.lte(self.end.naive_utc()))
+            .count(db)
+            .await
+            .map_err(|e| {
+                error!("Failed to count orders for customer {}: {}", self.customer_id, e);
+                ServiceError::DatabaseError(e.to_string())
+            })?;
+
+        info!(customer_id = %self.customer_id, orders, "Generating customer activity report");
 
         event_sender
             .send(Event::with_data("customer_activity_report_generated".to_string()))
             .await
             .map_err(ServiceError::EventError)?;
 
-        Ok(GenerateCustomerActivityReportResult { customer_id: self.customer_id, orders })
+        Ok(GenerateCustomerActivityReportResult { customer_id: self.customer_id, orders: orders as usize })
     }
 }
 
