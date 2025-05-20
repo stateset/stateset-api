@@ -9,6 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
     let config = config::load_config()?;
+    config::init_tracing(&config.log_level);
     let db = db::establish_connection(&config.db_url).await.map_err(|e| {
         error!("DB connection failed: {}", e);
         e
