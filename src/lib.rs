@@ -11,6 +11,7 @@ pub mod handlers;
 pub mod models;
 pub mod commands;
 pub mod proto;
+pub mod grpc;
 pub mod queries;
 pub mod repositories;
 pub mod schema;

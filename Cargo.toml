@@ -53,3 +53,7 @@ path = "src/main.rs"
 [[bin]]
 name = "simple-server"
 path = "src/bin/simple_server.rs"
+
+[[bin]]
+name = "grpc-server"
+path = "src/bin/grpc_server.rs"
