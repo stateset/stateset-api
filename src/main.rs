@@ -35,6 +35,13 @@ use crate::services::{
 };
 use crate::events::EventSender;
 
+// Macro for constructing services with shared resources
+macro_rules! init_service {
+    ($svc:ident, $db:expr, $sender:expr) => {
+        $svc::new($db.clone(), $sender.clone())
+    };
+}
+
 /// Services layer that encapsulates business logic
 #[derive(Debug, Clone)]
 pub struct AppServices {
@@ -49,12 +56,12 @@ pub struct AppServices {
 impl AppServices {
     pub fn new(db_pool: Arc<DatabaseConnection>, event_sender: Arc<EventSender>) -> Self {
         Self {
-            work_orders: WorkOrderService::new(db_pool.clone(), event_sender.clone()),
-            orders: OrderService::new(db_pool.clone(), event_sender.clone()),
-            inventory: InventoryService::new(db_pool.clone(), event_sender.clone()),
-            returns: ReturnService::new(db_pool.clone(), event_sender.clone()),
-            shipments: ShipmentService::new(db_pool.clone(), event_sender.clone()),
-            warranties: WarrantyService::new(db_pool.clone(), event_sender.clone()),
+            work_orders: init_service!(WorkOrderService, db_pool, event_sender),
+            orders: init_service!(OrderService, db_pool, event_sender),
+            inventory: init_service!(InventoryService, db_pool, event_sender),
+            returns: init_service!(ReturnService, db_pool, event_sender),
+            shipments: init_service!(ShipmentService, db_pool, event_sender),
+            warranties: init_service!(WarrantyService, db_pool, event_sender),
         }
     }
 }
@@ -74,19 +81,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load environment variables from .env file
     dotenv().ok();
     
-    // Initialize tracing with more structured configuration
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            // Use RUST_LOG environment variable, or default to info for our code and warn for others
-            std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "stateset_api=info,tower_http=debug,info".into())
-        )
-        .init();
-    
-    info!("Stateset API starting...");
-    
     // Load configuration from environment variables
     let config = config::load_config()?;
+
+    // Initialize tracing using configuration
+    config::init_tracing(&config.log_level);
+
+    info!("Stateset API starting...");
     
     // Connect to the database
     info!("Connecting to database...");

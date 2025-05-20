@@ -134,6 +134,17 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
     }
 }
 
+/// Initializes tracing using the provided log level as the default filter
+pub fn init_tracing(level: &str) {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let default_directive = format!("stateset_api={},tower_http=debug", level);
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(default_directive));
+
+    let _ = fmt().with_env_filter(filter).try_init();
+}
+
 /// Loads application configuration
 ///
 /// Layers configuration sources in this order:
@@ -142,9 +153,6 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
 /// 3. Docker config (config/docker.toml) if DOCKER env var is set
 /// 4. Environment variables (APP_*)
 pub fn load_config() -> Result<AppConfig, AppConfigError> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
 
     let run_env = env::var("RUN_ENV").unwrap_or_else(|_| DEFAULT_ENV.to_string());
     info!("Loading configuration for environment: {}", run_env);
