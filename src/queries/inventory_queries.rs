@@ -12,7 +12,7 @@ use sea_orm::{
     Function::*,
 };
 use crate::{errors::ServiceError, db::DbPool, models::*};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Duration};
 
 use crate::billofmaterials::BillOfMaterialsLineItemRelation::BillOfMaterials;
 use crate::inventory_item::InventoryItem;
@@ -286,5 +286,33 @@ impl Query for GetInventoryForecastQuery {
 
         let end_date = Utc::now();
         let start_date = end_date - Duration::days(self.forecast_period as i64);
+
+        let total_sold = OrderItem::find()
+            .inner_join(Order)
+            .filter(OrderItem::Column::ProductId.eq(self.product_id))
+            .filter(Order::Column::OrderDate.between(start_date, end_date))
+            .select_only()
+            .column_as(sum(OrderItem::Column::Quantity), "total_sold")
+            .into_tuple::<Option<i64>>()
+            .one(&db)
+            .await
+            .map_err(|_| ServiceError::DatabaseError)?
+            .flatten()
+            .unwrap_or(0);
+
+        let avg_daily_demand = total_sold as f64 / self.forecast_period as f64;
+        let forecasted_demand = (avg_daily_demand * self.forecast_period as f64).round() as i32;
+        let recommended_reorder = if forecasted_demand > current_stock {
+            forecasted_demand - current_stock
+        } else {
+            0
+        };
+
+        Ok(InventoryForecast {
+            product_id: self.product_id,
+            current_stock,
+            forecasted_demand,
+            recommended_reorder,
+        })
     }
 }

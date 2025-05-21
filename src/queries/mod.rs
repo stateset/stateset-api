@@ -6,3 +6,5 @@ pub mod order_queries;
 pub mod billofmaterials_queries;
 pub mod warehouse_queries;
 pub mod workorder_queries;
+pub mod asn_queries;
+pub mod manufactureorder_queries;
