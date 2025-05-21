@@ -25,7 +25,7 @@ use validator::Validate;
 use tracing::info;
 use super::common::{validate_input, map_service_error, success_response, created_response, no_content_response, PaginationParams};
 
-// Add routes configuration
+/// Creates the router for return endpoints
 pub fn returns_routes() -> Router {
     Router::new()
         .route("/", get(list_returns))
@@ -320,15 +320,3 @@ async fn restock_returned_items(
     }))
 }
 
-/// Creates the router for return endpoints
-pub fn return_routes() -> Router {
-    Router::new()
-        .route("/", post(create_return))
-        .route("/:id", get(get_return))
-        .route("/:id/approve", post(approve_return))
-        .route("/:id/reject", post(reject_return))
-        .route("/:id/cancel", post(cancel_return))
-        .route("/:id/complete", post(complete_return))
-        .route("/:id/refund", post(refund_return))
-        .route("/:id/restock", post(restock_returned_items))
-}
