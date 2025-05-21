@@ -25,7 +25,7 @@ use validator::Validate;
 use tracing::info;
 use super::common::{validate_input, map_service_error, success_response, created_response, no_content_response, PaginationParams};
 
-// Add routes configuration
+/// Creates the router for shipment endpoints
 pub fn shipments_routes() -> Router {
     Router::new()
         .route("/", get(list_shipments))
@@ -348,16 +348,3 @@ async fn get_shipments_for_order(
     success_response(shipments)
 }
 
-/// Creates the router for shipment endpoints
-pub fn shipments_routes() -> Router {
-    Router::new()
-        .route("/", post(create_shipment))
-        .route("/:id", get(get_shipment))
-        .route("/:id", put(update_shipment))
-        .route("/:id/cancel", post(cancel_shipment))
-        .route("/:id/track", get(track_shipment))
-        .route("/:id/confirm-delivery", post(confirm_delivery))
-        .route("/:id/assign-carrier", post(assign_carrier))
-        .route("/:id/ship", post(ship))
-        .route("/order/:order_id", get(get_shipments_for_order))
-}

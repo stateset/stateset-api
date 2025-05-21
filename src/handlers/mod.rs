@@ -13,7 +13,6 @@ pub mod auth;
 pub mod users;
 pub mod notifications;
 pub mod asn;
-pub mod categories;
 
 // Re-export common utility functions for handlers
 pub mod common {

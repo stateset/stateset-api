@@ -27,7 +27,7 @@ use tracing::info;
 use chrono::{NaiveDateTime, NaiveDate};
 use super::common::{validate_input, map_service_error, success_response, created_response, no_content_response, PaginationParams};
 
-// Add routes configuration
+/// Creates the router for work order endpoints
 pub fn work_orders_routes() -> Router {
     Router::new()
         .route("/", get(list_work_orders))
@@ -505,19 +505,3 @@ async fn get_work_orders_by_schedule(
     success_response(work_orders)
 }
 
-/// Creates the router for work order endpoints
-pub fn work_order_routes() -> Router {
-    Router::new()
-        .route("/", post(create_work_order))
-        .route("/:id", get(get_work_order))
-        .route("/:id", put(update_work_order))
-        .route("/:id/cancel", post(cancel_work_order))
-        .route("/:id/start", post(start_work_order))
-        .route("/:id/complete", post(complete_work_order))
-        .route("/:id/assign", post(assign_work_order))
-        .route("/:id/unassign", post(unassign_work_order))
-        .route("/:id/schedule", post(schedule_work_order))
-        .route("/assignee/:user_id", get(get_work_orders_by_assignee))
-        .route("/status/:status", get(get_work_orders_by_status))
-        .route("/schedule", get(get_work_orders_by_schedule))
-}
