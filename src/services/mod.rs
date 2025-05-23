@@ -3,6 +3,7 @@ pub mod orders;
 pub mod inventory;
 pub mod returns;
 pub mod shipments;
+pub mod fulfillment_orders;
 pub mod warranties;
 pub mod work_orders;
 
@@ -45,5 +46,8 @@ pub mod shipment_service {
 }
 pub mod work_order_service {
     pub use super::work_orders::WorkOrderService;
+}
+pub mod fulfillment_order_service {
+    pub use super::fulfillment_orders::FulfillmentOrderService;
 }
 pub mod category_service;

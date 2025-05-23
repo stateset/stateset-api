@@ -51,6 +51,7 @@ pub mod invoices;
 pub mod product_category;
 pub mod reconciles;
 pub mod cash_sale;
+pub mod fulfillment_order;
 
 // Manufacturing related
 pub mod machine;
@@ -83,6 +84,7 @@ pub mod prelude {
     pub use super::warranty::Entity as Warranty;
     pub use super::work_order::Entity as WorkOrder;
     pub use super::cash_sale::Entity as CashSale;
+    pub use super::fulfillment_order::Entity as FulfillmentOrder;
     
     // ASN entities
     pub use super::asn_entity::Entity as ASN;
@@ -110,4 +112,5 @@ pub mod prelude {
     pub use super::warranty::WarrantyStatus;
     pub use super::work_order::WorkOrderStatus;
     pub use super::work_order::WorkOrderPriority;
+    pub use super::fulfillment_order::FulfillmentOrderStatus;
 }

@@ -4,10 +4,11 @@ StateSet API is a comprehensive, scalable, and robust backend system for order m
 
 ## Features
 
-- **Order Management**: 
+- **Order Management**:
   - Create, retrieve, update, and delete orders
   - Support for complex order workflows (hold, cancel, archive, merge)
   - Order item management and tracking
+  - Fulfillment order creation and status updates
 
 - **Inventory Control**: 
   - Real-time inventory tracking across multiple locations
