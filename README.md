@@ -29,10 +29,13 @@ StateSet API is a comprehensive, scalable, and robust backend system for order m
   - Advanced shipping notice (ASN) creation and management
   - Delivery confirmation workflows
 
-- **Manufacturing & Production**: 
+- **Manufacturing & Production**:
   - Bill of materials (BOM) creation and management
   - Work order scheduling and tracking
   - Component and raw material management
+- **Financial Operations**:
+  - Cash sale creation and tracking
+  - Basic invoicing and payment processing stubs
 
 ## Tech Stack
 

@@ -19,6 +19,7 @@ pub mod accounts;
 // Financial Services
 pub mod invoicing;
 pub mod payments;
+pub mod cash_sale;
 pub mod accounting;
 
 // Analytics and Reporting

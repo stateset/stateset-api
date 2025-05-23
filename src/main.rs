@@ -32,6 +32,7 @@ use crate::services::{
     returns::ReturnService,
     shipments::ShipmentService,
     warranties::WarrantyService,
+    cash_sale::CashSaleService,
 };
 use crate::events::EventSender;
 
@@ -51,6 +52,7 @@ pub struct AppServices {
     pub returns: ReturnService,
     pub shipments: ShipmentService,
     pub warranties: WarrantyService,
+    pub cash_sales: cash_sale::CashSaleService,
 }
 
 impl AppServices {
@@ -62,6 +64,7 @@ impl AppServices {
             returns: init_service!(ReturnService, db_pool, event_sender),
             shipments: init_service!(ShipmentService, db_pool, event_sender),
             warranties: init_service!(WarrantyService, db_pool, event_sender),
+            cash_sales: cash_sale::CashSaleService::new(db_pool.clone()),
         }
     }
 }
@@ -146,6 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nest("/shipments", handlers::shipments::shipments_routes())
             .nest("/warranties", handlers::warranties::warranties_routes())
             .nest("/work-orders", handlers::work_orders::work_orders_routes())
+            .nest("/cash-sales", handlers::cash_sales::cash_sale_routes())
             // Add other API routes here
         )
         // Configure middleware and state
