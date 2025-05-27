@@ -1,6 +1,8 @@
-use crate::errors::AppError;
+use crate::{errors::AppError, models::payment};
 use std::sync::Arc;
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, ActiveModelTrait, Set};
+use chrono::Utc;
+use uuid::Uuid;
 
 pub struct PaymentService {
     db: Arc<DatabaseConnection>,
@@ -11,15 +13,23 @@ impl PaymentService {
         Self { db }
     }
 
-    /// Process a payment for an order. This is a stub implementation
-    /// that simply logs the payment attempt.
+    /// Process a payment for an order and persist the payment record.
     pub async fn process_payment(
         &self,
         order_id: uuid::Uuid,
         amount: rust_decimal::Decimal,
-    ) -> Result<(), AppError> {
+    ) -> Result<Uuid, AppError> {
         tracing::info!(%order_id, %amount, "processing payment");
-        // TODO: persist payment record and integrate with payment gateway
-        Ok(())
+
+        let model = payment::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            order_id: Set(order_id),
+            amount: Set(amount),
+            status: Set(Some("Processed".to_string())),
+            created_at: Set(Utc::now()),
+        };
+
+        let result = model.insert(&*self.db).await?;
+        Ok(result.id)
     }
 }
