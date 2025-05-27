@@ -36,7 +36,9 @@ StateSet API is a comprehensive, scalable, and robust backend system for order m
   - Component and raw material management
 - **Financial Operations**:
   - Cash sale creation and tracking
-  - Basic invoicing and payment processing stubs
+  - Invoice generation with persistent storage
+  - Payment processing with stored records
+  - Item receipt recording for purchase orders
 
 ## Tech Stack
 

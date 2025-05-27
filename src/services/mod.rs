@@ -22,6 +22,7 @@ pub mod invoicing;
 pub mod payments;
 pub mod cash_sale;
 pub mod accounting;
+pub mod item_receipts;
 
 // Analytics and Reporting
 pub mod business_intelligence;
@@ -49,5 +50,8 @@ pub mod work_order_service {
 }
 pub mod fulfillment_order_service {
     pub use super::fulfillment_orders::FulfillmentOrderService;
+}
+pub mod item_receipt_service {
+    pub use super::item_receipts::ItemReceiptService;
 }
 pub mod category_service;

@@ -52,6 +52,8 @@ pub mod product_category;
 pub mod reconciles;
 pub mod cash_sale;
 pub mod fulfillment_order;
+pub mod item_receipt;
+pub mod payment;
 
 // Manufacturing related
 pub mod machine;
