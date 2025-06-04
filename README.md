@@ -116,6 +116,7 @@ Ensure you have the following installed:
    ```
 
 The API will be available at `http://localhost:8080`.
+Requests to unknown routes return a JSON 404 response.
 
 ## API Endpoints
 
