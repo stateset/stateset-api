@@ -160,6 +160,11 @@ StateSet API provides a rich set of RESTful endpoints:
 - `POST /work-orders/:id/start` - Start a work order
 - `POST /work-orders/:id/complete` - Complete a work order
 
+### Health
+- `GET /health` - Basic health check
+- `GET /health/readiness` - Database readiness check
+- `GET /health/version` - Build and version information
+
 ## Testing
 
 Run the test suite with:
