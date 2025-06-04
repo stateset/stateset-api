@@ -12,6 +12,8 @@ use axum::{
     Router,
     routing::get,
     extract::Extension,
+    response::{IntoResponse, Json},
+    http::StatusCode,
 };
 use tower::ServiceBuilder;
 use tower_http::{
@@ -23,6 +25,7 @@ use sea_orm::DatabaseConnection;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{info, error};
+use serde_json::json;
 use crate::errors::AppError;
 use crate::repositories::order_repository::OrderRepository;
 use crate::services::{
@@ -35,6 +38,10 @@ use crate::services::{
     cash_sale::CashSaleService,
 };
 use crate::events::EventSender;
+
+async fn not_found() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, Json(json!({ "error": "Not Found" })))
+}
 
 // Macro for constructing services with shared resources
 macro_rules! init_service {
@@ -152,6 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .nest("/cash-sales", handlers::cash_sales::cash_sale_routes())
             // Add other API routes here
         )
+        .fallback(not_found)
         // Configure middleware and state
         .layer(middleware)
         .with_state(state);
