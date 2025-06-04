@@ -11,6 +11,15 @@ use tracing::info;
 
 use crate::{db, AppState};
 
+/// Returns build and version information
+pub async fn version_info() -> impl IntoResponse {
+    Json(json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "commit": env!("GIT_HASH"),
+        "built": env!("BUILD_TIME"),
+    }))
+}
+
 /// Basic health check response
 pub async fn health_check() -> impl IntoResponse {
     info!("Health check endpoint called");
@@ -56,4 +65,5 @@ pub fn health_routes() -> Router {
     Router::new()
         .route("/", get(health_check))
         .route("/readiness", get(readiness_check))
+        .route("/version", get(version_info))
 }
