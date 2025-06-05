@@ -76,9 +76,9 @@ async fn create_supplier(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Supplier created: {}", supplier_id);
+    info!("Supplier created: {}", supplier_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "id": supplier_id,
         "message": "Supplier created successfully"
     }))
@@ -93,7 +93,7 @@ async fn get_supplier(
         .get_supplier(&supplier_id)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Supplier with ID {} not found", supplier_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Supplier with ID {} not found", supplier_id)))?;
     
     success_response(supplier)
 }
@@ -123,9 +123,9 @@ async fn update_supplier(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Supplier updated: {}", supplier_id);
+    info!("Supplier updated: {}", supplier_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Supplier updated successfully"
     }))
 }
@@ -142,7 +142,7 @@ async fn delete_supplier(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Supplier deleted: {}", supplier_id);
+    info!("Supplier deleted: {}", supplier_id);
     
     no_content_response()
 }
@@ -195,7 +195,7 @@ async fn get_supplier_by_name(
         .get_supplier_by_name(&params.name)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Supplier with name '{}' not found", params.name)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Supplier with name '{}' not found", params.name)))?;
     
     success_response(supplier)
 }

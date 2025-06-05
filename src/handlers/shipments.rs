@@ -133,9 +133,9 @@ async fn create_shipment(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Shipment created: {}", shipment_id);
+    info!("Shipment created: {}", shipment_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "id": shipment_id,
         "message": "Shipment created successfully"
     }))
@@ -150,7 +150,7 @@ async fn get_shipment(
         .get_shipment(&shipment_id)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Shipment with ID {} not found", shipment_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Shipment with ID {} not found", shipment_id)))?;
     
     success_response(shipment)
 }
@@ -167,7 +167,7 @@ async fn update_shipment(
     let estimated_delivery_date = match payload.estimated_delivery_date {
         Some(date_str) => {
             Some(chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                .map_err(|e| ApiError::BadRequest(format\!("Invalid date format: {}", e)))?
+                .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {}", e)))?
                 .and_hms_opt(0, 0, 0)
                 .unwrap())
         },
@@ -189,9 +189,9 @@ async fn update_shipment(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Shipment updated: {}", shipment_id);
+    info!("Shipment updated: {}", shipment_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Shipment updated successfully"
     }))
 }
@@ -214,9 +214,9 @@ async fn cancel_shipment(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Shipment cancelled: {}", shipment_id);
+    info!("Shipment cancelled: {}", shipment_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Shipment cancelled successfully"
     }))
 }
@@ -235,9 +235,9 @@ async fn track_shipment(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Shipment tracked: {}", shipment_id);
+    info!("Shipment tracked: {}", shipment_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "shipment_id": shipment_id,
         "tracking_status": tracking_status
     }))
@@ -262,9 +262,9 @@ async fn confirm_delivery(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Shipment delivery confirmed: {}", shipment_id);
+    info!("Shipment delivery confirmed: {}", shipment_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Shipment delivery confirmed successfully"
     }))
 }
@@ -281,7 +281,7 @@ async fn assign_carrier(
     let estimated_delivery_date = match payload.estimated_delivery_date {
         Some(date_str) => {
             Some(chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
-                .map_err(|e| ApiError::BadRequest(format\!("Invalid date format: {}", e)))?
+                .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {}", e)))?
                 .and_hms_opt(0, 0, 0)
                 .unwrap())
         },
@@ -301,9 +301,9 @@ async fn assign_carrier(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Carrier assigned to shipment: {}", shipment_id);
+    info!("Carrier assigned to shipment: {}", shipment_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Carrier assigned to shipment successfully"
     }))
 }
@@ -328,9 +328,9 @@ async fn ship(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Shipment shipped: {}", shipment_id);
+    info!("Shipment shipped: {}", shipment_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Shipment shipped successfully"
     }))
 }

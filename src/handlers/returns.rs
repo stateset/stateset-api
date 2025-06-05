@@ -152,7 +152,7 @@ async fn get_return(
         .get_return(&return_id)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Return with ID {} not found", return_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Return with ID {} not found", return_id)))?;
     
     success_response(ret)
 }
@@ -176,9 +176,9 @@ async fn approve_return(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Return approved: {}", return_id);
+    info!("Return approved: {}", return_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Return approved successfully"
     }))
 }
@@ -202,9 +202,9 @@ async fn reject_return(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Return rejected: {}", return_id);
+    info!("Return rejected: {}", return_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Return rejected successfully"
     }))
 }
@@ -227,9 +227,9 @@ async fn cancel_return(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Return cancelled: {}", return_id);
+    info!("Return cancelled: {}", return_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Return cancelled successfully"
     }))
 }
@@ -253,9 +253,9 @@ async fn complete_return(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Return completed: {}", return_id);
+    info!("Return completed: {}", return_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Return completed successfully"
     }))
 }
@@ -281,9 +281,9 @@ async fn refund_return(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Return refunded: {}", return_id);
+    info!("Return refunded: {}", return_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Return refunded successfully"
     }))
 }
@@ -313,9 +313,9 @@ async fn restock_returned_items(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Return items restocked: {}", return_id);
+    info!("Return items restocked: {}", return_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Return items restocked successfully"
     }))
 }

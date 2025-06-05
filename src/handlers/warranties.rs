@@ -74,7 +74,7 @@ async fn create_warranty(
     
     // Parse the expiration date
     let expiration_date = NaiveDate::parse_from_str(&payload.expiration_date, "%Y-%m-%d")
-        .map_err(|e| ApiError::BadRequest(format\!("Invalid date format: {}", e)))?
+        .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {}", e)))?
         .and_hms_opt(23, 59, 59)
         .unwrap();
     
@@ -92,9 +92,9 @@ async fn create_warranty(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Warranty created: {}", warranty_id);
+    info!("Warranty created: {}", warranty_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "id": warranty_id,
         "message": "Warranty created successfully"
     }))
@@ -109,7 +109,7 @@ async fn get_warranty(
         .get_warranty(&warranty_id)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Warranty with ID {} not found", warranty_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Warranty with ID {} not found", warranty_id)))?;
     
     success_response(warranty)
 }
@@ -136,9 +136,9 @@ async fn claim_warranty(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Warranty claim created: {} for warranty: {}", claim_id, warranty_id);
+    info!("Warranty claim created: {} for warranty: {}", claim_id, warranty_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "claim_id": claim_id,
         "message": "Warranty claim created successfully"
     }))
@@ -164,9 +164,9 @@ async fn approve_warranty_claim(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Warranty claim approved: {}", claim_id);
+    info!("Warranty claim approved: {}", claim_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Warranty claim approved successfully"
     }))
 }
@@ -191,9 +191,9 @@ async fn reject_warranty_claim(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Warranty claim rejected: {}", claim_id);
+    info!("Warranty claim rejected: {}", claim_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Warranty claim rejected successfully"
     }))
 }
@@ -234,7 +234,7 @@ async fn check_warranty_status(
         .await
         .map_err(map_service_error)?;
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "product_id": product_id,
         "serial_number": serial_number,
         "under_warranty": is_under_warranty

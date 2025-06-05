@@ -90,10 +90,10 @@ impl DateRangeParams {
     /// Converts string dates to NaiveDateTime
     pub fn to_datetime_range(&self) -> Result<(NaiveDateTime, NaiveDateTime), ApiError> {
         let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid start date format: {}", e)))?;
+            .map_err(|e| ApiError::BadRequest(format!("Invalid start date format: {}", e)))?;
         
         let end_date = NaiveDate::parse_from_str(&self.end_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid end date format: {}", e)))?;
+            .map_err(|e| ApiError::BadRequest(format!("Invalid end date format: {}", e)))?;
         
         Ok((
             start_date.and_hms_opt(0, 0, 0).unwrap(),
@@ -114,7 +114,7 @@ async fn create_purchase_order(
     
     // Parse the expected delivery date
     let expected_delivery = NaiveDate::parse_from_str(&payload.expected_delivery_date, "%Y-%m-%d")
-        .map_err(|e| ApiError::BadRequest(format\!("Invalid date format: {}", e)))?
+        .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {}", e)))?
         .and_hms_opt(0, 0, 0)
         .unwrap();
     
@@ -136,9 +136,9 @@ async fn create_purchase_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Purchase order created: {}", po_id);
+    info!("Purchase order created: {}", po_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "id": po_id,
         "message": "Purchase order created successfully"
     }))
@@ -153,7 +153,7 @@ async fn get_purchase_order(
         .get_purchase_order(&po_id)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Purchase order with ID {} not found", po_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Purchase order with ID {} not found", po_id)))?;
     
     success_response(po)
 }
@@ -169,7 +169,7 @@ async fn update_purchase_order(
     // Parse the expected delivery date if provided
     let expected_delivery_date = if let Some(date_str) = &payload.expected_delivery_date {
         Some(NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid date format: {}", e)))?
+            .map_err(|e| ApiError::BadRequest(format!("Invalid date format: {}", e)))?
             .and_hms_opt(0, 0, 0)
             .unwrap())
     } else {
@@ -189,9 +189,9 @@ async fn update_purchase_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Purchase order updated: {}", po_id);
+    info!("Purchase order updated: {}", po_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Purchase order updated successfully"
     }))
 }
@@ -215,9 +215,9 @@ async fn approve_purchase_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Purchase order approved: {}", po_id);
+    info!("Purchase order approved: {}", po_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Purchase order approved successfully"
     }))
 }
@@ -240,9 +240,9 @@ async fn cancel_purchase_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Purchase order cancelled: {}", po_id);
+    info!("Purchase order cancelled: {}", po_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Purchase order cancelled successfully"
     }))
 }
@@ -272,9 +272,9 @@ async fn receive_purchase_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Purchase order received: {}", po_id);
+    info!("Purchase order received: {}", po_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Purchase order received successfully"
     }))
 }
@@ -336,9 +336,9 @@ async fn get_total_purchase_value(
         .await
         .map_err(map_service_error)?;
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "total_value": total_value,
-        "period": format\!("{} to {}", params.start_date, params.end_date)
+        "period": format!("{} to {}", params.start_date, params.end_date)
     }))
 }
 

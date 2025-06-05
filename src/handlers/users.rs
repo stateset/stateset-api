@@ -76,7 +76,7 @@ async fn create_user(
     validate_input(&payload)?;
     
     // Check if current user has admin role
-    if current_user.role \!= "admin" {
+    if current_user.role != "admin" {
         return Err(ApiError::Forbidden("Only admin users can create new users".to_string()));
     }
     
@@ -85,9 +85,9 @@ async fn create_user(
     
     let user_id = Uuid::new_v4();
     
-    info\!("User created: {}", user_id);
+    info!("User created: {}", user_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "id": user_id,
         "message": "User created successfully"
     }))
@@ -102,7 +102,7 @@ async fn get_user(
     // Check if current user has access to this user
     // Either the user is requesting their own profile or they are an admin
     let user_id_str = user_id.to_string();
-    if current_user.user_id \!= user_id_str && current_user.role \!= "admin" {
+    if current_user.user_id != user_id_str && current_user.role != "admin" {
         return Err(ApiError::Forbidden("Access denied".to_string()));
     }
     
@@ -136,16 +136,16 @@ async fn update_user(
     // Check if current user has access to update this user
     // Either the user is updating their own profile or they are an admin
     let user_id_str = user_id.to_string();
-    if current_user.user_id \!= user_id_str && current_user.role \!= "admin" {
+    if current_user.user_id != user_id_str && current_user.role != "admin" {
         return Err(ApiError::Forbidden("Access denied".to_string()));
     }
     
     // This is a mock implementation
     // In a real application, you would call a user service to update the user
     
-    info\!("User updated: {}", user_id);
+    info!("User updated: {}", user_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "User updated successfully"
     }))
 }
@@ -157,14 +157,14 @@ async fn delete_user(
     Path(user_id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     // Only admins can delete users
-    if current_user.role \!= "admin" {
+    if current_user.role != "admin" {
         return Err(ApiError::Forbidden("Only admin users can delete users".to_string()));
     }
     
     // This is a mock implementation
     // In a real application, you would call a user service to delete the user
     
-    info\!("User deleted: {}", user_id);
+    info!("User deleted: {}", user_id);
     
     no_content_response()
 }
@@ -176,14 +176,14 @@ async fn list_users(
     Query(pagination): Query<PaginationParams>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     // Only admins can list all users
-    if current_user.role \!= "admin" {
+    if current_user.role != "admin" {
         return Err(ApiError::Forbidden("Only admin users can list all users".to_string()));
     }
     
     // This is a mock implementation
     // In a real application, you would call a user service to list users
     
-    let users = vec\![
+    let users = vec![
         User {
             id: Uuid::new_v4(),
             name: "John Doe".to_string(),
@@ -208,7 +208,7 @@ async fn list_users(
         },
     ];
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "users": users,
         "total": 2,
         "page": pagination.page,
@@ -228,7 +228,7 @@ async fn change_password(
     // Check if current user has access to change this user's password
     // Either the user is changing their own password or they are an admin
     let user_id_str = user_id.to_string();
-    if current_user.user_id \!= user_id_str && current_user.role \!= "admin" {
+    if current_user.user_id != user_id_str && current_user.role != "admin" {
         return Err(ApiError::Forbidden("Access denied".to_string()));
     }
     
@@ -238,9 +238,9 @@ async fn change_password(
     // 2. Hash the new password
     // 3. Update the user's password in the database
     
-    info\!("Password changed for user: {}", user_id);
+    info!("Password changed for user: {}", user_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Password changed successfully"
     }))
 }
