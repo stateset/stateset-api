@@ -31,10 +31,10 @@ impl DateRangeParams {
     /// Converts string dates to NaiveDateTime
     pub fn to_datetime_range(&self) -> Result<(NaiveDateTime, NaiveDateTime), ApiError> {
         let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid start date format: {}", e)))?;
+            .map_err(|e| ApiError::BadRequest(format!("Invalid start date format: {}", e)))?;
         
         let end_date = NaiveDate::parse_from_str(&self.end_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid end date format: {}", e)))?;
+            .map_err(|e| ApiError::BadRequest(format!("Invalid end date format: {}", e)))?;
         
         Ok((
             start_date.and_hms_opt(0, 0, 0).unwrap(),
@@ -59,7 +59,7 @@ async fn generate_order_summary_report(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Generated order summary report for period: {}", report.period);
+    info!("Generated order summary report for period: {}", report.period);
     
     success_response(report)
 }
@@ -73,7 +73,7 @@ async fn generate_inventory_report(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Generated inventory report");
+    info!("Generated inventory report");
     
     success_response(report)
 }
@@ -93,7 +93,7 @@ async fn generate_supplier_performance_report(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Generated supplier performance report for supplier: {}", supplier_id);
+    info!("Generated supplier performance report for supplier: {}", supplier_id);
     
     success_response(report)
 }
@@ -112,7 +112,7 @@ async fn generate_returns_report(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Generated returns analysis report");
+    info!("Generated returns analysis report");
     
     success_response(report)
 }
@@ -132,7 +132,7 @@ async fn generate_warehouse_efficiency_report(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Generated warehouse efficiency report for warehouse: {}", warehouse_id);
+    info!("Generated warehouse efficiency report for warehouse: {}", warehouse_id);
     
     success_response(report)
 }

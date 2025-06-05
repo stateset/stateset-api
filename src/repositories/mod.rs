@@ -2,8 +2,6 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 pub mod order_repository;
-pub mod warranty_repository;
-pub mod inventory_repository;
 
 /// Repository trait for common database operations
 pub trait Repository {

@@ -200,10 +200,10 @@ impl DateRangeParams {
     /// Converts string dates to NaiveDateTime
     pub fn to_datetime_range(&self) -> Result<(NaiveDateTime, NaiveDateTime), ApiError> {
         let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid start date format: {}", e)))?;
+            .map_err(|e| ApiError::BadRequest(format!("Invalid start date format: {}", e)))?;
         
         let end_date = NaiveDate::parse_from_str(&self.end_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid end date format: {}", e)))?;
+            .map_err(|e| ApiError::BadRequest(format!("Invalid end date format: {}", e)))?;
         
         Ok((
             start_date.and_hms_opt(0, 0, 0).unwrap(),
@@ -225,13 +225,13 @@ async fn create_work_order(
     // Convert scheduled dates if provided
     let scheduled_start = payload.scheduled_start_date.as_ref().map(|date_str| {
         NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid start date format: {}", e)))
+            .map_err(|e| ApiError::BadRequest(format!("Invalid start date format: {}", e)))
             .map(|date| date.and_hms_opt(0, 0, 0).unwrap())
     }).transpose()?;
     
     let scheduled_end = payload.scheduled_end_date.as_ref().map(|date_str| {
         NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest(format\!("Invalid end date format: {}", e)))
+            .map_err(|e| ApiError::BadRequest(format!("Invalid end date format: {}", e)))
             .map(|date| date.and_hms_opt(23, 59, 59).unwrap())
     }).transpose()?;
     
@@ -249,9 +249,9 @@ async fn create_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order created: {}", work_order_id);
+    info!("Work order created: {}", work_order_id);
     
-    created_response(serde_json::json\!({
+    created_response(serde_json::json!({
         "id": work_order_id,
         "message": "Work order created successfully"
     }))
@@ -266,7 +266,7 @@ async fn get_work_order(
         .get_work_order(&work_order_id)
         .await
         .map_err(map_service_error)?
-        .ok_or_else(|| ApiError::NotFound(format\!("Work order with ID {} not found", work_order_id)))?;
+        .ok_or_else(|| ApiError::NotFound(format!("Work order with ID {} not found", work_order_id)))?;
     
     success_response(work_order)
 }
@@ -292,9 +292,9 @@ async fn update_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order updated: {}", work_order_id);
+    info!("Work order updated: {}", work_order_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order updated successfully"
     }))
 }
@@ -317,9 +317,9 @@ async fn cancel_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order cancelled: {}", work_order_id);
+    info!("Work order cancelled: {}", work_order_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order cancelled successfully"
     }))
 }
@@ -343,9 +343,9 @@ async fn start_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order started: {}", work_order_id);
+    info!("Work order started: {}", work_order_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order started successfully"
     }))
 }
@@ -370,9 +370,9 @@ async fn complete_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order completed: {}", work_order_id);
+    info!("Work order completed: {}", work_order_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order completed successfully"
     }))
 }
@@ -396,9 +396,9 @@ async fn assign_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order assigned: {} to {}", work_order_id, payload.assigned_to);
+    info!("Work order assigned: {} to {}", work_order_id, payload.assigned_to);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order assigned successfully"
     }))
 }
@@ -417,9 +417,9 @@ async fn unassign_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order unassigned: {}", work_order_id);
+    info!("Work order unassigned: {}", work_order_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order unassigned successfully"
     }))
 }
@@ -434,12 +434,12 @@ async fn schedule_work_order(
     
     // Parse dates
     let start_date = NaiveDate::parse_from_str(&payload.start_date, "%Y-%m-%d")
-        .map_err(|e| ApiError::BadRequest(format\!("Invalid start date format: {}", e)))?
+        .map_err(|e| ApiError::BadRequest(format!("Invalid start date format: {}", e)))?
         .and_hms_opt(0, 0, 0)
         .unwrap();
     
     let end_date = NaiveDate::parse_from_str(&payload.end_date, "%Y-%m-%d")
-        .map_err(|e| ApiError::BadRequest(format\!("Invalid end date format: {}", e)))?
+        .map_err(|e| ApiError::BadRequest(format!("Invalid end date format: {}", e)))?
         .and_hms_opt(23, 59, 59)
         .unwrap();
     
@@ -455,9 +455,9 @@ async fn schedule_work_order(
         .await
         .map_err(map_service_error)?;
     
-    info\!("Work order scheduled: {}", work_order_id);
+    info!("Work order scheduled: {}", work_order_id);
     
-    success_response(serde_json::json\!({
+    success_response(serde_json::json!({
         "message": "Work order scheduled successfully"
     }))
 }
