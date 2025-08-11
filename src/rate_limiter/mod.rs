@@ -378,6 +378,10 @@ where
                             let _ = headers.insert("X-RateLimit-Limit", result.limit.to_string().parse().unwrap());
                             let _ = headers.insert("X-RateLimit-Remaining", "0".parse().unwrap());
                             let _ = headers.insert("X-RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                            // RFC 9447 headers
+                            let _ = headers.insert("RateLimit-Limit", result.limit.to_string().parse().unwrap());
+                            let _ = headers.insert("RateLimit-Remaining", "0".parse().unwrap());
+                            let _ = headers.insert("RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
                         }
                         
                         return Ok(response);
@@ -392,6 +396,10 @@ where
                         let _ = headers.insert("X-RateLimit-Limit", result.limit.to_string().parse().unwrap());
                         let _ = headers.insert("X-RateLimit-Remaining", result.remaining.to_string().parse().unwrap());
                         let _ = headers.insert("X-RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                        // RFC 9447
+                        let _ = headers.insert("RateLimit-Limit", result.limit.to_string().parse().unwrap());
+                        let _ = headers.insert("RateLimit-Remaining", result.remaining.to_string().parse().unwrap());
+                        let _ = headers.insert("RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
                     }
                     
                     Ok(response)

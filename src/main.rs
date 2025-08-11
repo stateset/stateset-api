@@ -9,6 +9,7 @@ use tower_http::{
     cors::CorsLayer,
     timeout::TimeoutLayer,
     trace::TraceLayer,
+    compression::CompressionLayer,
 };
 
 use stateset_api::{
@@ -87,19 +88,36 @@ async fn main() -> anyhow::Result<()> {
         // Swagger UI and OpenAPI JSON
         .merge(openapi::swagger_routes())
         .nest("/api-docs", openapi::create_docs_routes())
+        // Metrics endpoint
+        .route("/metrics", axum::routing::get(|| async {
+            match stateset_api::metrics::metrics_handler().await {
+                Ok(body) => (axum::http::StatusCode::OK, body),
+                Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, String::from("metrics export failed")),
+            }
+        }))
         // API v1 routes with proper state
         .nest("/api/v1", api_routes)
+        // Fallback 404 JSON
+        .fallback(|| async {
+            (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({
+                "error": "Not Found",
+                "message": "The requested resource was not found"
+            })))
+        })
         // Add comprehensive middleware stack
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
                 .layer(TimeoutLayer::new(Duration::from_secs(30)))
                 .layer(CorsLayer::permissive())
+                .layer(CompressionLayer::new())
         )
         // Add structured request logging
         .layer(RequestLoggerLayer::new())
         // Add simple in-memory rate limiting
-        .layer(RateLimitLayer::new(RateLimitConfig::default()));
+        .layer(RateLimitLayer::new(RateLimitConfig::default()))
+        // API version header middleware
+        .layer(axum::middleware::from_fn(stateset_api::versioning::api_version_middleware));
 
     // Start HTTP server
     let http_addr = format!("{}:{}", config.host, config.port);

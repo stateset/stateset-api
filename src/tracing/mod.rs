@@ -431,6 +431,12 @@ where
         // Add request context to extensions
         req_with_context.extensions_mut().insert(context);
         req_with_context.extensions_mut().insert(otel_ctx.clone());
+        // Respect incoming request id if provided
+        if let Some(req_id_hdr) = req_with_context.headers().get("x-request-id").and_then(|v| v.to_str().ok()) {
+            // Attach to span
+            let span = otel_ctx.span();
+            span.set_attribute(KeyValue::new("request_id", req_id_hdr.to_string()));
+        }
 
         // This future will process the request/response and handle logging
         async move {
@@ -446,9 +452,16 @@ where
 
             // Handle response
             match result {
-                Ok(response) => {
+                Ok(mut response) => {
                     let status = response.status();
                     span.set_attribute(KeyValue::new("http.status_code", status.as_u16() as i64));
+
+                    // Propagate request id header
+                    let headers = response.headers_mut();
+                    headers.insert(
+                        "X-Request-Id",
+                        http::HeaderValue::from_str(&request_id).unwrap_or(http::HeaderValue::from_static("unknown")),
+                    );
 
                     let res_has_json_body = RequestLogger::is_json_content(response.headers());
                     let should_log_res_body =
