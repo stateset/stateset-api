@@ -67,9 +67,9 @@ fn test_dashmap_functionality() {
 fn test_sha2_functionality() {
     println!("🧪 Testing SHA2 Cryptographic Hashing");
     
-    // Test hashing of sensitive data
-    let sensitive_data = "user_password_123";
-    let api_key = "sk_test_123456789";
+    // Test hashing of sensitive data (using example values only)
+    let sensitive_data = "example_password_do_not_use";
+    let api_key = "sk_test_placeholder_not_real";
     let order_data = r#"{"order_id": "12345", "total": 99.99}"#;
     
     // Hash with SHA256
