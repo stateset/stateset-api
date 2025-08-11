@@ -1,0 +1,21 @@
+syntax = "proto3";
+package stateset.picking;
+
+message PickItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message PickItemsRequest {
+  string order_id = 1;
+  string picker_id = 2; // optional
+  repeated PickItem items = 3;
+}
+
+message PickItemsResponse {
+  int32 items_picked = 1;
+}
+
+service PickingService {
+  rpc PickItems(PickItemsRequest) returns (PickItemsResponse);
+} 

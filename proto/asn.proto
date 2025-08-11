@@ -1,0 +1,123 @@
+syntax = "proto3";
+package stateset.asn;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message ASN {
+  string id = 1;
+  string asn_number = 2;
+  ASNStatus status = 3;
+  string supplier_id = 4;
+  string supplier_name = 5;
+  google.protobuf.Timestamp expected_delivery_date = 6;
+  google.protobuf.Timestamp shipping_date = 7;
+  CarrierType carrier_type = 8;
+  string tracking_number = 9;
+  string shipping_address = 10;
+  string notes = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  string created_by = 14;
+  int32 version = 15;
+  repeated ASNItem items = 16;
+}
+
+message ASNItem {
+  string id = 1;
+  string product_id = 2;
+  string product_name = 3;
+  string product_sku = 4;
+  int32 quantity_expected = 5;
+  int32 quantity_received = 6;
+  common.Money unit_price = 7;
+}
+
+enum ASNStatus {
+  ASN_STATUS_UNSPECIFIED = 0;
+  ASN_STATUS_DRAFT = 1;
+  ASN_STATUS_SUBMITTED = 2;
+  ASN_STATUS_IN_TRANSIT = 3;
+  ASN_STATUS_DELIVERED = 4;
+  ASN_STATUS_COMPLETED = 5;
+  ASN_STATUS_CANCELLED = 6;
+  ASN_STATUS_ON_HOLD = 7;
+}
+
+enum CarrierType {
+  CARRIER_TYPE_UNSPECIFIED = 0;
+  CARRIER_TYPE_UPS = 1;
+  CARRIER_TYPE_FEDEX = 2;
+  CARRIER_TYPE_USPS = 3;
+  CARRIER_TYPE_DHL = 4;
+  CARRIER_TYPE_OTHER = 5;
+}
+
+message CreateASNRequest {
+  string purchase_order_id = 1;
+  string supplier_id = 2;
+  string supplier_name = 3;
+  google.protobuf.Timestamp expected_delivery_date = 4;
+  common.Address shipping_address = 5; // Structured input
+  CarrierDetails carrier_details = 6;
+  repeated CreateASNItem items = 7;
+}
+
+message CreateASNItem {
+  string product_id = 1;
+  string product_name = 2;
+  string product_sku = 3;
+  int32 quantity = 4;
+  common.Money unit_price = 5;
+}
+
+message CarrierDetails {
+  string carrier_name = 1;
+  string tracking_number = 2;
+  string service_level = 3;
+}
+
+message CreateASNResponse {
+  string id = 1;
+}
+
+message GetASNRequest { string id = 1; }
+message GetASNResponse { ASN asn = 1; }
+
+message ListASNsRequest {
+  string supplier_id = 1;
+  ASNStatus status = 2;
+  google.protobuf.Timestamp start_date = 3;
+  google.protobuf.Timestamp end_date = 4;
+  common.PaginationRequest pagination = 5;
+}
+message ListASNsResponse {
+  repeated ASN asns = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+message UpdateASNRequest { ASN asn = 1; }
+message UpdateASNResponse { ASN asn = 1; }
+
+message DeleteASNRequest { string id = 1; }
+message DeleteASNResponse { bool success = 1; }
+
+message MarkASNInTransitRequest { string id = 1; }
+message MarkASNInTransitResponse { ASN asn = 1; }
+
+message MarkASNDeliveredRequest { string id = 1; }
+message MarkASNDeliveredResponse { ASN asn = 1; }
+
+message CancelASNRequest { string id = 1; }
+message CancelASNResponse { ASN asn = 1; }
+
+service ASNService {
+  rpc CreateASN(CreateASNRequest) returns (CreateASNResponse);
+  rpc GetASN(GetASNRequest) returns (GetASNResponse);
+  rpc ListASNs(ListASNsRequest) returns (ListASNsResponse);
+  rpc UpdateASN(UpdateASNRequest) returns (UpdateASNResponse);
+  rpc DeleteASN(DeleteASNRequest) returns (DeleteASNResponse);
+  rpc MarkASNInTransit(MarkASNInTransitRequest) returns (MarkASNInTransitResponse);
+  rpc MarkASNDelivered(MarkASNDeliveredRequest) returns (MarkASNDeliveredResponse);
+  rpc CancelASN(CancelASNRequest) returns (CancelASNResponse);
+} 

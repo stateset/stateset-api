@@ -52,12 +52,12 @@ message DeleteProductResponse {
 message ListProductsRequest {
   string category = 1;
   repeated string tags = 2;
-  common.Pagination pagination = 3;
+  common.PaginationRequest pagination = 3;
 }
 
 message ListProductsResponse {
   repeated Product products = 1;
-  common.PaginatedResponse pagination = 2;
+  common.PaginationResponse pagination = 2;
 }
 
 service ProductService {

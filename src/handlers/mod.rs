@@ -18,6 +18,7 @@ pub mod work_orders;
 // pub mod suppliers;
 // pub mod users;
 // pub mod commerce;
+pub mod agents;
 
 use crate::events::EventSender;
 use sea_orm::DatabaseConnection;

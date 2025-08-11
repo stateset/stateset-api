@@ -9,33 +9,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     println!("cargo:warning=OUT_DIR: {}", out_dir.display());
 
-    let proto_files = [
-        "common.proto",
-        "order.proto",
-        "inventory.proto",
-        "return.proto",
-        "warranty.proto",
-        "shipment.proto",
-        "work_order.proto",
-        "billofmaterials.proto",
-    ];
+    // Discover and compile all .proto files in the proto directory
+    let proto_dir = PathBuf::from("proto");
+    let mut proto_files: Vec<PathBuf> = Vec::new();
 
-    for proto_file in &proto_files {
-        println!("cargo:warning=Compiling proto file: {}", proto_file);
-        let proto_path = PathBuf::from("proto").join(proto_file);
-
-        if !proto_path.exists() {
-            println!(
-                "cargo:warning=Proto file does not exist: {}",
-                proto_path.display()
-            );
-            continue;
+    for entry in std::fs::read_dir(&proto_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|ext| ext == "proto").unwrap_or(false) {
+            println!("cargo:warning=Found proto: {}", path.display());
+            proto_files.push(path);
         }
+    }
 
-        tonic_build::configure()
-            .compile_protos(&[proto_path], &["proto"])?;
-
-        println!("cargo:warning=Successfully compiled: {}", proto_file);
+    if proto_files.is_empty() {
+        println!("cargo:warning=No .proto files found in {}", proto_dir.display());
+    } else {
+        tonic_build::configure().compile_protos(&proto_files, &["proto"])?;
+        println!("cargo:warning=Successfully compiled {} proto files", proto_files.len());
     }
 
     println!("cargo:warning=Proto compilation completed");

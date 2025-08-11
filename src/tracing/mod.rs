@@ -833,10 +833,10 @@ mod tests {
     use super::*;
     use axum::{routing::get, Router};
     use http::Method;
-    use hyper::Body;
+    use axum::body::Body;
     use serde_json::json;
     use tokio::sync::oneshot;
-    use tower::ServiceExt;
+    use tower::util::ServiceExt; // bring oneshot into scope
 
     async fn test_handler() -> impl IntoResponse {
         "Hello, World!"
@@ -853,7 +853,7 @@ mod tests {
     where
         T: Serialize,
     {
-        fn into_response(self) -> Response {
+        fn into_response(self) -> Response<Body> {
             match serde_json::to_vec(&self.0) {
                 Ok(bytes) => Response::builder()
                     .status(StatusCode::OK)
@@ -883,6 +883,7 @@ mod tests {
 
         // Test a simple request
         let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/")
@@ -898,13 +899,14 @@ mod tests {
 
         // Test a JSON request
         let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .uri("/json")
                     .method(Method::GET)
                     .header("user-agent", "test-agent")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"test":"value"}"#))
+                    .body(Body::from(r#"{\"test\":\"value\"}"#))
                     .unwrap(),
             )
             .await

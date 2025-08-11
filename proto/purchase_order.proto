@@ -1,0 +1,160 @@
+syntax = "proto3";
+package stateset.purchase_order;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Represents a purchase order
+message PurchaseOrder {
+  string id = 1;
+  string po_number = 2;
+  string supplier_id = 3;
+  PurchaseOrderStatus status = 4;
+  google.protobuf.Timestamp order_date = 5;
+  google.protobuf.Timestamp expected_delivery_date = 6;
+  common.Money total_amount = 7;
+  string currency = 8;
+  string notes = 9;
+  string created_by = 10;
+  string approved_by = 11;
+  google.protobuf.Timestamp approved_at = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  repeated PurchaseOrderItem items = 15;
+}
+
+// Represents an item within a purchase order
+message PurchaseOrderItem {
+  string id = 1;
+  string product_id = 2;
+  string sku = 3;
+  string product_name = 4;
+  string description = 5;
+  int32 quantity_ordered = 6;
+  int32 quantity_received = 7;
+  common.Money unit_cost = 8;
+  common.Money total_cost = 9;
+  string notes = 10;
+}
+
+// Purchase order statuses aligning with the model
+enum PurchaseOrderStatus {
+  PO_STATUS_UNSPECIFIED = 0;
+  PO_STATUS_DRAFT = 1;
+  PO_STATUS_SUBMITTED = 2;
+  PO_STATUS_APPROVED = 3;
+  PO_STATUS_REJECTED = 4;
+  PO_STATUS_ORDERED = 5;
+  PO_STATUS_PARTIALLY_RECEIVED = 6;
+  PO_STATUS_RECEIVED = 7;
+  PO_STATUS_CANCELLED = 8;
+}
+
+// Create
+message CreatePurchaseOrderRequest {
+  string supplier_id = 1;
+  google.protobuf.Timestamp expected_delivery_date = 2;
+  repeated CreatePurchaseOrderItem items = 3;
+  common.Address shipping_address = 4;
+  string notes = 5;
+  string payment_terms = 6;
+  string currency = 7; // ISO 4217
+}
+
+message CreatePurchaseOrderItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  common.Money unit_price = 3;
+  double tax_rate = 4;
+  string currency = 5; // ISO 4217 (optional override)
+  string description = 6;
+}
+
+message CreatePurchaseOrderResponse {
+  string id = 1;
+}
+
+// Get by ID
+message GetPurchaseOrderRequest {
+  string id = 1;
+}
+
+message GetPurchaseOrderResponse {
+  PurchaseOrder purchase_order = 1;
+}
+
+// Update
+message UpdatePurchaseOrderRequest {
+  string id = 1;
+  google.protobuf.Timestamp expected_delivery_date = 2;
+  common.Address shipping_address = 3;
+  string notes = 4;
+  PurchaseOrderStatus status = 5;
+}
+
+message UpdatePurchaseOrderResponse {
+  string id = 1;
+}
+
+// Approve
+message ApprovePurchaseOrderRequest {
+  string id = 1;
+  string approver_id = 2;
+  string notes = 3;
+}
+
+message ApprovePurchaseOrderResponse {
+  string id = 1;
+}
+
+// Cancel
+message CancelPurchaseOrderRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+message CancelPurchaseOrderResponse {
+  string id = 1;
+}
+
+// Receive
+message ReceivePurchaseOrderRequest {
+  string id = 1;
+  string received_by = 2;
+  string notes = 3;
+  repeated ReceivedItem items_received = 4;
+}
+
+message ReceivedItem {
+  string line_item_id = 1;
+  int32 quantity_received = 2;
+  string condition = 3;
+}
+
+message ReceivePurchaseOrderResponse {
+  string id = 1;
+}
+
+// List/Filter
+message ListPurchaseOrdersRequest {
+  string supplier_id = 1;
+  PurchaseOrderStatus status = 2;
+  google.protobuf.Timestamp start_date = 3; // created_at >=
+  google.protobuf.Timestamp end_date = 4;   // created_at <=
+  common.PaginationRequest pagination = 5;
+}
+
+message ListPurchaseOrdersResponse {
+  repeated PurchaseOrder purchase_orders = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+service PurchaseOrderService {
+  rpc CreatePurchaseOrder(CreatePurchaseOrderRequest) returns (CreatePurchaseOrderResponse);
+  rpc GetPurchaseOrder(GetPurchaseOrderRequest) returns (GetPurchaseOrderResponse);
+  rpc UpdatePurchaseOrder(UpdatePurchaseOrderRequest) returns (UpdatePurchaseOrderResponse);
+  rpc ApprovePurchaseOrder(ApprovePurchaseOrderRequest) returns (ApprovePurchaseOrderResponse);
+  rpc CancelPurchaseOrder(CancelPurchaseOrderRequest) returns (CancelPurchaseOrderResponse);
+  rpc ReceivePurchaseOrder(ReceivePurchaseOrderRequest) returns (ReceivePurchaseOrderResponse);
+  rpc ListPurchaseOrders(ListPurchaseOrdersRequest) returns (ListPurchaseOrdersResponse);
+} 

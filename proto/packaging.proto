@@ -1,0 +1,21 @@
+syntax = "proto3";
+package stateset.packaging;
+
+message PackageItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message PackageOrderRequest {
+  string order_id = 1;
+  repeated PackageItem items = 2;
+}
+
+message PackageOrderResponse {
+  string order_id = 1;
+  int32 packages_created = 2;
+}
+
+service PackagingService {
+  rpc PackageOrder(PackageOrderRequest) returns (PackageOrderResponse);
+} 

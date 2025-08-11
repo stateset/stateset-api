@@ -1,0 +1,24 @@
+syntax = "proto3";
+package stateset.payment;
+
+import "common.proto";
+
+message CreatePaymentRequest {
+  string order_id = 1;
+  common.Money amount = 2;
+  string payment_method_id = 3;
+}
+
+message CreatePaymentResponse { string payment_id = 1; }
+
+message CapturePaymentRequest {
+  string payment_id = 1;
+  common.Money amount = 2; // optional partial capture
+}
+
+message CapturePaymentResponse { string payment_id = 1; }
+
+service PaymentService {
+  rpc CreatePayment(CreatePaymentRequest) returns (CreatePaymentResponse);
+  rpc CapturePayment(CapturePaymentRequest) returns (CapturePaymentResponse);
+} 

@@ -149,23 +149,26 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route("/shipments/:id/track", get(handlers::shipments::track_shipment::<AppState>))
         .route("/shipments/:id/status", axum::routing::put(handlers::shipments::update_shipment_status::<AppState>))
         
-        // Warranties API
-        .route("/warranties", get(handlers::warranties::list_warranties::<AppState>))
-        .route("/warranties", axum::routing::post(handlers::warranties::create_warranty::<AppState>))
-        .route("/warranties/:id", get(handlers::warranties::get_warranty::<AppState>))
-        .route("/warranties/:id", axum::routing::put(handlers::warranties::update_warranty::<AppState>))
-        .route("/warranties/:id", axum::routing::delete(handlers::warranties::delete_warranty::<AppState>))
-        .route("/warranties/:id/claim", axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>))
-        
-        // Work Orders API
-        .route("/work-orders", get(handlers::work_orders::list_work_orders::<AppState>))
-        .route("/work-orders", axum::routing::post(handlers::work_orders::create_work_order::<AppState>))
-        .route("/work-orders/:id", get(handlers::work_orders::get_work_order::<AppState>))
-        .route("/work-orders/:id", axum::routing::put(handlers::work_orders::update_work_order::<AppState>))
-        .route("/work-orders/:id", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
-        .route("/work-orders/:id/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
-        .route("/work-orders/:id/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
-        .route("/work-orders/:id/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
+                 // Warranties API
+         .route("/warranties", get(handlers::warranties::list_warranties::<AppState>))
+         .route("/warranties", axum::routing::post(handlers::warranties::create_warranty::<AppState>))
+         .route("/warranties/:id", get(handlers::warranties::get_warranty::<AppState>))
+         .route("/warranties/:id", axum::routing::put(handlers::warranties::update_warranty::<AppState>))
+         .route("/warranties/:id", axum::routing::delete(handlers::warranties::delete_warranty::<AppState>))
+         .route("/warranties/:id/claim", axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>))
+         
+         // Agents API
+         .nest("/agents", handlers::agents::agents_routes())
+         
+         // Work Orders API
+         .route("/work-orders", get(handlers::work_orders::list_work_orders::<AppState>))
+         .route("/work-orders", axum::routing::post(handlers::work_orders::create_work_order::<AppState>))
+         .route("/work-orders/:id", get(handlers::work_orders::get_work_order::<AppState>))
+         .route("/work-orders/:id", axum::routing::put(handlers::work_orders::update_work_order::<AppState>))
+         .route("/work-orders/:id", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
+         .route("/work-orders/:id/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
+         .route("/work-orders/:id/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
+         .route("/work-orders/:id/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {

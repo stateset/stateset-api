@@ -63,4 +63,4 @@ pub mod item_receipt_service {
 }
 */
 // pub mod category_service;
-// pub mod commerce;
+pub mod commerce;

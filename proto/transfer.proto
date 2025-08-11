@@ -1,0 +1,18 @@
+syntax = "proto3";
+package stateset.transfer;
+
+message TransferOrderRequest {
+  string order_id = 1;
+  string from_warehouse = 2;
+  string to_warehouse = 3;
+}
+
+message TransferOrderResponse {
+  string order_id = 1;
+  string from_warehouse = 2;
+  string to_warehouse = 3;
+}
+
+service TransferService {
+  rpc TransferOrder(TransferOrderRequest) returns (TransferOrderResponse);
+} 

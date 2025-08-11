@@ -352,6 +352,6 @@ By contributing, you agree that your contributions will be licensed under the sa
 Don't hesitate to ask questions! We're here to help. You can:
 - Open an issue with the `question` label
 - Ask in our Discord server
-- Email us at support@stateset.io
+- Email us at support@stateset.com
 
 Thank you for contributing to StateSet API! 🚀 

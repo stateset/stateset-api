@@ -491,58 +491,58 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limiter_basic_functionality() {
-        let config = RateLimiterConfig {
+        let config = RateLimitConfig {
             requests_per_window: 2,
             window_duration: Duration::from_secs(60),
             ..Default::default()
         };
 
-        let limiter = InMemoryRateLimiter::new(config);
+        let limiter = RateLimiter::new(config);
 
         // First request should succeed
-        assert!(limiter.check_rate_limit("test_key").await.unwrap());
+        assert!(limiter.check_rate_limit("test_key").await.unwrap().allowed);
 
         // Second request should succeed
-        assert!(limiter.check_rate_limit("test_key").await.unwrap());
+        assert!(limiter.check_rate_limit("test_key").await.unwrap().allowed);
 
         // Third request should fail
-        assert!(limiter.check_rate_limit("test_key").await.is_err());
+        assert!(!limiter.check_rate_limit("test_key").await.unwrap().allowed);
     }
 
     #[tokio::test]
     async fn test_rate_limiter_different_keys() {
-        let config = RateLimiterConfig {
+        let config = RateLimitConfig {
             requests_per_window: 1,
             window_duration: Duration::from_secs(60),
             ..Default::default()
         };
 
-        let limiter = InMemoryRateLimiter::new(config);
+        let limiter = RateLimiter::new(config);
 
         // Different keys should have separate limits
-        assert!(limiter.check_rate_limit("key1").await.unwrap());
-        assert!(limiter.check_rate_limit("key2").await.unwrap());
+        assert!(limiter.check_rate_limit("key1").await.unwrap().allowed);
+        assert!(limiter.check_rate_limit("key2").await.unwrap().allowed);
 
         // Both keys should now be at their limit
-        assert!(limiter.check_rate_limit("key1").await.is_err());
-        assert!(limiter.check_rate_limit("key2").await.is_err());
+        assert!(!limiter.check_rate_limit("key1").await.unwrap().allowed);
+        assert!(!limiter.check_rate_limit("key2").await.unwrap().allowed);
     }
 
     #[tokio::test]
     async fn test_rate_limiter_quota() {
-        let config = RateLimiterConfig {
+        let config = RateLimitConfig {
             requests_per_window: 5,
             window_duration: Duration::from_secs(60),
             ..Default::default()
         };
 
-        let limiter = InMemoryRateLimiter::new(config);
+        let limiter = RateLimiter::new(config);
 
         // Initially should have full quota
         assert_eq!(limiter.get_remaining_quota("test_key").await, 5);
 
         // After one request, quota should decrease
-        assert!(limiter.check_rate_limit("test_key").await.unwrap());
+        assert!(limiter.check_rate_limit("test_key").await.unwrap().allowed);
         assert_eq!(limiter.get_remaining_quota("test_key").await, 4);
     }
 }

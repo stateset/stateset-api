@@ -1,0 +1,44 @@
+syntax = "proto3";
+package stateset.warehouse;
+
+import "common.proto";
+
+message Warehouse {
+  string id = 1;
+  string name = 2;
+  string location = 3;
+}
+
+message CreateWarehouseRequest {
+  string name = 1;
+  string location = 2;
+}
+
+message CreateWarehouseResponse { string id = 1; }
+
+message GetWarehouseRequest { string id = 1; }
+message GetWarehouseResponse { Warehouse warehouse = 1; }
+
+message UpdateWarehouseRequest {
+  string id = 1;
+  string name = 2;
+  string location = 3;
+}
+message UpdateWarehouseResponse { string id = 1; }
+
+message DeleteWarehouseRequest { string id = 1; }
+message DeleteWarehouseResponse { string id = 1; }
+
+message ListWarehousesRequest { common.PaginationRequest pagination = 1; }
+message ListWarehousesResponse {
+  repeated Warehouse warehouses = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+service WarehouseService {
+  rpc CreateWarehouse(CreateWarehouseRequest) returns (CreateWarehouseResponse);
+  rpc GetWarehouse(GetWarehouseRequest) returns (GetWarehouseResponse);
+  rpc UpdateWarehouse(UpdateWarehouseRequest) returns (UpdateWarehouseResponse);
+  rpc DeleteWarehouse(DeleteWarehouseRequest) returns (DeleteWarehouseResponse);
+  rpc ListWarehouses(ListWarehousesRequest) returns (ListWarehousesResponse);
+} 

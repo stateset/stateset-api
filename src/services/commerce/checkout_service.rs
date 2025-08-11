@@ -164,12 +164,16 @@ impl CheckoutService {
             currency: Set(session.cart.currency.clone()),
             payment_status: Set("pending".to_string()),
             fulfillment_status: Set("unfulfilled".to_string()),
+            payment_method: Set(Some("card".to_string())),
+                            shipping_method: Set(session.shipping_method.as_ref().map(|m| format!("{:?}", m))),
+            tracking_number: Set(None),
             shipping_address: Set(Some(serde_json::to_value(&session.shipping_address).unwrap().to_string())),
             billing_address: Set(Some(serde_json::to_value(&session.billing_address).unwrap().to_string())),
             is_archived: Set(false),
             created_at: Set(Utc::now()),
             updated_at: Set(Some(Utc::now())),
             notes: Set(None),
+            version: Set(1),
         };
 
         let order = order.insert(&txn).await?;

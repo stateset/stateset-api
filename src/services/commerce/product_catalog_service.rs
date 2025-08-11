@@ -1,5 +1,6 @@
 use crate::{
-    entities::commerce::{product, product_variant, Product, ProductModel, ProductVariant},
+    entities::commerce::{product_variant, Product, ProductModel, ProductVariant},
+    entities::product as product,
     errors::ServiceError,
     events::{Event, EventSender},
 };
@@ -34,14 +35,29 @@ impl ProductCatalogService {
         let product = product::ActiveModel {
             id: Set(product_id),
             name: Set(input.name.clone()),
-            slug: Set(input.slug),
-            description: Set(input.description),
-            status: Set(input.status),
-            product_type: Set(input.product_type),
-            attributes: Set(serde_json::to_value(&input.attributes).unwrap()),
-            seo: Set(serde_json::to_value(&input.seo).unwrap()),
+            // description is Option<String> in entity
+            description: Set(Some(input.description)),
+            sku: Set(input.slug),
+            price: Set(Decimal::ZERO),
+            currency: Set("USD".to_string()),
+            weight_kg: Set(None),
+            dimensions_cm: Set(None),
+            barcode: Set(None),
+            brand: Set(None),
+            manufacturer: Set(None),
+            is_active: Set(true),
+            is_digital: Set(false),
+            image_url: Set(None),
+            category_id: Set(None),
+            reorder_point: Set(None),
+            tax_rate: Set(None),
+            cost_price: Set(None),
+            msrp: Set(None),
+            tags: Set(None),
+            meta_title: Set(None),
+            meta_description: Set(None),
             created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
+            updated_at: Set(Some(Utc::now())),
         };
 
         let product = product.insert(&*self.db).await?;
@@ -109,14 +125,15 @@ impl ProductCatalogService {
         let mut db_query = Product::find();
 
         if let Some(search) = &query.search {
+            let pattern = format!("%{}%", search);
             db_query = db_query.filter(
-                product::Column::Name.contains(search)
-                    .or(product::Column::Description.contains(search))
+                product::Column::Name.contains(&pattern)
+                    .or(product::Column::Sku.contains(&pattern))
             );
         }
 
-        if let Some(status) = query.status {
-            db_query = db_query.filter(product::Column::Status.eq(status));
+        if let Some(is_active) = query.is_active {
+            db_query = db_query.filter(product::Column::IsActive.eq(is_active));
         }
 
         let total = db_query.clone().count(&*self.db).await?;
@@ -155,10 +172,11 @@ pub struct CreateProductInput {
     pub name: String,
     pub slug: String,
     pub description: String,
-    pub status: product::ProductStatus,
-    pub product_type: product::ProductType,
-    pub attributes: Vec<product::ProductAttribute>,
-    pub seo: product::SeoMetadata,
+    // Simplified fields to match entity
+    // pub status: product::ProductStatus,
+    // pub product_type: product::ProductType,
+    pub attributes: Vec<serde_json::Value>,
+    pub seo: serde_json::Value,
 }
 
 /// Input for creating a variant
@@ -181,7 +199,7 @@ pub struct CreateVariantInput {
 #[derive(Debug, Deserialize)]
 pub struct ProductSearchQuery {
     pub search: Option<String>,
-    pub status: Option<product::ProductStatus>,
+    pub is_active: Option<bool>,
     pub limit: Option<u64>,
     pub offset: Option<u64>,
 }
