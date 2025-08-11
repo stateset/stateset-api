@@ -28,6 +28,7 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
+use std::convert::Infallible;
 use thiserror::Error;
 use tokio::time::Instant as TokioInstant;
 use tower::{Layer, Service};
@@ -322,11 +323,16 @@ where
     <ResBody as axum::body::HttpBody>::Error: std::error::Error + Send + Sync + 'static,
 {
     type Response = Response<Body>;
-    type Error = BoxError;
+    type Error = Infallible;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx).map_err(Into::into)
+        match self.service.poll_ready(cx) {
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+            // Swallow readiness errors and continue; downstream call will handle and log
+            Poll::Ready(Err(_)) => Poll::Ready(Ok(())),
+            Poll::Pending => Poll::Pending,
+        }
     }
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future 
@@ -441,7 +447,7 @@ where
         // This future will process the request/response and handle logging
         async move {
             // Execute the service with OpenTelemetry context
-            let result = service
+            let result: Result<_, BoxError> = service
                 .call(req_with_context)
                 .with_context(otel_ctx.clone())
                 .await
@@ -451,7 +457,7 @@ where
             let span = otel_ctx.span();
 
             // Handle response
-            match result {
+            let mut response = match result {
                 Ok(mut response) => {
                     let status = response.status();
                     span.set_attribute(KeyValue::new("http.status_code", status.as_u16() as i64));
@@ -513,47 +519,91 @@ where
                     if should_log_res_body {
                         // Extract and log response body
                         let (parts, body) = response.into_parts();
-                        let bytes = http_body_util::BodyExt::collect(body)
-                            .await
-                            .map_err(|e| BoxError::from(e))?
-                            .to_bytes();
+                        let bytes = match http_body_util::BodyExt::collect(body).await {
+                            Ok(collected) => collected.to_bytes(),
+                            Err(e) => {
+                                error!(
+                                    request_id = %request_id,
+                                    error = %e,
+                                    duration_ms = %duration.as_millis(),
+                                    "Failed to collect response body"
+                                );
+                                let body = serde_json::json!({
+                                    "error": "Internal Server Error",
+                                    "message": e.to_string(),
+                                    "request_id": request_id
+                                });
+                                return Ok(Response::builder()
+                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                    .header("content-type", "application/json")
+                                    .body(Body::from(serde_json::to_vec(&body).unwrap_or_default()))
+                                    .unwrap());
+                            }
+                        };
 
-                        if let Ok(body_str) = std::str::from_utf8(&bytes) {
-                            let limited_body = RequestLogger::limit_body(body_str, 4096);
-                            debug!(
-                                request_id = %request_id,
-                                response_body = %limited_body,
-                                "Response body"
-                            );
-                        }
+                        let body_str = String::from_utf8_lossy(&bytes);
+                        let limited_body = RequestLogger::limit_body(&body_str, logger.max_body_size);
+
+                        info!(
+                            request_id = %request_id,
+                            response_body = %limited_body,
+                            "Response body"
+                        );
 
                         let body = Body::from(bytes);
-                        Ok(Response::from_parts(parts, body))
+                        Ok::<Response<Body>, Infallible>(Response::from_parts(parts, body))
                     } else {
-                        // Convert to Body type
-                        let res = response.map(|body| Body::from_stream(StreamReader::new(body)));
-                        Ok(res)
+                        let (parts, body) = response.into_parts();
+                        let bytes = match http_body_util::BodyExt::collect(body).await {
+                            Ok(collected) => collected.to_bytes(),
+                            Err(e) => {
+                                error!(
+                                    request_id = %request_id,
+                                    error = %e,
+                                    duration_ms = %duration.as_millis(),
+                                    "Failed to collect response body"
+                                );
+                                let body = serde_json::json!({
+                                    "error": "Internal Server Error",
+                                    "message": e.to_string(),
+                                    "request_id": request_id
+                                });
+                                return Ok(Response::builder()
+                                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                    .header("content-type", "application/json")
+                                    .body(Body::from(serde_json::to_vec(&body).unwrap_or_default()))
+                                    .unwrap());
+                            }
+                        };
+                        let body = Body::from(bytes);
+                        Ok::<Response<Body>, Infallible>(Response::from_parts(parts, body))
                     }
                 }
                 Err(err) => {
-                    // Log error
-                    span.record_error(err.as_ref() as &dyn std::error::Error);
-                    span.set_attribute(KeyValue::new("error", true));
+                    // Log the error and produce a 500 response
                     error!(
                         request_id = %request_id,
                         error = %err,
                         duration_ms = %duration.as_millis(),
                         "Request failed"
                     );
-                    Err(err.into())
+
+                    let body = serde_json::json!({
+                        "error": "Internal Server Error",
+                        "message": err.to_string(),
+                        "request_id": request_id
+                    });
+
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&body).unwrap_or_default()))
+                        .unwrap())
                 }
-            }
-            .map(|res| {
-                // End the span with duration
-                span.set_attribute(KeyValue::new("duration_ms", duration.as_millis() as i64));
-                span.end();
-                res
-            })
+            }?;
+
+            // Always return Ok with Infallible error type
+            Ok(response)
         }
         .boxed()
     }
