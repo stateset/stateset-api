@@ -1,11 +1,13 @@
 # Default configuration for StateSet API
+# WARNING: These are example values only. Do NOT use in production!
+# See ENV_VARIABLES.md for configuration instructions
 
 # Database configuration
-database_url = "postgres://postgres:postgres@localhost:5432/stateset_db"
+database_url = "postgres://username:password@localhost:5432/stateset_db"  # CHANGE THIS
 redis_url = "redis://localhost:6379"
 
-# JWT configuration
-jwt_secret = "your_secure_jwt_secret_key_please_change_in_production"
+# JWT configuration  
+jwt_secret = "CHANGE_THIS_SECRET_IN_PRODUCTION"  # Generate with: openssl rand -base64 32
 jwt_expiration = 3600
 refresh_token_expiration = 604800
 
