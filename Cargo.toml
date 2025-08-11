@@ -108,3 +108,11 @@ path = "src/bin/build_logger.rs"
 [[bin]]
 name = "minimal-api"
 path = "src/bin/minimal_api.rs"
+
+[[bin]]
+name = "orders-bench"
+path = "src/bin/orders_bench.rs"
+
+[[bin]]
+name = "orders-mock-server"
+path = "src/bin/orders_mock_server.rs"
