@@ -1,0 +1,91 @@
+syntax = "proto3";
+package stateset.return_order;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// Represents a return request for an order.
+message Return {
+  string id = 1;  // Unique identifier for the return
+  string order_id = 2;  // Associated order ID
+  string customer_id = 3;  // Associated customer ID
+  repeated ReturnItem items = 4;  // List of items being returned
+  ReturnStatus status = 5;  // Current status of the return
+  string reason = 6;  // Reason for the return
+  google.protobuf.Timestamp created_at = 7;  // Timestamp when the return was created
+  google.protobuf.Timestamp updated_at = 8;  // Timestamp when the return was last updated
+}
+
+// Represents an item that is being returned.
+message ReturnItem {
+  string product_id = 1;  // Product ID of the item being returned
+  int32 quantity = 2;  // Quantity of the item being returned
+  string reason = 3;  // Reason for returning this item
+}
+
+// Enum representing the various statuses a return can have.
+enum ReturnStatus {
+  UNKNOWN = 0;  // Default status, used when the status is not known
+  REQUESTED = 1;  // Return has been requested
+  APPROVED = 2;  // Return has been approved
+  REJECTED = 3;  // Return has been rejected
+  RECEIVED = 4;  // Returned items have been received
+  REFUNDED = 5;  // Return has been processed and refunded
+}
+
+// Request message for creating a return.
+message CreateReturnRequest {
+  Return return = 1;  // The return to be created
+}
+
+// Response message for creating a return.
+message CreateReturnResponse {
+  string return_id = 1;  // Unique identifier of the created return
+  ReturnStatus status = 2;  // Initial status of the created return
+}
+
+// Request message for retrieving a return.
+message GetReturnRequest {
+  string return_id = 1;  // Unique identifier of the return to retrieve
+}
+
+// Response message for retrieving a return.
+message GetReturnResponse {
+  Return return = 1;  // The return data
+}
+
+// Request message for updating a return's status.
+message UpdateReturnStatusRequest {
+  string return_id = 1;  // Unique identifier of the return
+  ReturnStatus new_status = 2;  // New status to be applied to the return
+}
+
+// Response message for updating a return's status.
+message UpdateReturnStatusResponse {
+  string return_id = 1;  // Unique identifier of the return
+  ReturnStatus status = 2;  // Updated status of the return
+}
+
+// Request message for listing returns.
+message ListReturnsRequest {
+  string customer_id = 1;  // (Optional) Filter returns by customer ID
+  string order_id = 2;  // (Optional) Filter returns by order ID
+  ReturnStatus status = 3;  // (Optional) Filter returns by status
+  google.protobuf.Timestamp start_date = 4;  // (Optional) Start date for filtering returns
+  google.protobuf.Timestamp end_date = 5;  // (Optional) End date for filtering returns
+  common.PaginationRequest pagination = 6;  // Pagination options
+}
+
+// Response message for listing returns.
+message ListReturnsResponse {
+  repeated Return returns = 1;  // List of returns matching the request
+  common.PaginationResponse pagination = 2;  // Pagination information for the response
+}
+
+// Return service definition.
+service ReturnService {
+  rpc CreateReturn (CreateReturnRequest) returns (CreateReturnResponse);  // Creates a new return
+  rpc GetReturn (GetReturnRequest) returns (GetReturnResponse);  // Retrieves a return by ID
+  rpc UpdateReturnStatus (UpdateReturnStatusRequest) returns (UpdateReturnStatusResponse);  // Updates the status of a return
+  rpc ListReturns (ListReturnsRequest) returns (ListReturnsResponse);  // Lists returns with optional filters and pagination
+}

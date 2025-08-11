@@ -1,0 +1,64 @@
+syntax = "proto3";
+package stateset.inventory;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message InventoryItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  string warehouse_id = 3;
+  string location = 4;
+  google.protobuf.Timestamp last_updated = 5;
+}
+
+message UpdateInventoryRequest {
+  string product_id = 1;
+  int32 quantity_change = 2;
+  string warehouse_id = 3;
+  string reason = 4;
+}
+
+message UpdateInventoryResponse {
+  string product_id = 1;
+  int32 new_quantity = 2;
+  string warehouse_id = 3;
+}
+
+message GetInventoryRequest {
+  string product_id = 1;
+  string warehouse_id = 2;
+}
+
+message GetInventoryResponse {
+  InventoryItem item = 1;
+}
+
+message ListInventoryRequest {
+  repeated string product_ids = 1;
+  string warehouse_id = 2;
+  common.PaginationRequest pagination = 3;
+}
+
+message ListInventoryResponse {
+  repeated InventoryItem items = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+message ReserveInventoryRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+  string order_id = 3;
+}
+
+message ReserveInventoryResponse {
+  bool success = 1;
+  string reservation_id = 2;
+}
+
+service InventoryService {
+  rpc UpdateInventory (UpdateInventoryRequest) returns (UpdateInventoryResponse);
+  rpc GetInventory (GetInventoryRequest) returns (GetInventoryResponse);
+  rpc ListInventory (ListInventoryRequest) returns (ListInventoryResponse);
+  rpc ReserveInventory (ReserveInventoryRequest) returns (ReserveInventoryResponse);
+}

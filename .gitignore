@@ -1,0 +1,96 @@
+# Rust build artifacts
+/target/
+target/
+Cargo.lock
+
+# Database files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+
+# Environment files
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+.env.development.local
+.env.production.local
+.env.test.local
+
+# Logs
+*.log
+logs/
+log/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+thumbs.db
+.project
+.classpath
+.settings/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+
+# Python (if any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# Node.js (if any JS/TS tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Documentation build
+/docs/_build/
+/docs/.doctrees/
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Temporary files
+tmp/
+temp/
+*.temp
+
+# Cache directories
+.cache/
+.parcel-cache/
+
+# Build directories
+/build/
+/dist/
+/out/
+
+# Specific project files
+CLAUDE.md
+build_errors.log
+
+# Config directory (if it contains sensitive data)
+# Uncomment if needed:
+# /config/

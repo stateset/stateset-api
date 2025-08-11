@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package stateset.work_order;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// WorkOrder represents a task or job to be completed
+message WorkOrder {
+  int32 id = 1;
+  string title = 2;
+  string description = 3;
+  WorkOrderStatus status = 4;
+  WorkOrderPriority priority = 5;
+  int32 assigned_to = 6;
+  int32 product_id = 7;
+  int32 quantity = 8;
+  google.protobuf.Timestamp due_date = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// WorkOrderStatus represents the current state of a work order
+enum WorkOrderStatus {
+  WORK_ORDER_STATUS_UNSPECIFIED = 0;
+  WORK_ORDER_STATUS_PENDING = 1;
+  WORK_ORDER_STATUS_IN_PROGRESS = 2;
+  WORK_ORDER_STATUS_COMPLETED = 3;
+  WORK_ORDER_STATUS_CANCELLED = 4;
+}
+
+// WorkOrderPriority represents the urgency of a work order
+enum WorkOrderPriority {
+  WORK_ORDER_PRIORITY_UNSPECIFIED = 0;
+  WORK_ORDER_PRIORITY_LOW = 1;
+  WORK_ORDER_PRIORITY_MEDIUM = 2;
+  WORK_ORDER_PRIORITY_HIGH = 3;
+  WORK_ORDER_PRIORITY_URGENT = 4;
+}
+
+// CreateWorkOrderRequest is used to create a new work order
+message CreateWorkOrderRequest {
+  string title = 1;
+  string description = 2;
+  WorkOrderPriority priority = 3;
+  int32 assigned_to = 4;
+  int32 product_id = 5;
+  int32 quantity = 6;
+  google.protobuf.Timestamp due_date = 7;
+}
+
+// CreateWorkOrderResponse is the response for creating a work order
+message CreateWorkOrderResponse {
+  WorkOrder work_order = 1;
+}
+
+// GetWorkOrderRequest is used to retrieve a specific work order
+message GetWorkOrderRequest {
+  int32 id = 1;
+}
+
+// GetWorkOrderResponse is the response for retrieving a work order
+message GetWorkOrderResponse {
+  WorkOrder work_order = 1;
+}
+
+// UpdateWorkOrderRequest is used to update an existing work order
+message UpdateWorkOrderRequest {
+  int32 id = 1;
+  string title = 2;
+  string description = 3;
+  WorkOrderStatus status = 4;
+  WorkOrderPriority priority = 5;
+  int32 assigned_to = 6;
+  int32 quantity = 7;
+  google.protobuf.Timestamp due_date = 8;
+}
+
+// UpdateWorkOrderResponse is the response for updating a work order
+message UpdateWorkOrderResponse {
+  WorkOrder work_order = 1;
+}
+
+// DeleteWorkOrderRequest is used to delete a work order
+message DeleteWorkOrderRequest {
+  int32 id = 1;
+}
+
+// DeleteWorkOrderResponse is the response for deleting a work order
+message DeleteWorkOrderResponse {
+  bool success = 1;
+}
+
+// ListWorkOrdersRequest is used to retrieve a list of work orders
+message ListWorkOrdersRequest {
+  WorkOrderStatus status = 1;
+  WorkOrderPriority priority = 2;
+  int32 assigned_to = 3;
+  stateset.common.PaginationRequest pagination = 4;
+}
+
+// ListWorkOrdersResponse is the response for listing work orders
+message ListWorkOrdersResponse {
+  repeated WorkOrder work_orders = 1;
+  stateset.common.PaginationResponse pagination = 2;
+}
+
+// AssignWorkOrderRequest is used to assign a work order to a user
+message AssignWorkOrderRequest {
+  int32 id = 1;
+  int32 user_id = 2;
+}
+
+// AssignWorkOrderResponse is the response for assigning a work order
+message AssignWorkOrderResponse {
+  WorkOrder work_order = 1;
+}
+
+// CompleteWorkOrderRequest is used to mark a work order as completed
+message CompleteWorkOrderRequest {
+  int32 id = 1;
+}
+
+// CompleteWorkOrderResponse is the response for completing a work order
+message CompleteWorkOrderResponse {
+  WorkOrder work_order = 1;
+}
+
+// WorkOrderService defines the gRPC service for managing work orders
+service WorkOrderService {
+  rpc CreateWorkOrder(CreateWorkOrderRequest) returns (CreateWorkOrderResponse);
+  rpc GetWorkOrder(GetWorkOrderRequest) returns (GetWorkOrderResponse);
+  rpc UpdateWorkOrder(UpdateWorkOrderRequest) returns (UpdateWorkOrderResponse);
+  rpc DeleteWorkOrder(DeleteWorkOrderRequest) returns (DeleteWorkOrderResponse);
+  rpc ListWorkOrders(ListWorkOrdersRequest) returns (ListWorkOrdersResponse);
+  rpc AssignWorkOrder(AssignWorkOrderRequest) returns (AssignWorkOrderResponse);
+  rpc CompleteWorkOrder(CompleteWorkOrderRequest) returns (CompleteWorkOrderResponse);
+}

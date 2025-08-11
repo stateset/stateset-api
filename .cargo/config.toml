@@ -1,0 +1,31 @@
+# Cargo configuration for better error logging
+
+[build]
+# Number of parallel jobs, defaults to # of CPUs
+# jobs = 1
+
+# Enable more verbose output
+# verbose = true
+
+# Rustc wrapper for capturing compiler output
+# rustc-wrapper = "path/to/wrapper"
+
+[term]
+# Enable color output even when piping
+color = "always"
+
+# More verbose error messages
+verbose = true
+
+[profile.dev]
+# Show more debug info in development builds
+debug = true
+
+[profile.release]
+# Include debug symbols even in release builds for better error traces
+debug = true
+
+# Environment variables for better error reporting
+[env]
+RUST_BACKTRACE = "1"
+RUST_LOG = "debug" 

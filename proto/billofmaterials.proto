@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package stateset.billofmaterials;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+// BillOfMaterials represents a list of raw materials, sub-components, intermediate assemblies, sub-assemblies, parts, and quantities needed to manufacture an end product
+message BillOfMaterials {
+  int32 id = 1;
+  string name = 2;
+  string description = 3;
+  int32 product_id = 4;
+  string version = 5;
+  BOMStatus status = 6;
+  repeated BOMItem items = 7;
+  google.protobuf.Timestamp effective_date = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// BOMItem represents an individual item in a Bill of Materials
+message BOMItem {
+  int32 id = 1;
+  int32 bom_id = 2;
+  int32 component_id = 3;
+  string component_name = 4;
+  double quantity = 5;
+  string unit_of_measure = 6;
+  string notes = 7;
+}
+
+// BOMStatus represents the current state of a Bill of Materials
+enum BOMStatus {
+  BOM_STATUS_UNSPECIFIED = 0;
+  BOM_STATUS_DRAFT = 1;
+  BOM_STATUS_ACTIVE = 2;
+  BOM_STATUS_OBSOLETE = 3;
+}
+
+// CreateBOMRequest is used to create a new Bill of Materials
+message CreateBOMRequest {
+  string name = 1;
+  string description = 2;
+  int32 product_id = 3;
+  string version = 4;
+  repeated BOMItem items = 5;
+  google.protobuf.Timestamp effective_date = 6;
+}
+
+// CreateBOMResponse is the response for creating a Bill of Materials
+message CreateBOMResponse {
+  BillOfMaterials bom = 1;
+}
+
+// GetBOMRequest is used to retrieve a specific Bill of Materials
+message GetBOMRequest {
+  int32 id = 1;
+}
+
+// GetBOMResponse is the response for retrieving a Bill of Materials
+message GetBOMResponse {
+  BillOfMaterials bom = 1;
+}
+
+// UpdateBOMRequest is used to update an existing Bill of Materials
+message UpdateBOMRequest {
+  int32 id = 1;
+  string name = 2;
+  string description = 3;
+  string version = 4;
+  BOMStatus status = 5;
+  repeated BOMItem items = 6;
+  google.protobuf.Timestamp effective_date = 7;
+}
+
+// UpdateBOMResponse is the response for updating a Bill of Materials
+message UpdateBOMResponse {
+  BillOfMaterials bom = 1;
+}
+
+// DeleteBOMRequest is used to delete a Bill of Materials
+message DeleteBOMRequest {
+  int32 id = 1;
+}
+
+// DeleteBOMResponse is the response for deleting a Bill of Materials
+message DeleteBOMResponse {
+  bool success = 1;
+}
+
+// ListBOMsRequest is used to retrieve a list of Bills of Materials
+message ListBOMsRequest {
+  int32 product_id = 1;
+  BOMStatus status = 2;
+  stateset.common.PaginationRequest pagination = 3;
+}
+
+// ListBOMsResponse is the response for listing Bills of Materials
+message ListBOMsResponse {
+  repeated BillOfMaterials boms = 1;
+  stateset.common.PaginationResponse pagination = 2;
+}
+
+// AddBOMItemRequest is used to add an item to a Bill of Materials
+message AddBOMItemRequest {
+  int32 bom_id = 1;
+  BOMItem item = 2;
+}
+
+// AddBOMItemResponse is the response for adding an item to a Bill of Materials
+message AddBOMItemResponse {
+  BOMItem item = 1;
+}
+
+// RemoveBOMItemRequest is used to remove an item from a Bill of Materials
+message RemoveBOMItemRequest {
+  int32 bom_id = 1;
+  int32 item_id = 2;
+}
+
+// RemoveBOMItemResponse is the response for removing an item from a Bill of Materials
+message RemoveBOMItemResponse {
+  bool success = 1;
+}
+
+// BOMService defines the gRPC service for managing Bills of Materials
+service BOMService {
+  rpc CreateBOM(CreateBOMRequest) returns (CreateBOMResponse);
+  rpc GetBOM(GetBOMRequest) returns (GetBOMResponse);
+  rpc UpdateBOM(UpdateBOMRequest) returns (UpdateBOMResponse);
+  rpc DeleteBOM(DeleteBOMRequest) returns (DeleteBOMResponse);
+  rpc ListBOMs(ListBOMsRequest) returns (ListBOMsResponse);
+  rpc AddBOMItem(AddBOMItemRequest) returns (AddBOMItemResponse);
+  rpc RemoveBOMItem(RemoveBOMItemRequest) returns (RemoveBOMItemResponse);
+}

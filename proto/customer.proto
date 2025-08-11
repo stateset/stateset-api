@@ -1,0 +1,55 @@
+syntax = "proto3";
+package stateset.customer;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message Customer {
+  string id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string email = 4;
+  string phone = 5;
+  common.Address address = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message CreateCustomerRequest {
+  Customer customer = 1;
+}
+
+message CreateCustomerResponse {
+  string customer_id = 1;
+}
+
+message GetCustomerRequest {
+  string customer_id = 1;
+}
+
+message GetCustomerResponse {
+  Customer customer = 1;
+}
+
+message UpdateCustomerRequest {
+  Customer customer = 1;
+}
+
+message UpdateCustomerResponse {
+  Customer customer = 1;
+}
+
+message ListCustomersRequest {
+  common.PaginationRequest pagination = 1;
+}
+
+message ListCustomersResponse {
+  repeated Customer customers = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+service CustomerService {
+  rpc CreateCustomer (CreateCustomerRequest) returns (CreateCustomerResponse);
+  rpc GetCustomer (GetCustomerRequest) returns (GetCustomerResponse);
+  rpc UpdateCustomer (UpdateCustomerRequest) returns (UpdateCustomerResponse);
+  rpc ListCustomers (ListCustomersRequest) returns (ListCustomersResponse);
+}

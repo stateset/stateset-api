@@ -1,0 +1,70 @@
+# Makefile for StateSet API with build error logging
+
+.PHONY: build build-release test clean run logs help
+
+# Default target
+help:
+	@echo "Available targets:"
+	@echo "  build         - Build the project in debug mode (with error logging)"
+	@echo "  build-release - Build the project in release mode (with error logging)"
+	@echo "  test          - Run tests (with error logging)"
+	@echo "  clean         - Clean build artifacts and logs"
+	@echo "  run           - Run the main server"
+	@echo "  logs          - View build error logs"
+	@echo "  tail-logs     - Tail build error logs"
+
+# Build in debug mode with error logging
+build:
+	@echo "Building project (debug mode)..."
+	@./build.sh
+
+# Build in release mode with error logging
+build-release:
+	@echo "Building project (release mode)..."
+	@echo "[`date '+%Y-%m-%d %H:%M:%S'`] ===== Release build started =====" >> build_errors.log
+	@cargo build --release 2>&1 | tee -a build_errors.log; \
+	if [ $${PIPESTATUS[0]} -eq 0 ]; then \
+		echo "[`date '+%Y-%m-%d %H:%M:%S'`] Release build completed successfully" >> build_errors.log; \
+		echo "✅ Release build successful!"; \
+	else \
+		echo "[`date '+%Y-%m-%d %H:%M:%S'`] Release build failed with exit code: $${PIPESTATUS[0]}" >> build_errors.log; \
+		echo "❌ Release build failed! Check build_errors.log for details."; \
+		exit $${PIPESTATUS[0]}; \
+	fi
+
+# Run tests with error logging
+test:
+	@echo "Running tests..."
+	@./build.sh --with-tests
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning build artifacts..."
+	@cargo clean
+	@echo "Build artifacts cleaned."
+
+# Run the main server
+run:
+	@echo "Running StateSet API server..."
+	@cargo run --bin stateset-api
+
+# View build logs
+logs:
+	@if [ -f build_errors.log ]; then \
+		cat build_errors.log; \
+	else \
+		echo "No build logs found."; \
+	fi
+
+# Tail build logs
+tail-logs:
+	@if [ -f build_errors.log ]; then \
+		tail -f build_errors.log; \
+	else \
+		echo "No build logs found."; \
+	fi
+
+# Build with the build-logger binary
+build-with-logger:
+	@echo "Building with build-logger..."
+	@cargo run --bin build-logger -- build 

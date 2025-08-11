@@ -1,0 +1,36 @@
+syntax = "proto3";
+package stateset.common;
+
+import "google/protobuf/timestamp.proto";
+
+// Represents a monetary amount with a specific currency.
+message Money {
+  string currency = 1;  // ISO 4217 currency code (e.g., "USD", "EUR")
+  int64 amount = 2;  // Amount in the smallest units of the currency (e.g., cents for USD)
+}
+
+// Represents a physical address, including street, city, state, country, and postal code.
+message Address {
+  string street_line1 = 1;  // First line of the street address
+  string street_line2 = 2;  // Second line of the street address (optional)
+  string city = 3;  // City of the address
+  string state = 4;  // State or province of the address
+  string country = 5;  // ISO 3166-1 alpha-2 country code (e.g., "US", "DE")
+  string postal_code = 6;  // Postal code of the address
+}
+
+// Request message for pagination, used in list queries to control the number of items returned.
+message PaginationRequest {
+  int32 page = 1;  // The page number to retrieve (1-based index)
+  int32 per_page = 2;  // The number of items per page
+}
+
+// Response message for pagination, providing details about the current page and total number of items.
+message PaginationResponse {
+  int32 total_items = 1;  // Total number of items available
+  int32 total_pages = 2;  // Total number of pages available
+  int32 current_page = 3;  // Current page number (1-based index)
+  int32 items_per_page = 4;  // Number of items per page in the response
+  bool has_next_page = 5;  // Indicates if there is a next page
+  bool has_previous_page = 6;  // Indicates if there is a previous page
+}

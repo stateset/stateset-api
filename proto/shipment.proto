@@ -1,0 +1,68 @@
+syntax = "proto3";
+package stateset.shipment;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message Shipment {
+  string id = 1;
+  string order_id = 2;
+  string carrier = 3;
+  string tracking_number = 4;
+  common.Address shipping_address = 5;
+  string status = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  repeated ShipmentItem items = 9;
+}
+
+message ShipmentItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message CreateShipmentRequest {
+  Shipment shipment = 1;
+}
+
+message CreateShipmentResponse {
+  string shipment_id = 1;
+}
+
+message GetShipmentRequest {
+  string shipment_id = 1;
+}
+
+message GetShipmentResponse {
+  Shipment shipment = 1;
+}
+
+message UpdateShipmentStatusRequest {
+  string shipment_id = 1;
+  string new_status = 2;
+}
+
+message UpdateShipmentStatusResponse {
+  string shipment_id = 1;
+  string status = 2;
+}
+
+message ListShipmentsRequest {
+  string order_id = 1;
+  string status = 2;
+  google.protobuf.Timestamp start_date = 3;
+  google.protobuf.Timestamp end_date = 4;
+  common.PaginationRequest pagination = 5;
+}
+
+message ListShipmentsResponse {
+  repeated Shipment shipments = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+service ShipmentService {
+  rpc CreateShipment (CreateShipmentRequest) returns (CreateShipmentResponse);
+  rpc GetShipment (GetShipmentRequest) returns (GetShipmentResponse);
+  rpc UpdateShipmentStatus (UpdateShipmentStatusRequest) returns (UpdateShipmentStatusResponse);
+  rpc ListShipments (ListShipmentsRequest) returns (ListShipmentsResponse);
+}

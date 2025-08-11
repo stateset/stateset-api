@@ -1,0 +1,30 @@
+# Default configuration for StateSet API
+
+# Database configuration
+database_url = "postgres://postgres:postgres@localhost:5432/stateset_db"
+redis_url = "redis://localhost:6379"
+
+# JWT configuration
+jwt_secret = "your_secure_jwt_secret_key_please_change_in_production"
+jwt_expiration = 3600
+refresh_token_expiration = 604800
+
+# Server configuration
+host = "0.0.0.0"
+port = 8080
+
+# Environment
+environment = "development"
+log_level = "info"
+
+# Cache configuration
+[cache]
+cache_type = "redis"
+redis_url = "redis://localhost:6379"
+capacity = 1000
+cleanup_interval_secs = 60
+default_ttl_secs = 300
+debug = false
+
+# Auto-migration
+auto_migrate = true 

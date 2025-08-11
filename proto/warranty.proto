@@ -1,0 +1,60 @@
+syntax = "proto3";
+package stateset.warranty;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+message Warranty {
+  string id = 1;
+  string order_id = 2;
+  string product_id = 3;
+  string customer_id = 4;
+  google.protobuf.Timestamp start_date = 5;
+  google.protobuf.Timestamp end_date = 6;
+  string status = 7;
+  string terms = 8;
+}
+
+message CreateWarrantyRequest {
+  Warranty warranty = 1;
+}
+
+message CreateWarrantyResponse {
+  string warranty_id = 1;
+}
+
+message GetWarrantyRequest {
+  string warranty_id = 1;
+}
+
+message GetWarrantyResponse {
+  Warranty warranty = 1;
+}
+
+message UpdateWarrantyRequest {
+  Warranty warranty = 1;
+}
+
+message UpdateWarrantyResponse {
+  Warranty warranty = 1;
+}
+
+message ListWarrantiesRequest {
+  string customer_id = 1;
+  string product_id = 2;
+  string order_id = 3;
+  string status = 4;
+  common.PaginationRequest pagination = 5;
+}
+
+message ListWarrantiesResponse {
+  repeated Warranty warranties = 1;
+  common.PaginationResponse pagination = 2;
+}
+
+service WarrantyService {
+  rpc CreateWarranty (CreateWarrantyRequest) returns (CreateWarrantyResponse);
+  rpc GetWarranty (GetWarrantyRequest) returns (GetWarrantyResponse);
+  rpc UpdateWarranty (UpdateWarrantyRequest) returns (UpdateWarrantyResponse);
+  rpc ListWarranties (ListWarrantiesRequest) returns (ListWarrantiesResponse);
+}

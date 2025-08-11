@@ -1,0 +1,94 @@
+syntax = "proto3";
+package stateset.order;
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";  // Assuming common.proto contains Money, Address, and Pagination messages
+
+// The Order message represents a customer's order.
+message Order {
+  string id = 1;  // Unique identifier for the order
+  string customer_id = 2;  // Unique identifier for the customer
+  repeated OrderItem items = 3;  // List of items in the order
+  common.Money total_amount = 4;  // Total amount for the order
+  OrderStatus status = 5;  // Status of the order
+  google.protobuf.Timestamp created_at = 6;  // Timestamp when the order was created
+  common.Address shipping_address = 7;  // Shipping address for the order
+  common.Address billing_address = 8;  // Billing address for the order
+  string payment_method_id = 9;  // Payment method used for the order
+  string shipment_id = 10;  // Shipment identifier for the order
+}
+
+// The OrderItem message represents an item in an order.
+message OrderItem {
+  string product_id = 1;  // Unique identifier for the product
+  int32 quantity = 2;  // Quantity of the product ordered
+  common.Money unit_price = 3;  // Unit price of the product
+}
+
+// Enum representing the various statuses an order can have.
+enum OrderStatus {
+  UNKNOWN = 0;  // Default status, used when the status is not known
+  PENDING = 1;  // Order is pending and has not been processed yet
+  PROCESSING = 2;  // Order is being processed
+  SHIPPED = 3;  // Order has been shipped
+  DELIVERED = 4;  // Order has been delivered to the customer
+  CANCELED = 5;  // Order has been canceled
+  RETURNED = 6;  // Order has been returned
+}
+
+// Request message for creating an order.
+message CreateOrderRequest {
+  Order order = 1;  // The order to be created
+}
+
+// Response message for creating an order.
+message CreateOrderResponse {
+  string order_id = 1;  // The unique identifier of the created order
+  OrderStatus status = 2;  // The initial status of the created order
+  google.protobuf.Timestamp created_at = 3;  // Timestamp when the order was created
+}
+
+// Request message for retrieving an order.
+message GetOrderRequest {
+  string order_id = 1;  // The unique identifier of the order to retrieve
+}
+
+// Response message for retrieving an order.
+message GetOrderResponse {
+  Order order = 1;  // The order data
+}
+
+// Request message for updating an order's status.
+message UpdateOrderStatusRequest {
+  string order_id = 1;  // The unique identifier of the order
+  OrderStatus new_status = 2;  // The new status to be applied to the order
+}
+
+// Response message for updating an order's status.
+message UpdateOrderStatusResponse {
+  string order_id = 1;  // The unique identifier of the order
+  OrderStatus status = 2;  // The updated status of the order
+}
+
+// Request message for listing orders.
+message ListOrdersRequest {
+  string customer_id = 1;  // (Optional) Filter orders by customer ID
+  google.protobuf.Timestamp start_date = 2;  // (Optional) Start date for filtering orders
+  google.protobuf.Timestamp end_date = 3;  // (Optional) End date for filtering orders
+  OrderStatus status = 4;  // (Optional) Filter orders by status
+  common.PaginationRequest pagination = 5;  // Pagination options
+}
+
+// Response message for listing orders.
+message ListOrdersResponse {
+  repeated Order orders = 1;  // List of orders matching the request
+  common.PaginationResponse pagination = 2;  // Pagination information for the response
+}
+
+// Order service definition.
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);  // Creates a new order
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);  // Retrieves an order by ID
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (UpdateOrderStatusResponse);  // Updates the status of an order
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);  // Lists orders with optional filters and pagination
+}
