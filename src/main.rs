@@ -20,6 +20,10 @@ use stateset_api::{
     proto::*,
     services,
     AppState,
+    openapi,
+    rate_limiter::{RateLimitConfig, RateLimitLayer},
+    tracing::RequestLoggerLayer,
+    versioning,
 };
 use tonic::transport::Server;
 
@@ -78,6 +82,11 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         // Health routes (no state needed)
         .nest("/health", health::health_routes())
+        // API versions info
+        .nest("/api/versions", versioning::api_versions_routes())
+        // Swagger UI and OpenAPI JSON
+        .merge(openapi::swagger_routes())
+        .nest("/api-docs", openapi::create_docs_routes())
         // API v1 routes with proper state
         .nest("/api/v1", api_routes)
         // Add comprehensive middleware stack
@@ -86,7 +95,11 @@ async fn main() -> anyhow::Result<()> {
                 .layer(TraceLayer::new_for_http())
                 .layer(TimeoutLayer::new(Duration::from_secs(30)))
                 .layer(CorsLayer::permissive())
-        );
+        )
+        // Add structured request logging
+        .layer(RequestLoggerLayer::new())
+        // Add simple in-memory rate limiting
+        .layer(RateLimitLayer::new(RateLimitConfig::default()));
 
     // Start HTTP server
     let http_addr = format!("{}:{}", config.host, config.port);

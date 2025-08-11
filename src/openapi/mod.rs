@@ -144,6 +144,15 @@ impl Modify for SecurityAddon {
     }
 }
 
+/// Lightweight Swagger UI + OpenAPI JSON routes for Axum
+pub fn swagger_routes() -> Router {
+    Router::new().merge(
+        SwaggerUi::new("/docs")
+            .url("/api-docs/v1/openapi.json", ApiDocV1::openapi())
+            .url("/api-docs/v2/openapi.json", ApiDocV2::openapi()),
+    )
+}
+
 /// Get OpenAPI specs for a specific version
 pub async fn openapi_json(Path(version): Path<String>) -> impl IntoResponse {
     match version.as_str() {
@@ -161,13 +170,9 @@ pub async fn openapi_handler(Path(version): Path<String>) -> impl IntoResponse {
         _ => None,
     };
 
-    if let Some(path) = openapi_path {
-        // Create Swagger UI config for this version
-        let config = Config::new([path]).use_base_layout();
-
-        // Return the Swagger UI HTML
-        let swagger_ui = SwaggerUi::new("/swagger-ui").config(config);
-        (StatusCode::OK, "Swagger UI configured").into_response()
+    if let Some(_path) = openapi_path {
+        // UI is mounted via swagger_routes() at /docs
+        (StatusCode::OK, "Swagger UI available at /docs").into_response()
     } else {
         (StatusCode::NOT_FOUND, "API version not found").into_response()
     }
@@ -272,7 +277,7 @@ pub async fn docs_home() -> impl IntoResponse {
             <p><strong>Released:</strong> January 2023</p>
         </div>
         <div class="version-buttons">
-            <a href="/docs/v1" class="btn btn-primary">Explore API v1</a>
+            <a href="/docs" class="btn btn-primary">Open Swagger UI</a>
             <a href="/api-docs/v1/openapi.json" class="btn btn-secondary">OpenAPI Spec</a>
         </div>
     </div>
@@ -287,7 +292,7 @@ pub async fn docs_home() -> impl IntoResponse {
             <p><strong>Released:</strong> June 2024 (Alpha)</p>
         </div>
         <div class="version-buttons">
-            <a href="/docs/v2" class="btn btn-primary">Explore API v2</a>
+            <a href="/docs" class="btn btn-primary">Open Swagger UI</a>
             <a href="/api-docs/v2/openapi.json" class="btn btn-secondary">OpenAPI Spec</a>
         </div>
     </div>
@@ -422,7 +427,6 @@ async fn list_orders() {}
         (status = 403, description = "Forbidden", body = super::errors::ErrorResponse),
         (status = 404, description = "Order not found", body = super::errors::ErrorResponse),
         (status = 422, description = "Order cannot be cancelled", body = super::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = super::errors::ErrorResponse),
     ),
     security(
         ("jwt_auth" = [])
@@ -446,7 +450,6 @@ async fn cancel_order() {}
         (status = 403, description = "Forbidden", body = super::errors::ErrorResponse),
         (status = 404, description = "Order not found", body = super::errors::ErrorResponse),
         (status = 422, description = "Invalid item or insufficient inventory", body = super::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = super::errors::ErrorResponse),
     ),
     security(
         ("jwt_auth" = [])

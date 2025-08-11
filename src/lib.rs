@@ -166,9 +166,6 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route("/work-orders/:id/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
         .route("/work-orders/:id/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
         .route("/work-orders/:id/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
-        
-        // Add middleware for request logging
-        .layer(middleware::from_fn(request_logging_middleware))
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {
