@@ -8,6 +8,19 @@ pub mod orders;
 // pub mod warranties;
 // pub mod work_orders;
 
+// Simple status helpers that work directly with entities
+pub mod order_status;
+
+// Service factory for dependency injection
+pub mod factory;
+
+// Inventory management services
+pub mod inventory_sync;
+pub mod bom;
+pub mod manufacturing;
+pub mod purchase_receipt;
+pub mod sales_fulfillment;
+
 // Manufacturing and Supply Chain
 // pub mod billofmaterials;
 // pub mod procurement;

@@ -17,11 +17,9 @@
 
 use async_trait::async_trait;
 use axum::{
-    extract::FromRequestParts,
-    extract::Request,
     http::{
         header::{HeaderValue, ACCEPT},
-        HeaderMap, StatusCode,
+        HeaderMap, StatusCode, Request,
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -216,7 +214,7 @@ fn extract_version_from_accept(accept: &str) -> Option<ApiVersion> {
 }
 
 /// Middleware to handle API versioning
-pub async fn api_version_middleware(req: Request, next: Next) -> Response {
+pub async fn api_version_middleware(req: Request<axum::body::Body>, next: Next) -> Response {
     let path = req.uri().path().to_string();
     let version = extract_version_from_request(&req);
 
@@ -273,7 +271,7 @@ pub async fn api_version_middleware(req: Request, next: Next) -> Response {
 }
 
 /// Extract API version from request
-pub fn extract_version_from_request(req: &Request) -> Option<ApiVersion> {
+pub fn extract_version_from_request(req: &Request<axum::body::Body>) -> Option<ApiVersion> {
     // 1. Try path version
     let path = req.uri().path();
     if let Some(version) = extract_version_from_path(path) {

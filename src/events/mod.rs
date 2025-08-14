@@ -67,7 +67,7 @@ pub enum Event {
     },
     
     // Inventory events
-    InventoryUpdated { item_id: Uuid, quantity: i32 },
+    InventoryUpdatedLegacy { item_id: Uuid, quantity: i32 },
     InventoryAllocated { 
         item_id: Uuid, 
         quantity: i32,
@@ -133,9 +133,9 @@ pub enum Event {
     WarrantyExpired(Uuid),
     
     // Work order events
-    WorkOrderCreated(Uuid),
+    WorkOrderCreatedLegacy(Uuid),
     WorkOrderUpdated(Uuid),
-    WorkOrderCompleted(Uuid),
+    WorkOrderCompletedLegacy(Uuid),
     WorkOrderCancelled(Uuid),
     
     // BOM events
@@ -214,6 +214,52 @@ pub enum Event {
     
     // Weighted Average COGS event
     WeightedAverageCOGSCalculated(Uuid, BigDecimal),
+    
+    // Manufacturing and inventory sync events
+    InventoryUpdated {
+        item_id: i64,
+        location_id: i32,
+        new_quantity: Decimal,
+        available_quantity: Decimal,
+    },
+    WorkOrderCreated {
+        work_order_id: i64,
+        item_id: i64,
+        quantity: Decimal,
+    },
+    WorkOrderStarted {
+        work_order_id: i64,
+        item_id: i64,
+    },
+    WorkOrderCompleted {
+        work_order_id: i64,
+        item_id: i64,
+        quantity_completed: Decimal,
+    },
+    PurchaseOrderReceived {
+        po_line_id: i64,
+        item_id: i64,
+        quantity: Decimal,
+        location_id: i32,
+    },
+    PurchaseOrderReturned {
+        receipt_line_id: i64,
+        item_id: i64,
+        quantity: Decimal,
+        reason: String,
+    },
+    SalesOrderFulfilled {
+        order_id: i64,
+        line_id: i64,
+        item_id: i64,
+        quantity: Decimal,
+    },
+    SalesOrderReturned {
+        fulfillment_id: i64,
+        item_id: i64,
+        quantity: Decimal,
+        reason: String,
+    },
 }
 
 impl Event {

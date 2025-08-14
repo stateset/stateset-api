@@ -18,26 +18,26 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::sales_order_headers::Entity",
+        belongs_to = "super::sales_order_header::Entity",
         from = "Column::SalesOrderHeaderId",
-        to = "super::sales_order_headers::Column::HeaderId"
+        to = "super::sales_order_header::Column::HeaderId"
     )]
     SalesOrderHeader,
     #[sea_orm(
-        belongs_to = "super::sales_order_lines::Entity",
+        belongs_to = "super::sales_order_line::Entity",
         from = "Column::SalesOrderLineId",
-        to = "super::sales_order_lines::Column::LineId"
+        to = "super::sales_order_line::Column::LineId"
     )]
     SalesOrderLine,
 }
 
-impl Related<super::sales_order_headers::Entity> for Entity {
+impl Related<super::sales_order_header::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::SalesOrderHeader.def()
     }
 }
 
-impl Related<super::sales_order_lines::Entity> for Entity {
+impl Related<super::sales_order_line::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::SalesOrderLine.def()
     }

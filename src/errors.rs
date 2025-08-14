@@ -10,6 +10,9 @@ use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+// gRPC error mapping module
+pub mod grpc;
+
 /// Simplified error structure for OpenAPI documentation
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
@@ -80,6 +83,33 @@ pub enum ServiceError {
 
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
+    
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+    
+    #[error("Conflict: {0}")]
+    Conflict(String),
+    
+    #[error("Insufficient stock: {0}")]
+    InsufficientStock(String),
+    
+    #[error("Payment failed: {0}")]
+    PaymentFailed(String),
+    
+    #[error("Cache error: {0}")]
+    CacheError(String),
+    
+    #[error("Queue error: {0}")]
+    QueueError(String),
+    
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+    
+    #[error("Circuit breaker open")]
+    CircuitBreakerOpen,
+    
+    #[error("Migration error: {0}")]
+    MigrationError(String),
 
     #[error("Other error: {0}")]
     Other(#[from] #[serde(skip)] anyhow::Error),
@@ -119,6 +149,15 @@ impl IntoResponse for ServiceError {
             ServiceError::JwtError(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             ServiceError::HashError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             ServiceError::RateLimitExceeded => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded".to_string()),
+            ServiceError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            ServiceError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+            ServiceError::InsufficientStock(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
+            ServiceError::PaymentFailed(msg) => (StatusCode::PAYMENT_REQUIRED, msg.clone()),
+            ServiceError::CacheError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            ServiceError::QueueError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            ServiceError::SerializationError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            ServiceError::CircuitBreakerOpen => (StatusCode::SERVICE_UNAVAILABLE, "Service temporarily unavailable".to_string()),
+            ServiceError::MigrationError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             ServiceError::ConcurrentModification(id) => (StatusCode::CONFLICT, format!("Concurrent modification for ID {}", id)),
             ServiceError::Other(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
@@ -155,26 +194,24 @@ impl IntoResponse for ApiError {
         let (status, error_message) = match &self {
             ApiError::ServiceError(service_error) => {
                 match service_error {
-                    ServiceError::NotFound(e) => (StatusCode::NOT_FOUND, e.clone()),
-                    ServiceError::ValidationError(e) => (StatusCode::BAD_REQUEST, e.clone()),
-                    ServiceError::AuthError(e) => (StatusCode::UNAUTHORIZED, e.clone()),
-                    ServiceError::InvalidOperation(e) => (StatusCode::BAD_REQUEST, e.clone()),
+                    ServiceError::NotFound(e) | ServiceError::NotFoundError(e) => (StatusCode::NOT_FOUND, e.clone()),
+                    ServiceError::ValidationError(e) | ServiceError::InvalidStatus(e) => (StatusCode::BAD_REQUEST, e.clone()),
+                    ServiceError::AuthError(e) | ServiceError::JwtError(e) | ServiceError::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e.clone()),
+                    ServiceError::InvalidOperation(e) | ServiceError::BadRequest(e) => (StatusCode::BAD_REQUEST, e.clone()),
                     ServiceError::EventError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
-                    ServiceError::InternalError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
-                    ServiceError::OrderError(e) => (StatusCode::BAD_REQUEST, e.clone()),
-                    ServiceError::InventoryError(e) => (StatusCode::BAD_REQUEST, e.clone()),
+                    ServiceError::InternalError(e) | ServiceError::HashError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
+                    ServiceError::OrderError(e) | ServiceError::InventoryError(e) => (StatusCode::BAD_REQUEST, e.clone()),
                     ServiceError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()),
-                    ServiceError::InvalidStatus(e) => (StatusCode::BAD_REQUEST, e.clone()),
                     ServiceError::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string()),
-                    ServiceError::ExternalServiceError(e) => (StatusCode::BAD_GATEWAY, e.clone()),
-                    ServiceError::ExternalApiError(e) => (StatusCode::BAD_GATEWAY, e.clone()),
-                    ServiceError::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e.clone()),
+                    ServiceError::ExternalServiceError(e) | ServiceError::ExternalApiError(e) => (StatusCode::BAD_GATEWAY, e.clone()),
                     ServiceError::Forbidden(e) => (StatusCode::FORBIDDEN, e.clone()),
-                    ServiceError::JwtError(e) => (StatusCode::UNAUTHORIZED, e.clone()),
-                    ServiceError::HashError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
                     ServiceError::RateLimitExceeded => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded".to_string()),
+                    ServiceError::Conflict(e) => (StatusCode::CONFLICT, e.clone()),
+                    ServiceError::InsufficientStock(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.clone()),
+                    ServiceError::PaymentFailed(e) => (StatusCode::PAYMENT_REQUIRED, e.clone()),
+                    ServiceError::CacheError(e) | ServiceError::QueueError(e) | ServiceError::SerializationError(e) | ServiceError::MigrationError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
+                    ServiceError::CircuitBreakerOpen => (StatusCode::SERVICE_UNAVAILABLE, "Service temporarily unavailable".to_string()),
                     ServiceError::ConcurrentModification(id) => (StatusCode::CONFLICT, format!("Concurrent modification for ID {}", id)),
-                    ServiceError::NotFoundError(e) => (StatusCode::NOT_FOUND, e.clone()),
                     ServiceError::Other(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
                 }
             },

@@ -13,7 +13,7 @@
 
 use async_trait::async_trait;
 use axum::{
-    extract::{FromRequestParts, Request, State},
+    extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},

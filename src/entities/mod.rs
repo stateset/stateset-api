@@ -31,13 +31,13 @@ pub mod inventory_items;
 
 // New ERP entities
 pub mod item_master;
-pub mod inventory_locations;
-pub mod inventory_balances;
-pub mod bom_headers;
-pub mod bom_lines;
+pub mod inventory_location;
+pub mod inventory_balance;
+pub mod bom_header;
+pub mod bom_line;
 pub mod manufacturing_work_orders;
-pub mod sales_order_headers;
-pub mod sales_order_lines;
+pub mod sales_order_header;
+pub mod sales_order_line;
 pub mod order_fulfillments;
 pub mod purchase_order_headers;
 pub mod purchase_order_lines;
@@ -46,5 +46,5 @@ pub mod purchase_invoices;
 pub mod purchase_invoice_lines;
 pub mod po_receipt_headers;
 pub mod po_receipt_lines;
-// pub mod sales_invoices;
-// pub mod sales_invoice_lines;
+pub mod sales_invoice;
+pub mod sales_invoice_line;

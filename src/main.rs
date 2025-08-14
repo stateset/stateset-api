@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
-
+use axum::{Router, http::StatusCode, Json};
+use serde_json::json;
 use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -11,6 +11,7 @@ use tower_http::{
     trace::TraceLayer,
     compression::CompressionLayer,
 };
+use tracing::instrument;
 
 use stateset_api::{
     api::StateSetApi,
@@ -68,14 +69,14 @@ async fn main() -> anyhow::Result<()> {
     
     // Create application state for HTTP API
     let state = AppState {
-        db: db_arc,
+        db: db_arc.clone(),
         config: config.clone(),
-        event_sender,
+        event_sender: event_sender.clone(),
         inventory_service,
     };
 
-    // Create StateSet API for gRPC
-    let stateset_api = StateSetApi::new(db_access);
+    // Create StateSet API for gRPC with shared event sender
+    let stateset_api = StateSetApi::with_event_sender(db_access, db_arc.clone(), event_sender.clone());
 
     // Create enhanced API routes
     let api_routes = stateset_api::api_v1_routes().with_state(state.clone());
@@ -89,21 +90,11 @@ async fn main() -> anyhow::Result<()> {
         .merge(openapi::swagger_routes())
         .nest("/api-docs", openapi::create_docs_routes())
         // Metrics endpoint
-        .route("/metrics", axum::routing::get(|| async {
-            match stateset_api::metrics::metrics_handler().await {
-                Ok(body) => (axum::http::StatusCode::OK, body),
-                Err(_) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, String::from("metrics export failed")),
-            }
-        }))
+        .route("/metrics", axum::routing::get(metrics_endpoint))
         // API v1 routes with proper state
         .nest("/api/v1", api_routes)
         // Fallback 404 JSON
-        .fallback(|| async {
-            (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({
-                "error": "Not Found",
-                "message": "The requested resource was not found"
-            })))
-        })
+        .fallback(fallback_handler)
         // Add comprehensive middleware stack
         .layer(
             ServiceBuilder::new()
@@ -119,15 +110,17 @@ async fn main() -> anyhow::Result<()> {
         // API version header middleware
         .layer(axum::middleware::from_fn(stateset_api::versioning::api_version_middleware));
 
-    // Start HTTP server
+    // Configure server addresses
     let http_addr = format!("{}:{}", config.host, config.port);
-    let listener = tokio::net::TcpListener::bind(&http_addr).await?;
-    tracing::info!("StateSet HTTP API server listening on {}", http_addr);
-
-    // Start gRPC server
-    let grpc_port = config.port + 1; // Use next port for gRPC
+    let grpc_port = config.grpc_port.unwrap_or(config.port + 1);
     let grpc_addr = format!("{}:{}", config.host, grpc_port).parse()?;
-    tracing::info!("StateSet gRPC API server listening on {}", grpc_addr);
+    
+    // Start HTTP server
+    let listener = tokio::net::TcpListener::bind(&http_addr).await?;
+    tracing::info!("🚀 StateSet HTTP API server listening on http://{}", http_addr);
+    
+    // Start gRPC server
+    tracing::info!("🚀 StateSet gRPC API server listening on grpc://{}", grpc_addr);
 
     let grpc_server = Server::builder()
         .add_service(order::order_service_server::OrderServiceServer::new(stateset_api.clone()))
@@ -142,17 +135,28 @@ async fn main() -> anyhow::Result<()> {
     let http_server = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal());
 
-    // Start both servers
-    tokio::try_join!(
-        async { http_server.await.map_err(anyhow::Error::from) },
-        async { grpc_server.await.map_err(anyhow::Error::from) }
-    )?;
+    // Start both servers with proper error handling
+    let result = tokio::select! {
+        res = http_server => {
+            tracing::error!("HTTP server stopped: {:?}", res);
+            res.map_err(anyhow::Error::from)
+        }
+        res = grpc_server => {
+            tracing::error!("gRPC server stopped: {:?}", res);
+            res.map_err(anyhow::Error::from)
+        }
+        _ = shutdown_signal() => {
+            tracing::info!("Graceful shutdown initiated");
+            Ok(())
+        }
+    };
 
     // Clean up
     event_processor_handle.abort();
-    tracing::info!("StateSet API server shutdown complete");
+    let _ = event_processor_handle.await;
+    tracing::info!("✅ StateSet API server shutdown complete");
 
-    Ok(())
+    result
 }
 
 async fn shutdown_signal() {
@@ -181,5 +185,25 @@ async fn shutdown_signal() {
     tracing::info!("Shutdown signal received");
 }
 
+#[instrument]
+async fn metrics_endpoint() -> Result<String, (StatusCode, String)> {
+    stateset_api::metrics::metrics_handler()
+        .await
+        .map_err(|e| {
+            tracing::error!("Metrics handler error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Metrics export failed: {}", e))
+        })
+}
 
-
+#[instrument]
+async fn fallback_handler() -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "error": "not_found",
+            "message": "The requested resource was not found",
+            "status": 404,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))
+    )
+}

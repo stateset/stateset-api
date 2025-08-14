@@ -1,4 +1,5 @@
 syntax = "proto3";
+
 package stateset.order;
 
 import "google/protobuf/timestamp.proto";
@@ -9,11 +10,11 @@ message Order {
   string id = 1;  // Unique identifier for the order
   string customer_id = 2;  // Unique identifier for the customer
   repeated OrderItem items = 3;  // List of items in the order
-  common.Money total_amount = 4;  // Total amount for the order
-  OrderStatus status = 5;  // Status of the order
+  .stateset.common.Money total_amount = 4;  // Total amount for the order
+  OrderStatus status = 5;  // Status of the order, default is PENDING
   google.protobuf.Timestamp created_at = 6;  // Timestamp when the order was created
-  common.Address shipping_address = 7;  // Shipping address for the order
-  common.Address billing_address = 8;  // Billing address for the order
+  .stateset.common.Address shipping_address = 7;  // Shipping address for the order
+  .stateset.common.Address billing_address = 8;  // Billing address for the order
   string payment_method_id = 9;  // Payment method used for the order
   string shipment_id = 10;  // Shipment identifier for the order
 }
@@ -21,8 +22,8 @@ message Order {
 // The OrderItem message represents an item in an order.
 message OrderItem {
   string product_id = 1;  // Unique identifier for the product
-  int32 quantity = 2;  // Quantity of the product ordered
-  common.Money unit_price = 3;  // Unit price of the product
+  int32 quantity = 2;  // Quantity of the product ordered, default is 1
+  .stateset.common.Money unit_price = 3;  // Unit price of the product
 }
 
 // Enum representing the various statuses an order can have.
@@ -76,13 +77,13 @@ message ListOrdersRequest {
   google.protobuf.Timestamp start_date = 2;  // (Optional) Start date for filtering orders
   google.protobuf.Timestamp end_date = 3;  // (Optional) End date for filtering orders
   OrderStatus status = 4;  // (Optional) Filter orders by status
-  common.PaginationRequest pagination = 5;  // Pagination options
+  .stateset.common.PaginationRequest pagination = 5;  // Pagination options
 }
 
 // Response message for listing orders.
 message ListOrdersResponse {
   repeated Order orders = 1;  // List of orders matching the request
-  common.PaginationResponse pagination = 2;  // Pagination information for the response
+  .stateset.common.PaginationResponse pagination = 2;  // Pagination information for the response
 }
 
 // Order service definition.

@@ -20,15 +20,15 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::inventory_balances::Entity")]
+    #[sea_orm(has_many = "super::inventory_balance::Entity")]
     InventoryBalances,
-    #[sea_orm(has_many = "super::bom_headers::Entity")]
+    #[sea_orm(has_many = "super::bom_header::Entity")]
     BomHeaders,
-    #[sea_orm(has_many = "super::bom_lines::Entity")]
+    #[sea_orm(has_many = "super::bom_line::Entity")]
     BomLinesAsComponent,
     #[sea_orm(has_many = "super::manufacturing_work_orders::Entity")]
     ManufacturingWorkOrders,
-    #[sea_orm(has_many = "super::sales_order_lines::Entity")]
+    #[sea_orm(has_many = "super::sales_order_line::Entity")]
     SalesOrderLines,
     #[sea_orm(has_many = "super::purchase_order_lines::Entity")]
     PurchaseOrderLines,
@@ -36,19 +36,19 @@ pub enum Relation {
     PoReceiptLines,
 }
 
-impl Related<super::inventory_balances::Entity> for Entity {
+impl Related<super::inventory_balance::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::InventoryBalances.def()
     }
 }
 
-impl Related<super::bom_headers::Entity> for Entity {
+impl Related<super::bom_header::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::BomHeaders.def()
     }
 }
 
-impl Related<super::bom_lines::Entity> for Entity {
+impl Related<super::bom_line::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::BomLinesAsComponent.def()
     }
@@ -60,7 +60,7 @@ impl Related<super::manufacturing_work_orders::Entity> for Entity {
     }
 }
 
-impl Related<super::sales_order_lines::Entity> for Entity {
+impl Related<super::sales_order_line::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::SalesOrderLines.def()
     }

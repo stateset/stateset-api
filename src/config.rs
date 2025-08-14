@@ -83,6 +83,9 @@ pub struct AppConfig {
     /// Server port (1024-65535)
     #[serde(default = "default_port")]
     pub port: u16,
+    
+    /// gRPC server port (optional, defaults to port + 1)
+    pub grpc_port: Option<u16>,
 
     /// Application environment
     pub environment: String,
@@ -126,6 +129,7 @@ impl AppConfig {
             refresh_token_expiration,
             host,
             port,
+            grpc_port: None,
             environment,
             log_level: default_log_level(),
             cache: CacheConfig {

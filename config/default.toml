@@ -3,7 +3,7 @@
 # See ENV_VARIABLES.md for configuration instructions
 
 # Database configuration
-database_url = "postgres://username:password@localhost:5432/stateset_db"  # CHANGE THIS
+database_url = "sqlite:stateset.db?mode=rwc"  # Using SQLite for testing
 redis_url = "redis://localhost:6379"
 
 # JWT configuration  

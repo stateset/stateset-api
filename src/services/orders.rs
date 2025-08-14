@@ -1,22 +1,23 @@
-use crate::{
-    db::DbPool,
-    errors::ServiceError,
-    events::{Event, EventSender},
-    entities::order::{self, Entity as OrderEntity, Model as OrderModel, ActiveModel as OrderActiveModel},
-    entities::order_item::{self, Entity as OrderItemEntity, Model as OrderItemModel},
-};
-use anyhow::Result;
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    DbErr, ActiveValue, QueryOrder, PaginatorTrait, TransactionTrait
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, 
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
+
+use crate::{
+    db::DbPool,
+    entities::order::{self, ActiveModel as OrderActiveModel, Entity as OrderEntity, Model as OrderModel},
+    entities::order_item::{Entity as OrderItemEntity, Model as OrderItemModel},
+    errors::ServiceError,
+    events::{Event, EventSender},
+};
 
 /// Request/Response types for the order service
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -80,6 +81,14 @@ pub struct OrderService {
     event_sender: Option<Arc<EventSender>>,
 }
 
+// Order status constants
+const STATUS_PENDING: &str = "pending";
+const STATUS_PROCESSING: &str = "processing";
+const STATUS_SHIPPED: &str = "shipped";
+const STATUS_DELIVERED: &str = "delivered";
+const STATUS_CANCELLED: &str = "cancelled";
+const STATUS_REFUNDED: &str = "refunded";
+
 impl OrderService {
     /// Creates a new order service instance
     pub fn new(db_pool: Arc<DbPool>, event_sender: Option<Arc<EventSender>>) -> Self {
@@ -93,7 +102,15 @@ impl OrderService {
     #[instrument(skip(self, request), fields(customer_id = %request.customer_id, order_number = %request.order_number))]
     pub async fn create_order(&self, request: CreateOrderRequest) -> Result<OrderResponse, ServiceError> {
         // Validate the request
-        request.validate().map_err(|e| ServiceError::ValidationError(e.to_string()))?;
+        request.validate()
+            .map_err(|e| ServiceError::ValidationError(format!("Invalid order data: {}", e)))?;
+        
+        // Additional business validations
+        if request.total_amount < Decimal::ZERO {
+            return Err(ServiceError::ValidationError(
+                "Total amount cannot be negative".to_string()
+            ));
+        }
 
         let db = &*self.db_pool;
         let now = Utc::now();
@@ -110,7 +127,7 @@ impl OrderService {
             id: Set(order_id),
             order_number: Set(request.order_number.clone()),
             customer_id: Set(request.customer_id),
-            status: Set("pending".to_string()),
+            status: Set(STATUS_PENDING.to_string()),
             order_date: Set(now),
             total_amount: Set(request.total_amount),
             currency: Set(request.currency),
@@ -181,6 +198,19 @@ impl OrderService {
     /// Lists orders with pagination
     #[instrument(skip(self))]
     pub async fn list_orders(&self, page: u64, per_page: u64) -> Result<OrderListResponse, ServiceError> {
+        // Validate pagination parameters
+        if page == 0 {
+            return Err(ServiceError::ValidationError(
+                "Page number must be greater than 0".to_string()
+            ));
+        }
+        
+        if per_page == 0 || per_page > 100 {
+            return Err(ServiceError::ValidationError(
+                "Per page must be between 1 and 100".to_string()
+            ));
+        }
+        
         let db = &*self.db_pool;
 
         // Get paginated orders
@@ -217,7 +247,20 @@ impl OrderService {
     /// Updates an order's status
     #[instrument(skip(self, request), fields(order_id = %order_id, new_status = %request.status))]
     pub async fn update_order_status(&self, order_id: Uuid, request: UpdateOrderStatusRequest) -> Result<OrderResponse, ServiceError> {
-        request.validate().map_err(|e| ServiceError::ValidationError(e.to_string()))?;
+        request.validate()
+            .map_err(|e| ServiceError::ValidationError(format!("Invalid status update: {}", e)))?;
+        
+        // Validate status transition
+        let valid_statuses = vec![
+            STATUS_PENDING, STATUS_PROCESSING, STATUS_SHIPPED, 
+            STATUS_DELIVERED, STATUS_CANCELLED, STATUS_REFUNDED
+        ];
+        
+        if !valid_statuses.contains(&request.status.as_str()) {
+            return Err(ServiceError::ValidationError(
+                format!("Invalid status: {}. Must be one of: {:?}", request.status, valid_statuses)
+            ));
+        }
 
         let db = &*self.db_pool;
         let now = Utc::now();
@@ -243,6 +286,13 @@ impl OrderService {
         })?;
 
         let old_status = order.status.clone();
+        
+        // Validate status transition rules
+        if !self.is_valid_status_transition(&old_status, &request.status) {
+            return Err(ServiceError::ValidationError(
+                format!("Invalid status transition from {} to {}", old_status, request.status)
+            ));
+        }
 
         // Update the order
         let mut order_active_model: OrderActiveModel = order.into();
@@ -284,9 +334,19 @@ impl OrderService {
     /// Cancels an order
     #[instrument(skip(self), fields(order_id = %order_id))]
     pub async fn cancel_order(&self, order_id: Uuid, reason: Option<String>) -> Result<OrderResponse, ServiceError> {
+        // First check if the order can be cancelled
+        let order = self.get_order(order_id).await?
+            .ok_or_else(|| ServiceError::NotFound("Order not found".to_string()))?;
+        
+        if order.status == STATUS_DELIVERED || order.status == STATUS_CANCELLED {
+            return Err(ServiceError::ValidationError(
+                format!("Cannot cancel order with status: {}", order.status)
+            ));
+        }
+        
         let cancel_request = UpdateOrderStatusRequest {
-            status: "cancelled".to_string(),
-            notes: reason,
+            status: STATUS_CANCELLED.to_string(),
+            notes: reason.or(Some("Order cancelled by user".to_string())),
         };
 
         let response = self.update_order_status(order_id, cancel_request).await?;
@@ -336,6 +396,24 @@ impl OrderService {
         Ok(self.model_to_response(archived_order))
     }
 
+    /// Validates if a status transition is allowed
+    fn is_valid_status_transition(&self, from: &str, to: &str) -> bool {
+        match (from, to) {
+            // From pending, can go to processing, cancelled
+            (STATUS_PENDING, STATUS_PROCESSING) | (STATUS_PENDING, STATUS_CANCELLED) => true,
+            // From processing, can go to shipped, cancelled
+            (STATUS_PROCESSING, STATUS_SHIPPED) | (STATUS_PROCESSING, STATUS_CANCELLED) => true,
+            // From shipped, can go to delivered
+            (STATUS_SHIPPED, STATUS_DELIVERED) => true,
+            // From delivered, can go to refunded
+            (STATUS_DELIVERED, STATUS_REFUNDED) => true,
+            // From cancelled, can go to refunded
+            (STATUS_CANCELLED, STATUS_REFUNDED) => true,
+            // All other transitions are invalid
+            _ => false,
+        }
+    }
+    
     /// Converts an order model to response format
     fn model_to_response(&self, model: OrderModel) -> OrderResponse {
         OrderResponse {
@@ -359,6 +437,90 @@ impl OrderService {
             updated_at: model.updated_at,
             version: model.version,
         }
+    }
+    
+    /// Deletes an order (soft delete by archiving)
+    #[instrument(skip(self), fields(order_id = %order_id))]
+    pub async fn delete_order(&self, order_id: Uuid) -> Result<(), ServiceError> {
+        // Check if order exists and can be deleted
+        let order = self.get_order(order_id).await?
+            .ok_or_else(|| ServiceError::NotFound("Order not found".to_string()))?;
+        
+        // Only allow deletion of cancelled or draft orders
+        if order.status != STATUS_CANCELLED && order.status != STATUS_PENDING {
+            return Err(ServiceError::ValidationError(
+                format!("Cannot delete order with status: {}", order.status)
+            ));
+        }
+        
+        self.archive_order(order_id).await?;
+        
+        info!(order_id = %order_id, "Order deleted (archived) successfully");
+        Ok(())
+    }
+    
+    /// Search orders by various criteria
+    #[instrument(skip(self))]
+    pub async fn search_orders(
+        &self,
+        customer_id: Option<Uuid>,
+        status: Option<String>,
+        from_date: Option<DateTime<Utc>>,
+        to_date: Option<DateTime<Utc>>,
+        page: u64,
+        per_page: u64,
+    ) -> Result<OrderListResponse, ServiceError> {
+        // Validate pagination
+        if page == 0 || per_page == 0 || per_page > 100 {
+            return Err(ServiceError::ValidationError(
+                "Invalid pagination parameters".to_string()
+            ));
+        }
+        
+        let db = &*self.db_pool;
+        let mut query = OrderEntity::find();
+        
+        // Apply filters
+        query = query.filter(order::Column::IsArchived.eq(false));
+        
+        if let Some(cid) = customer_id {
+            query = query.filter(order::Column::CustomerId.eq(cid));
+        }
+        
+        if let Some(s) = status {
+            query = query.filter(order::Column::Status.eq(s));
+        }
+        
+        if let Some(from) = from_date {
+            query = query.filter(order::Column::OrderDate.gte(from));
+        }
+        
+        if let Some(to) = to_date {
+            query = query.filter(order::Column::OrderDate.lte(to));
+        }
+        
+        // Get results with pagination
+        let paginator = query
+            .order_by_desc(order::Column::CreatedAt)
+            .paginate(db, per_page);
+        
+        let total = paginator.num_items().await
+            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+        
+        let orders = paginator.fetch_page(page - 1).await
+            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+        
+        let order_responses: Vec<OrderResponse> = orders
+            .into_iter()
+            .map(|order| self.model_to_response(order))
+            .collect();
+        
+        Ok(OrderListResponse {
+            orders: order_responses,
+            total,
+            page,
+            per_page,
+        })
     }
 }
 
