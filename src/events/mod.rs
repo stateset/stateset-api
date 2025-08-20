@@ -222,6 +222,14 @@ pub enum Event {
         new_quantity: Decimal,
         available_quantity: Decimal,
     },
+    // Inventory adjustment events for orders
+    InventoryAdjustedForOrder {
+        order_id: i64,
+        adjustment_type: String,
+    },
+    InventoryReceivedFromPO {
+        po_id: i64,
+    },
     WorkOrderCreated {
         work_order_id: i64,
         item_id: i64,

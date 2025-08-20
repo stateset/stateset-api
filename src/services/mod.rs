@@ -15,6 +15,7 @@ pub mod order_status;
 pub mod factory;
 
 // Inventory management services
+pub mod inventory_adjustment_service;
 pub mod inventory_sync;
 pub mod bom;
 pub mod manufacturing;
