@@ -103,6 +103,10 @@ async fn main() -> anyhow::Result<()> {
                 .layer(CorsLayer::permissive())
                 .layer(CompressionLayer::new())
         )
+        // Add request ID middleware for better tracing
+        .layer(axum::middleware::from_fn(stateset_api::middleware_helpers::request_id_middleware))
+        // Add input sanitization
+        .layer(axum::middleware::from_fn(stateset_api::middleware_helpers::sanitize_middleware))
         // Add structured request logging
         .layer(RequestLoggerLayer::new())
         // Add simple in-memory rate limiting

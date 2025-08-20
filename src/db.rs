@@ -1,3 +1,5 @@
+pub mod query_builder;
+
 use crate::errors::{AppError, ServiceError};
 use anyhow::Context;
 use futures::future::BoxFuture;
@@ -13,6 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+pub use query_builder::{QueryBuilder, SearchBuilder};
 
 /// Type alias for a database connection pool
 pub type DbPool = DatabaseConnection;

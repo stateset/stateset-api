@@ -20,6 +20,9 @@ pub struct ErrorResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    pub timestamp: String,
 }
 
 #[derive(Debug, thiserror::Error, Serialize)]
@@ -225,6 +228,8 @@ impl IntoResponse for ApiError {
             error: status.canonical_reason().unwrap_or("Unknown Error").to_string(),
             message: error_message,
             details: None,
+            request_id: None, // Could be extracted from request extensions in a real implementation
+            timestamp: chrono::Utc::now().to_rfc3339(),
         };
 
         (status, Json(error_response)).into_response()

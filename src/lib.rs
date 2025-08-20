@@ -17,6 +17,7 @@ pub mod handlers;
 pub mod health;
 pub mod message_queue;
 pub mod metrics;
+pub mod middleware_helpers;
 // pub mod models;
 pub mod openapi;
 pub mod proto;
