@@ -1,5 +1,5 @@
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     Select, PaginatorTrait, ConnectionTrait,
 };
 use std::fmt::Debug;
@@ -63,9 +63,8 @@ impl<E: EntityTrait> QueryBuilder<E> {
     }
     
     /// Execute the query and return paginated results
-    pub async fn execute<C>(self, db: &C) -> Result<(Vec<E::Model>, u64), sea_orm::DbErr>
+    pub async fn execute(self, db: &DatabaseConnection) -> Result<(Vec<E::Model>, u64), sea_orm::DbErr>
     where
-        C: ConnectionTrait,
         E::Model: Send + Sync,
     {
         let paginator = self.query.paginate(db, self.limit);
@@ -76,12 +75,10 @@ impl<E: EntityTrait> QueryBuilder<E> {
     }
     
     /// Execute and return only the count
-    pub async fn count<C>(self, db: &C) -> Result<u64, sea_orm::DbErr>
-    where
-        C: ConnectionTrait,
+    pub async fn count(self, db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr>
     {
-        use sea_orm::PaginatorTrait;
-        self.query.paginate(db, 1).num_items().await
+        let paginator = self.query.paginate(db, 1);
+        paginator.num_items().await
     }
 }
 

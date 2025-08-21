@@ -131,16 +131,16 @@ impl InventoryAdjustmentService {
                 // Find inventory balance for the item
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
-                    .filter(inventory_balance::Column::LocationId.eq(order_line.ship_from_location_id))
+                    .filter(inventory_balance::Column::LocationId.eq(order_line.location_id))
                     .one(txn)
                     .await
                     .map_err(ServiceError::DatabaseError)?
                     .ok_or_else(|| ServiceError::NotFound(format!(
-                        "Inventory not found for item {}", order_line.inventory_item_id
+                        "Inventory not found for item {:?}", order_line.inventory_item_id
                     )))?;
 
                 // Check available quantity
-                let required_qty = order_line.ordered_quantity;
+                let required_qty = order_line.ordered_quantity.unwrap_or(Decimal::ZERO);
                 if inventory.quantity_available < required_qty {
                     return Err(ServiceError::InvalidOperation(format!(
                         "Insufficient inventory. Available: {}, Required: {}", 
@@ -165,9 +165,9 @@ impl InventoryAdjustmentService {
                     product_id: Set(Uuid::new_v4()), // Would map from inventory_item_id in real implementation
                     location_id: Set(Uuid::new_v4()), // Would map from location_id
                     r#type: Set(TransactionType::Allocate.as_str().to_string()),
-                    quantity: Set(required_qty.to_i32().unwrap_or(0)),
-                    previous_quantity: Set(inventory.quantity_on_hand.to_i32().unwrap_or(0)),
-                    new_quantity: Set(inventory.quantity_on_hand.to_i32().unwrap_or(0)),
+                    quantity: Set(required_qty.round().to_string().parse::<i32>().unwrap_or(0)),
+                    previous_quantity: Set(inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
+                    new_quantity: Set(inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
                     reference_id: Set(Some(Uuid::new_v4())), // Would be order ID
                     reference_type: Set(Some("SALES_ORDER".to_string())),
                     reason: Set(Some("Order allocation".to_string())),
@@ -179,13 +179,13 @@ impl InventoryAdjustmentService {
                 transaction.insert(txn).await.map_err(ServiceError::DatabaseError)?;
 
                 info!(
-                    "Allocated {} units of item {} for order line {}",
+                    "Allocated {} units of item {:?} for order line {}",
                     required_qty, order_line.inventory_item_id, order_line.line_id
                 );
 
                 Ok(InventoryAdjustmentResult {
-                    item_id: order_line.inventory_item_id,
-                    location_id: order_line.ship_from_location_id,
+                    item_id: order_line.inventory_item_id.unwrap_or(0),
+                    location_id: order_line.location_id.unwrap_or(0),
                     adjustment_type: TransactionType::Allocate,
                     quantity_adjusted: required_qty,
                     new_on_hand: updated_inventory.quantity_on_hand,
@@ -211,15 +211,15 @@ impl InventoryAdjustmentService {
             Box::pin(async move {
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
-                    .filter(inventory_balance::Column::LocationId.eq(order_line.ship_from_location_id))
+                    .filter(inventory_balance::Column::LocationId.eq(order_line.location_id))
                     .one(txn)
                     .await
                     .map_err(ServiceError::DatabaseError)?
                     .ok_or_else(|| ServiceError::NotFound(format!(
-                        "Inventory not found for item {}", order_line.inventory_item_id
+                        "Inventory not found for item {:?}", order_line.inventory_item_id
                     )))?;
 
-                let ship_qty = order_line.shipped_quantity.unwrap_or(order_line.ordered_quantity);
+                let ship_qty = order_line.ordered_quantity.unwrap_or(Decimal::ZERO);
 
                 // Update inventory balance
                 let mut active_inventory: inventory_balance::ActiveModel = inventory.clone().into();
@@ -238,9 +238,9 @@ impl InventoryAdjustmentService {
                     product_id: Set(Uuid::new_v4()),
                     location_id: Set(Uuid::new_v4()),
                     r#type: Set(TransactionType::Ship.as_str().to_string()),
-                    quantity: Set(ship_qty.to_i32().unwrap_or(0)),
-                    previous_quantity: Set((inventory.quantity_on_hand + ship_qty).to_i32().unwrap_or(0)),
-                    new_quantity: Set(inventory.quantity_on_hand.to_i32().unwrap_or(0)),
+                    quantity: Set(ship_qty.round().to_string().parse::<i32>().unwrap_or(0)),
+                    previous_quantity: Set((inventory.quantity_on_hand + ship_qty).round().to_string().parse::<i32>().unwrap_or(0)),
+                    new_quantity: Set(inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
                     reference_id: Set(Some(Uuid::new_v4())),
                     reference_type: Set(Some("SALES_ORDER_SHIPMENT".to_string())),
                     reason: Set(Some("Order shipment".to_string())),
@@ -253,12 +253,12 @@ impl InventoryAdjustmentService {
 
                 info!(
                     "Shipped {} units of item {} for order line {}",
-                    ship_qty, order_line.inventory_item_id, order_line.line_id
+                    ship_qty, order_line.inventory_item_id.unwrap_or(0), order_line.line_id
                 );
 
                 Ok(InventoryAdjustmentResult {
-                    item_id: order_line.inventory_item_id,
-                    location_id: order_line.ship_from_location_id,
+                    item_id: order_line.inventory_item_id.unwrap_or(0),
+                    location_id: order_line.location_id.unwrap_or(0),
                     adjustment_type: TransactionType::Ship,
                     quantity_adjusted: ship_qty,
                     new_on_hand: updated_inventory.quantity_on_hand,
@@ -284,12 +284,12 @@ impl InventoryAdjustmentService {
             Box::pin(async move {
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
-                    .filter(inventory_balance::Column::LocationId.eq(order_line.ship_from_location_id))
+                    .filter(inventory_balance::Column::LocationId.eq(order_line.location_id))
                     .one(txn)
                     .await
                     .map_err(ServiceError::DatabaseError)?
                     .ok_or_else(|| ServiceError::NotFound(format!(
-                        "Inventory not found for item {}", order_line.inventory_item_id
+                        "Inventory not found for item {:?}", order_line.inventory_item_id
                     )))?;
 
                 let deallocate_qty = order_line.ordered_quantity;
@@ -311,9 +311,9 @@ impl InventoryAdjustmentService {
                     product_id: Set(Uuid::new_v4()),
                     location_id: Set(Uuid::new_v4()),
                     r#type: Set(TransactionType::Deallocate.as_str().to_string()),
-                    quantity: Set(deallocate_qty.to_i32().unwrap_or(0)),
-                    previous_quantity: Set(inventory.quantity_on_hand.to_i32().unwrap_or(0)),
-                    new_quantity: Set(inventory.quantity_on_hand.to_i32().unwrap_or(0)),
+                    quantity: Set(deallocate_qty.round().to_string().parse::<i32>().unwrap_or(0)),
+                    previous_quantity: Set(inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
+                    new_quantity: Set(inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
                     reference_id: Set(Some(Uuid::new_v4())),
                     reference_type: Set(Some("SALES_ORDER_CANCEL".to_string())),
                     reason: Set(Some("Order cancellation".to_string())),
@@ -326,12 +326,12 @@ impl InventoryAdjustmentService {
 
                 info!(
                     "Deallocated {} units of item {} for cancelled order line {}",
-                    deallocate_qty, order_line.inventory_item_id, order_line.line_id
+                    deallocate_qty, order_line.inventory_item_id.unwrap_or(0), order_line.line_id
                 );
 
                 Ok(InventoryAdjustmentResult {
-                    item_id: order_line.inventory_item_id,
-                    location_id: order_line.ship_from_location_id,
+                    item_id: order_line.inventory_item_id.unwrap_or(0),
+                    location_id: order_line.location_id.unwrap_or(0),
                     adjustment_type: TransactionType::Deallocate,
                     quantity_adjusted: deallocate_qty,
                     new_on_hand: updated_inventory.quantity_on_hand,
@@ -357,15 +357,15 @@ impl InventoryAdjustmentService {
             Box::pin(async move {
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
-                    .filter(inventory_balance::Column::LocationId.eq(order_line.ship_from_location_id))
+                    .filter(inventory_balance::Column::LocationId.eq(order_line.location_id))
                     .one(txn)
                     .await
                     .map_err(ServiceError::DatabaseError)?
                     .ok_or_else(|| ServiceError::NotFound(format!(
-                        "Inventory not found for item {}", order_line.inventory_item_id
+                        "Inventory not found for item {:?}", order_line.inventory_item_id
                     )))?;
 
-                let return_qty = order_line.shipped_quantity.unwrap_or(order_line.ordered_quantity);
+                let return_qty = order_line.ordered_quantity.unwrap_or(Decimal::ZERO);
 
                 // Update inventory balance
                 let mut active_inventory: inventory_balance::ActiveModel = inventory.clone().into();
@@ -384,9 +384,9 @@ impl InventoryAdjustmentService {
                     product_id: Set(Uuid::new_v4()),
                     location_id: Set(Uuid::new_v4()),
                     r#type: Set(TransactionType::Return.as_str().to_string()),
-                    quantity: Set(return_qty.to_i32().unwrap_or(0)),
-                    previous_quantity: Set((inventory.quantity_on_hand - return_qty).to_i32().unwrap_or(0)),
-                    new_quantity: Set(inventory.quantity_on_hand.to_i32().unwrap_or(0)),
+                    quantity: Set(return_qty.round().to_string().parse::<i32>().unwrap_or(0)),
+                    previous_quantity: Set((inventory.quantity_on_hand - return_qty).round().to_string().parse::<i32>().unwrap_or(0)),
+                    new_quantity: Set(inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
                     reference_id: Set(Some(Uuid::new_v4())),
                     reference_type: Set(Some("SALES_ORDER_RETURN".to_string())),
                     reason: Set(Some("Order return".to_string())),
@@ -403,8 +403,8 @@ impl InventoryAdjustmentService {
                 );
 
                 Ok(InventoryAdjustmentResult {
-                    item_id: order_line.inventory_item_id,
-                    location_id: order_line.ship_from_location_id,
+                    item_id: order_line.inventory_item_id.unwrap_or(0),
+                    location_id: order_line.location_id.unwrap_or(0),
                     adjustment_type: TransactionType::Return,
                     quantity_adjusted: return_qty,
                     new_on_hand: updated_inventory.quantity_on_hand,
@@ -479,11 +479,11 @@ impl InventoryAdjustmentService {
                     product_id: Set(Uuid::new_v4()),
                     location_id: Set(Uuid::new_v4()),
                     r#type: Set(TransactionType::Receive.as_str().to_string()),
-                    quantity: Set(quantity_received.to_i32().unwrap_or(0)),
+                    quantity: Set(quantity_received.round().to_string().parse::<i32>().unwrap_or(0)),
                     previous_quantity: Set(if was_created { 0 } else { 
-                        (updated_inventory.quantity_on_hand - quantity_received).to_i32().unwrap_or(0) 
+                        (updated_inventory.quantity_on_hand - quantity_received).round().to_string().parse::<i32>().unwrap_or(0) 
                     }),
-                    new_quantity: Set(updated_inventory.quantity_on_hand.to_i32().unwrap_or(0)),
+                    new_quantity: Set(updated_inventory.quantity_on_hand.round().to_string().parse::<i32>().unwrap_or(0)),
                     reference_id: Set(Some(Uuid::new_v4())),
                     reference_type: Set(Some("PURCHASE_ORDER_RECEIPT".to_string())),
                     reason: Set(Some("PO receipt".to_string())),

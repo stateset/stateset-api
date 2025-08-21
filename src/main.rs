@@ -15,6 +15,7 @@ use tracing::instrument;
 
 use stateset_api::{
     api::StateSetApi,
+    api_v1_routes,
     config,
     db,
     events::{process_events, EventSender},
@@ -79,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
     let stateset_api = StateSetApi::with_event_sender(db_access, db_arc.clone(), event_sender.clone());
 
     // Create enhanced API routes
-    let api_routes = stateset_api::api_v1_routes().with_state(state.clone());
+    let api_routes = api_v1_routes().with_state(state.clone());
     
     let app = Router::new()
         // Health routes (no state needed)
