@@ -31,7 +31,7 @@ pub mod sales_fulfillment;
 pub mod accounts;
 // pub mod customers;
 pub mod leads;
-// pub mod notifications;
+pub mod notifications;
 
 // Financial Services
 // pub mod accounting;

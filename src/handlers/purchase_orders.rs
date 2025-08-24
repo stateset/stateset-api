@@ -375,11 +375,11 @@ async fn get_total_purchase_value(
 pub fn purchase_order_routes() -> Router {
     Router::new()
         .route("/", post(create_purchase_order))
-        .route("/:id", get(get_purchase_order))
-        .route("/:id", put(update_purchase_order))
-        .route("/:id/approve", post(approve_purchase_order))
-        .route("/:id/cancel", post(cancel_purchase_order))
-        .route("/:id/receive", post(receive_purchase_order))
+        .route("/{id}", get(get_purchase_order))
+        .route("/{id}", put(update_purchase_order))
+        .route("/{id}/approve", post(approve_purchase_order))
+        .route("/{id}/cancel", post(cancel_purchase_order))
+        .route("/{id}/receive", post(receive_purchase_order))
         .route(
             "/supplier/:supplier_id",
             get(get_purchase_orders_by_supplier),

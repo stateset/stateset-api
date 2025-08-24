@@ -9,6 +9,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use serde_json::json;
 use uuid::Uuid;
 use std::sync::Arc;
@@ -18,7 +19,7 @@ pub trait InventoryHandlerState: Clone + Send + Sync + 'static {
     fn inventory_service(&self) -> &InventoryService;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct InventoryItem {
     pub id: String,
     pub product_id: String,
@@ -32,7 +33,7 @@ pub struct InventoryItem {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct InventoryAdjustment {
     pub id: String,
     pub inventory_item_id: String,
@@ -44,7 +45,7 @@ pub struct InventoryAdjustment {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateInventoryRequest {
     pub product_id: String,
     pub location_id: String,
@@ -52,13 +53,13 @@ pub struct CreateInventoryRequest {
     pub unit_cost: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateInventoryRequest {
     pub quantity: Option<i32>,
     pub unit_cost: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AdjustInventoryRequest {
     pub adjustment_type: String, // "increase", "decrease", "set"
     pub quantity: i32,
@@ -66,7 +67,7 @@ pub struct AdjustInventoryRequest {
     pub reference_number: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AllocateInventoryRequest {
     pub product_id: String,
     pub location_id: String,
@@ -74,7 +75,7 @@ pub struct AllocateInventoryRequest {
     pub order_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ReserveInventoryRequest {
     pub product_id: String,
     pub location_id: String,
@@ -83,7 +84,7 @@ pub struct ReserveInventoryRequest {
     pub reference_type: String, // "order", "quote", "hold"
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct InventoryFilters {
     pub product_id: Option<String>,
     pub location_id: Option<String>,
@@ -99,7 +100,7 @@ where
 {
     Router::new()
         .route("/", get(list_inventory::<S>).post(create_inventory::<S>))
-        .route("/:id", get(get_inventory::<S>).put(update_inventory::<S>).delete(delete_inventory::<S>))
+        .route("/{id}", get(get_inventory::<S>).put(update_inventory::<S>).delete(delete_inventory::<S>))
         .route("/adjust", post(adjust_inventory::<S>))
         .route("/allocate", post(allocate_inventory::<S>))
         .route("/reserve", post(reserve_inventory::<S>))

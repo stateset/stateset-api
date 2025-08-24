@@ -43,7 +43,6 @@ impl RetryPolicy<sea_orm::DbErr> for DbRetryPolicy {
             error,
             DbErr::ConnectionAcquire(_) |
             DbErr::Conn(_) |
-            DbErr::ConnAcquire(_) |
             DbErr::TryIntoErr { .. }
         )
     }

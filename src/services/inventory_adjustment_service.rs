@@ -126,7 +126,8 @@ impl InventoryAdjustmentService {
         db: &DatabaseConnection,
         order_line: &sales_order_line::Model,
     ) -> Result<InventoryAdjustmentResult, ServiceError> {
-        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(|txn| {
+        let order_line = order_line.clone();
+        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
                 // Find inventory balance for the item
                 let mut inventory = InventoryBalance::find()
@@ -207,7 +208,8 @@ impl InventoryAdjustmentService {
         db: &DatabaseConnection,
         order_line: &sales_order_line::Model,
     ) -> Result<InventoryAdjustmentResult, ServiceError> {
-        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(|txn| {
+        let order_line = order_line.clone();
+        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
@@ -280,7 +282,8 @@ impl InventoryAdjustmentService {
         db: &DatabaseConnection,
         order_line: &sales_order_line::Model,
     ) -> Result<InventoryAdjustmentResult, ServiceError> {
-        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(|txn| {
+        let order_line = order_line.clone();
+        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
@@ -292,7 +295,7 @@ impl InventoryAdjustmentService {
                         "Inventory not found for item {:?}", order_line.inventory_item_id
                     )))?;
 
-                let deallocate_qty = order_line.ordered_quantity;
+                let deallocate_qty = order_line.ordered_quantity.unwrap_or_else(|| Decimal::from(0));
 
                 // Update inventory balance
                 let mut active_inventory: inventory_balance::ActiveModel = inventory.clone().into();
@@ -353,7 +356,8 @@ impl InventoryAdjustmentService {
         db: &DatabaseConnection,
         order_line: &sales_order_line::Model,
     ) -> Result<InventoryAdjustmentResult, ServiceError> {
-        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(|txn| {
+        let order_line = order_line.clone();
+        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
                 let mut inventory = InventoryBalance::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id))
@@ -399,7 +403,7 @@ impl InventoryAdjustmentService {
 
                 info!(
                     "Returned {} units of item {} from order line {}",
-                    return_qty, order_line.inventory_item_id, order_line.line_id
+                    return_qty, order_line.inventory_item_id.unwrap_or(0), order_line.line_id
                 );
 
                 Ok(InventoryAdjustmentResult {
@@ -428,11 +432,12 @@ impl InventoryAdjustmentService {
         quantity_received: Decimal,
         location_id: i32,
     ) -> Result<InventoryAdjustmentResult, ServiceError> {
-        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(|txn| {
+        let po_line = po_line.clone();
+        db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
                 // Find or create inventory balance
                 let inventory = InventoryBalance::find()
-                    .filter(inventory_balance::Column::InventoryItemId.eq(po_line.inventory_item_id))
+                    .filter(inventory_balance::Column::InventoryItemId.eq(po_line.item_id))
                     .filter(inventory_balance::Column::LocationId.eq(location_id))
                     .one(txn)
                     .await
@@ -455,7 +460,7 @@ impl InventoryAdjustmentService {
                     None => {
                         // Create new inventory balance
                         let new_inventory = inventory_balance::ActiveModel {
-                            inventory_item_id: Set(po_line.inventory_item_id),
+                            inventory_item_id: Set(po_line.item_id.unwrap_or(0)),
                             location_id: Set(location_id),
                             quantity_on_hand: Set(quantity_received),
                             quantity_allocated: Set(Decimal::ZERO),
@@ -496,11 +501,11 @@ impl InventoryAdjustmentService {
 
                 info!(
                     "Received {} units of item {} from PO line {} into location {}",
-                    quantity_received, po_line.inventory_item_id, po_line.po_line_id, location_id
+                    quantity_received, po_line.item_id.unwrap_or(0), po_line.po_line_id, location_id
                 );
 
                 Ok(InventoryAdjustmentResult {
-                    item_id: po_line.inventory_item_id,
+                    item_id: po_line.item_id.unwrap_or(0),
                     location_id,
                     adjustment_type: TransactionType::Receive,
                     quantity_adjusted: quantity_received,

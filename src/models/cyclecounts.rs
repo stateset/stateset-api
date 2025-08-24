@@ -11,6 +11,7 @@ use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
+use async_trait::async_trait;
 
 /// Cycle count status enumeration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
@@ -169,7 +170,7 @@ impl Related<super::cycle_count_line_item::Entity> for Entity {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

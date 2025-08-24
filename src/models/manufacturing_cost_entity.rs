@@ -5,6 +5,7 @@ use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 use uuid::Uuid;
+use async_trait::async_trait;
 
 /// Manufacturing Cost entity model.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -46,7 +47,7 @@ impl Related<crate::models::work_order::Entity> for Entity {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

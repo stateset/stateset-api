@@ -14,6 +14,8 @@ const CONFIG_DIR: &str = "config";
 const DEFAULT_CACHE_TYPE: &str = "in-memory";
 const DEFAULT_CACHE_CAPACITY: usize = 1000;
 const DEFAULT_CLEANUP_INTERVAL: u64 = 60; // 60 seconds
+const DEFAULT_RATE_LIMIT_REQUESTS: u32 = 100;
+const DEFAULT_RATE_LIMIT_WINDOW_SECS: u64 = 60;
 
 /// Cache configuration
 #[derive(Clone, Debug, Deserialize, Validate)]
@@ -101,6 +103,56 @@ pub struct AppConfig {
     /// Whether to run database migrations on startup
     #[serde(default)]
     pub auto_migrate: bool,
+
+    /// CORS: comma-separated list of allowed origins (production)
+    #[serde(default)]
+    pub cors_allowed_origins: Option<String>,
+
+    /// CORS: allow credentials
+    #[serde(default)]
+    pub cors_allow_credentials: bool,
+
+    /// DB pool: max connections
+    #[serde(default = "default_db_max_connections")]
+    pub db_max_connections: u32,
+
+    /// DB pool: min connections
+    #[serde(default = "default_db_min_connections")]
+    pub db_min_connections: u32,
+
+    /// DB timeouts (seconds)
+    #[serde(default = "default_db_connect_timeout_secs")]
+    pub db_connect_timeout_secs: u64,
+    #[serde(default = "default_db_idle_timeout_secs")]
+    pub db_idle_timeout_secs: u64,
+    #[serde(default = "default_db_acquire_timeout_secs")]
+    pub db_acquire_timeout_secs: u64,
+    /// Statement timeout (seconds), 0 = disabled
+    #[serde(default)]
+    pub db_statement_timeout_secs: Option<u64>,
+
+    /// Rate limiting: requests per window
+    #[serde(default = "default_rate_limit_requests")]
+    pub rate_limit_requests_per_window: u32,
+    /// Rate limiting: window size (seconds)
+    #[serde(default = "default_rate_limit_window_secs")]
+    pub rate_limit_window_seconds: u64,
+    /// Rate limiting: include headers
+    #[serde(default = "default_true_bool")]
+    pub rate_limit_enable_headers: bool,
+
+    /// Rate limiting: API key policies `api_key:limit:window_secs` comma-separated
+    #[serde(default)]
+    pub rate_limit_api_key_policies: Option<String>,
+
+    /// Rate limiting: User policies `user_id:limit:window_secs` comma-separated
+    #[serde(default)]
+    pub rate_limit_user_policies: Option<String>,
+
+    /// Rate limit path policies: comma-separated list of `prefix:limit:window_secs`
+    /// Example: "/api/v1/orders:60:60,/api/v1/inventory:120:60"
+    #[serde(default)]
+    pub rate_limit_path_policies: Option<String>,
 }
 
 impl AppConfig {
@@ -137,6 +189,21 @@ impl AppConfig {
                 ..Default::default()
             },
             auto_migrate: false,
+            cors_allowed_origins: None,
+            cors_allow_credentials: false,
+            db_max_connections: default_db_max_connections(),
+            db_min_connections: default_db_min_connections(),
+            db_connect_timeout_secs: default_db_connect_timeout_secs(),
+            db_idle_timeout_secs: default_db_idle_timeout_secs(),
+            db_acquire_timeout_secs: default_db_acquire_timeout_secs(),
+            db_statement_timeout_secs: None,
+            rate_limit_requests_per_window: default_rate_limit_requests(),
+            rate_limit_window_seconds: default_rate_limit_window_secs(),
+            rate_limit_enable_headers: default_true_bool(),
+            // Default: no additional policy overrides configured
+            rate_limit_api_key_policies: None,
+            rate_limit_user_policies: None,
+            rate_limit_path_policies: None,
         };
         config.db_url = config.database_url.clone();
         config
@@ -203,6 +270,16 @@ fn default_cache_capacity() -> usize {
 fn default_cleanup_interval() -> u64 {
     DEFAULT_CLEANUP_INTERVAL
 }
+
+fn default_db_max_connections() -> u32 { 16 }
+fn default_db_min_connections() -> u32 { 2 }
+fn default_db_connect_timeout_secs() -> u64 { 30 }
+fn default_db_idle_timeout_secs() -> u64 { 600 }
+fn default_db_acquire_timeout_secs() -> u64 { 8 }
+
+fn default_rate_limit_requests() -> u32 { DEFAULT_RATE_LIMIT_REQUESTS }
+fn default_rate_limit_window_secs() -> u64 { DEFAULT_RATE_LIMIT_WINDOW_SECS }
+fn default_true_bool() -> bool { true }
 
 /// Validates log level values
 fn validate_log_level(level: &str) -> Result<(), ValidationError> {

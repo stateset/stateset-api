@@ -45,6 +45,7 @@ use axum::{
     response::IntoResponse,
 };
 use dashmap::DashMap;
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -211,6 +212,13 @@ pub struct RateLimitResult {
     pub reset_time: Duration,
 }
 
+#[derive(Clone, Debug)]
+pub struct PathPolicy {
+    pub prefix: String,
+    pub requests_per_window: u32,
+    pub window_duration: Duration,
+}
+
 // Key extraction functions
 pub fn extract_ip_key(request: &Request) -> String {
     // Try to get real IP from X-Forwarded-For or X-Real-IP headers
@@ -269,8 +277,14 @@ pub async fn rate_limit_middleware(
     let config = RateLimitConfig::default();
     let rate_limiter = RateLimiter::new(config.clone());
     
-    // Extract key (using IP as default)
-    let key = extract_ip_key(&request);
+    // Extract key (prefer API key, then user, then IP)
+    let key = if let Some(k) = extract_api_key(&request) {
+        k
+    } else if let Some(u) = extract_user_key(&request) {
+        u
+    } else {
+        extract_ip_key(&request)
+    };
     
     // Check rate limit
     match rate_limiter.check_rate_limit(&key).await {
@@ -316,13 +330,34 @@ pub async fn rate_limit_middleware(
 #[derive(Clone)]
 pub struct RateLimitLayer {
     rate_limiter: RateLimiter,
+    path_policies: Arc<Vec<PathPolicy>>,
+    api_key_policies: Arc<HashMap<String, (u32, Duration)>>,
+    user_policies: Arc<HashMap<String, (u32, Duration)>>,
 }
 
 impl RateLimitLayer {
     pub fn new(config: RateLimitConfig) -> Self {
         Self {
             rate_limiter: RateLimiter::new(config),
+            path_policies: Arc::new(Vec::new()),
+            api_key_policies: Arc::new(HashMap::new()),
+            user_policies: Arc::new(HashMap::new()),
         }
+    }
+
+    pub fn with_policies(mut self, policies: Vec<PathPolicy>) -> Self {
+        self.path_policies = Arc::new(policies);
+        self
+    }
+
+    pub fn with_api_key_policies(mut self, map: HashMap<String, (u32, Duration)>) -> Self {
+        self.api_key_policies = Arc::new(map);
+        self
+    }
+
+    pub fn with_user_policies(mut self, map: HashMap<String, (u32, Duration)>) -> Self {
+        self.user_policies = Arc::new(map);
+        self
     }
 }
 
@@ -333,6 +368,9 @@ impl<S> tower::Layer<S> for RateLimitLayer {
         RateLimitService {
             inner,
             rate_limiter: self.rate_limiter.clone(),
+            path_policies: self.path_policies.clone(),
+            api_key_policies: self.api_key_policies.clone(),
+            user_policies: self.user_policies.clone(),
         }
     }
 }
@@ -341,6 +379,9 @@ impl<S> tower::Layer<S> for RateLimitLayer {
 pub struct RateLimitService<S> {
     inner: S,
     rate_limiter: RateLimiter,
+    path_policies: Arc<Vec<PathPolicy>>,
+    api_key_policies: Arc<HashMap<String, (u32, Duration)>>,
+    user_policies: Arc<HashMap<String, (u32, Duration)>>,
 }
 
 impl<S> tower::Service<Request> for RateLimitService<S>
@@ -359,13 +400,64 @@ where
     fn call(&mut self, request: Request) -> Self::Future {
         let rate_limiter = self.rate_limiter.clone();
         let mut inner = self.inner.clone();
+        let policies = self.path_policies.clone();
+        let api_key_map = self.api_key_policies.clone();
+        let user_map = self.user_policies.clone();
 
         Box::pin(async move {
-            // Extract key (using IP as default)
-            let key = extract_ip_key(&request);
-            
+            // Skip certain paths entirely
+            let path = request.uri().path().to_string();
+            if path.starts_with("/health") || path == "/metrics" || path.starts_with("/metrics/") || path.starts_with("/docs") || path.starts_with("/api-docs") || path.starts_with("/api/versions") {
+                return inner.call(request).await;
+            }
+
+            // Extract key (prefer API key, then user, then IP)
+            let key = if let Some(k) = extract_api_key(&request) {
+                k
+            } else if let Some(u) = extract_user_key(&request) {
+                u
+            } else {
+                extract_ip_key(&request)
+            };
+
+            // Determine effective policy: API key > user > path prefix > global
+            let mut effective = rate_limiter.config.clone();
+            // per API key
+            if let Some(api_key) = key.strip_prefix("api_key:") {
+                if let Some((limit, win)) = api_key_map.get(api_key) {
+                    effective.requests_per_window = *limit;
+                    effective.window_duration = *win;
+                }
+            }
+            // per user id
+            if let Some(user_id) = key.strip_prefix("user:") {
+                if let Some((limit, win)) = user_map.get(user_id) {
+                    effective.requests_per_window = *limit;
+                    effective.window_duration = *win;
+                }
+            }
+            // path-based
+            if effective.requests_per_window == rate_limiter.config.requests_per_window
+                && effective.window_duration == rate_limiter.config.window_duration
+            {
+                for p in policies.iter() {
+                    if path.starts_with(&p.prefix) {
+                        effective.requests_per_window = p.requests_per_window;
+                        effective.window_duration = p.window_duration;
+                        break;
+                    }
+                }
+            }
+
+            // Use a temporary limiter if overrides differ
+            let limiter = if effective.requests_per_window != rate_limiter.config.requests_per_window || effective.window_duration != rate_limiter.config.window_duration {
+                RateLimiter::new(effective)
+            } else {
+                rate_limiter.clone()
+            };
+
             // Check rate limit
-            match rate_limiter.check_rate_limit(&key).await {
+            match limiter.check_rate_limit(&key).await {
                 Ok(result) => {
                     if !result.allowed {
                         warn!("Rate limit exceeded for key: {}", key);

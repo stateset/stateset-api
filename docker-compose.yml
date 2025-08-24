@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  stateset-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - DATABASE_URL=${DATABASE_URL:-sqlite://data/stateset.db?mode=rwc}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - JWT_SECRET=${JWT_SECRET:-your_secure_jwt_secret_key_please_change_in_production}
+      - JWT_EXPIRATION=${JWT_EXPIRATION:-60}
+      - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION:-7}
+      - PORT=${PORT:-3000}
+      - APP_ENV=${APP_ENV:-development}
+    volumes:
+      - ./data:/app/data
+      - ./migrations:/app/migrations:ro
+    depends_on:
+      - redis
+    networks:
+      - stateset-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - stateset-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Optional: PostgreSQL database (uncomment if needed)
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     - POSTGRES_DB=stateset_db
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=postgres
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - stateset-network
+  #   restart: unless-stopped
+
+volumes:
+  redis-data:
+  # postgres-data:
+
+networks:
+  stateset-network:
+    driver: bridge

@@ -1,0 +1,41 @@
+# Git files
+.git
+.gitignore
+
+# Build artifacts
+target/
+Dockerfile
+.dockerignore
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# Documentation
+*.md
+docs/
+
+# Test files
+tests/
+benches/
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3

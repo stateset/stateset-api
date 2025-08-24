@@ -134,14 +134,14 @@ where
 {
     Router::new()
         .route("/", get(list_work_orders::<S>).post(create_work_order::<S>))
-        .route("/:id", get(get_work_order::<S>).put(update_work_order::<S>).delete(delete_work_order::<S>))
-        .route("/:id/schedule", post(schedule_work_order::<S>))
-        .route("/:id/start", post(start_work_order::<S>))
-        .route("/:id/complete", post(complete_work_order::<S>))
-        .route("/:id/hold", post(hold_work_order::<S>))
-        .route("/:id/cancel", post(cancel_work_order::<S>))
-        .route("/:id/materials/:material_id/consume", post(consume_material::<S>))
-        .route("/:id/tasks/:task_id", put(update_task::<S>))
+        .route("/{id}", get(get_work_order::<S>).put(update_work_order::<S>).delete(delete_work_order::<S>))
+        .route("/{id}/schedule", post(schedule_work_order::<S>))
+        .route("/{id}/start", post(start_work_order::<S>))
+        .route("/{id}/complete", post(complete_work_order::<S>))
+        .route("/{id}/hold", post(hold_work_order::<S>))
+        .route("/{id}/cancel", post(cancel_work_order::<S>))
+        .route("/{id}/materials/{material_id}/consume", post(consume_material::<S>))
+        .route("/{id}/tasks/{task_id}", put(update_task::<S>))
         .route("/capacity/:work_center_id", get(get_capacity::<S>))
 }
 

@@ -1,7 +1,7 @@
 use super::{InMemoryCache, CacheError};
 use sea_orm::{
     ActiveModelBehavior, ActiveModelTrait, ActiveValue, ColumnTrait,
-    DatabaseConnection, EntityTrait, FromQueryResult, ModelTrait, 
+    DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryTrait, Select, Statement,
 };
 use serde::{Deserialize, Serialize};

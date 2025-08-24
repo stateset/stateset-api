@@ -128,11 +128,11 @@ where
 {
     Router::new()
         .route("/", get(list_shipments::<S>).post(create_shipment::<S>))
-        .route("/:id", get(get_shipment::<S>).put(update_shipment::<S>).delete(delete_shipment::<S>))
-        .route("/:id/ship", post(mark_shipped::<S>))
-        .route("/:id/deliver", post(mark_delivered::<S>))
-        .route("/:id/track", get(track_shipment::<S>))
-        .route("/:id/tracking", post(add_tracking_event::<S>))
+        .route("/{id}", get(get_shipment::<S>).put(update_shipment::<S>).delete(delete_shipment::<S>))
+        .route("/{id}/ship", post(mark_shipped::<S>))
+        .route("/{id}/deliver", post(mark_delivered::<S>))
+        .route("/{id}/track", get(track_shipment::<S>))
+        .route("/{id}/tracking", post(add_tracking_event::<S>))
         .route("/track/:tracking_number", get(track_by_number::<S>))
 }
 

@@ -7,6 +7,7 @@ use std::fmt;
 use thiserror::Error;
 use validator::{Validate, ValidationError};
 use uuid::Uuid;
+use async_trait::async_trait;
 
 /// Custom validator for non-negative decimal values
 fn validate_non_negative_decimal(value: &Decimal) -> Result<(), ValidationError> {
@@ -180,7 +181,7 @@ impl Related<super::suppliers::Entity> for Entity {
 }
 
 /// Active model behavior for database hooks
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

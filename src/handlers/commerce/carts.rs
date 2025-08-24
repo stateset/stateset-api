@@ -19,11 +19,11 @@ use validator::Validate;
 pub fn carts_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", post(create_cart))
-        .route("/:id", get(get_cart))
-        .route("/:id/items", post(add_to_cart))
-        .route("/:id/items/:item_id", put(update_cart_item))
-        .route("/:id/items/:item_id", delete(remove_cart_item))
-        .route("/:id/clear", post(clear_cart))
+        .route("/{id}", get(get_cart))
+        .route("/{id}/items", post(add_to_cart))
+        .route("/{id}/items/{item_id}", put(update_cart_item))
+        .route("/{id}/items/{item_id}", delete(remove_cart_item))
+        .route("/{id}/clear", post(clear_cart))
 }
 
 /// Create a new cart

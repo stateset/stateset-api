@@ -1,6 +1,7 @@
 pub mod query_builder;
 
 use crate::errors::{AppError, ServiceError};
+use crate::config::AppConfig;
 use anyhow::Context;
 use futures::future::BoxFuture;
 use metrics::{counter, gauge, histogram};
@@ -125,6 +126,33 @@ pub async fn establish_connection_with_config(config: &DbConfig) -> Result<DbPoo
     info!("Database connection pool established successfully");
 
     Ok(db_pool)
+}
+
+impl From<&AppConfig> for DbConfig {
+    fn from(cfg: &AppConfig) -> Self {
+        Self {
+            url: cfg.database_url.clone(),
+            max_connections: cfg.db_max_connections,
+            min_connections: cfg.db_min_connections,
+            connect_timeout: Duration::from_secs(cfg.db_connect_timeout_secs),
+            idle_timeout: Duration::from_secs(cfg.db_idle_timeout_secs),
+            acquire_timeout: Duration::from_secs(cfg.db_acquire_timeout_secs),
+            statement_timeout: cfg.db_statement_timeout_secs.map(Duration::from_secs),
+        }
+    }
+}
+
+/// Establish DB pool using AppConfig tuning
+pub async fn establish_connection_from_app_config(cfg: &AppConfig) -> Result<DbPool, AppError> {
+    let db_cfg: DbConfig = cfg.into();
+    establish_connection_with_config(&db_cfg).await
+}
+
+/// Convenience helper to create a DB pool using loaded AppConfig
+pub async fn create_db_pool() -> Result<DbPool, AppError> {
+    let cfg = crate::config::load_config()
+        .map_err(|e| ServiceError::InternalError(format!("Failed to load config: {}", e)))?;
+    establish_connection_from_app_config(&cfg).await
 }
 
 /// Database access wrapper with built-in metrics and error handling

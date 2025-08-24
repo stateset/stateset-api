@@ -209,3 +209,4 @@ async fn main() {
     println!("  Throughput: {:.2} orders/sec", rps);
     println!("  Latency (ms): avg={:.2} p50={:.2} p95={:.2} p99={:.2}", avg_ms, p50_ms, p95_ms, p99_ms);
 }
+#![cfg(feature = "demos")]

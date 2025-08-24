@@ -7,34 +7,76 @@ pub mod returns;
 pub mod shipments;
 pub mod warranties;
 pub mod work_orders;
-// TODO: Enable these modules once they are implemented
 // pub mod asn;
 // pub mod bom;
 // pub mod cash_sales;
 // pub mod customers;
-// pub mod notifications;
+pub mod notifications;
 // pub mod purchase_orders;
 // pub mod reports;
 // pub mod suppliers;
-// pub mod users;
-// pub mod commerce;
+pub mod users;
+pub mod commerce;
 pub mod agents;
 
 use crate::events::EventSender;
+use crate::message_queue::{InMemoryMessageQueue, MessageQueue};
+use crate::{circuit_breaker::CircuitBreaker, db::DbPool};
 use sea_orm::DatabaseConnection;
+use slog::Logger;
 use std::sync::Arc;
+use std::time::Duration;
 
-/// Services layer that encapsulates business logic
-#[derive(Debug, Clone)]
+// Re-export AppState so handler modules can import it as crate::handlers::AppState
+pub use crate::AppState;
+
+/// Services layer that encapsulates business logic used by HTTP handlers
+#[derive(Clone)]
 pub struct AppServices {
-    // TODO: Add services after fixing module dependencies
+    pub product_catalog: Arc<crate::services::commerce::ProductCatalogService>,
+    pub cart: Arc<crate::services::commerce::CartService>,
+    pub checkout: Arc<crate::services::commerce::CheckoutService>,
+    pub customer: Arc<crate::services::commerce::CustomerService>,
+    // pub cash_sales: Arc<crate::services::cash_sale::CashSaleService>,
+    // pub reports: Arc<crate::services::reports::ReportService>,
 }
 
 impl AppServices {
-    pub fn new(_db_pool: Arc<DatabaseConnection>, _event_sender: Arc<EventSender>) -> Self {
-        Self {
-            // TODO: Initialize services after fixing module dependencies
-        }
+    /// Build a default AppServices container with in-memory queue and basic logger.
+    pub fn new(
+        db_pool: Arc<DbPool>,
+        event_sender: Arc<EventSender>,
+        _redis_client: Arc<redis::Client>,
+        auth_service: Arc<crate::auth::AuthService>,
+    ) -> Self {
+        let message_queue: Arc<dyn MessageQueue> = Arc::new(InMemoryMessageQueue::new());
+        let circuit_breaker = Arc::new(CircuitBreaker::new(5, Duration::from_secs(60), 2));
+        let logger = Logger::root(slog::Discard, slog::o!());
+
+        let product_catalog = Arc::new(crate::services::commerce::ProductCatalogService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+        ));
+        let cart = Arc::new(crate::services::commerce::CartService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+        ));
+        let order_service = Arc::new(crate::services::orders::OrderService::new(
+            db_pool.clone(),
+            Some(event_sender.clone()),
+        ));
+        let checkout = Arc::new(crate::services::commerce::CheckoutService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+            order_service,
+        ));
+        let customer = Arc::new(crate::services::commerce::CustomerService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+            auth_service,
+        ));
+
+        Self { product_catalog, cart, checkout, customer }
     }
 }
 

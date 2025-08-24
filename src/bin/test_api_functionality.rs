@@ -207,3 +207,4 @@ fn main() {
     println!("  ✅ Routing model implementation");
     println!("  ✅ Import resolution and module structure");
 }
+#![cfg(feature = "demos")]

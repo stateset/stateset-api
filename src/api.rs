@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use tonic::{Request, Response, Status};
+use chrono::TimeZone;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
@@ -15,6 +16,7 @@ use crate::{
         shipment::*,
         work_order::*,
     },
+    errors::grpc::IntoGrpcStatus,
     services::order_status::OrderStatusService,
     services::orders::{OrderService as OrdersService, CreateOrderRequest as ServiceCreateOrderRequest},
     services::inventory::{InventoryService as InvService, AdjustInventoryCommand},
@@ -100,7 +102,10 @@ fn map_service_order_to_proto(o: &crate::services::orders::OrderResponse) -> Ord
         seconds: o.created_at.timestamp(),
         nanos: o.created_at.timestamp_subsec_nanos() as i32,
     };
-    let amount_i64 = o.total_amount.to_i64().unwrap_or(0);
+    // Convert Decimal dollars to smallest currency unit (e.g., cents)
+    let amount_i64 = (o.total_amount * Decimal::new(100, 0))
+        .to_i64()
+        .unwrap_or(i64::MAX);
     Order {
         id: o.id.to_string(),
         customer_id: o.customer_id.to_string(),
@@ -161,7 +166,7 @@ impl order_service_server::OrderService for StateSetApi {
             })?;
 
         info!("Order created successfully: {}", created.id);
-        
+
         let resp = CreateOrderResponse {
             order_id: created.id.to_string(),
             status: map_status_str_to_proto(&created.status) as i32,
@@ -205,17 +210,12 @@ impl order_service_server::OrderService for StateSetApi {
         let order_id = Uuid::parse_str(&req.order_id)
             .map_err(|_| Status::invalid_argument("invalid order_id"))?;
         let new_status_str = map_proto_status_to_str(req.new_status)?.to_string();
-
         self.order_status_service
             .update_status(order_id, new_status_str.clone())
             .await
             .map_err(|e| {
                 error!("Failed to update order status: {}", e);
-                match e {
-                    crate::errors::ServiceError::ValidationError(msg) => Status::invalid_argument(msg),
-                    crate::errors::ServiceError::NotFound(msg) => Status::not_found(msg),
-                    _ => Status::internal(format!("Failed to update status: {}", e)),
-                }
+                e.into_grpc_status()
             })?;
         
         info!("Order {} status updated to {}", req.order_id, new_status_str);
@@ -230,15 +230,54 @@ impl order_service_server::OrderService for StateSetApi {
 
     async fn list_orders(
         &self,
-        _request: Request<ListOrdersRequest>,
+        request: Request<ListOrdersRequest>,
     ) -> Result<Response<ListOrdersResponse>, Status> {
         info!("Listing orders");
-        let svc = OrdersService::new(self.db_pool.clone(), None);
-        let page = 1u64;
-        let per_page = 20u64;
-        let list = svc.list_orders(page, per_page).await.map_err(|e| Status::internal(e.to_string()))?;
+        let req = request.into_inner();
+
+        let customer_id = if req.customer_id.is_empty() { None } else { Some(Uuid::parse_str(&req.customer_id).map_err(|_| Status::invalid_argument("invalid customer_id"))?) };
+        let status = if req.status == 0 { None } else { Some(map_proto_status_to_str(req.status)?.to_string()) };
+        let start_date = req
+            .start_date
+            .as_ref()
+            .and_then(|ts| chrono::NaiveDateTime::from_timestamp_opt(ts.seconds, ts.nanos as u32))
+            .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
+        let end_date = req
+            .end_date
+            .as_ref()
+            .and_then(|ts| chrono::NaiveDateTime::from_timestamp_opt(ts.seconds, ts.nanos as u32))
+            .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
+
+        let (page, per_page) = match req.pagination {
+            Some(p) => {
+                let page = if p.page <= 0 { 1 } else { p.page as u64 };
+                let mut per_page = if p.per_page <= 0 { 20 } else { p.per_page as u64 };
+                if per_page > 100 { per_page = 100; }
+                (page, per_page)
+            }
+            None => (1u64, 20u64),
+        };
+
+        let list = self
+            .order_service
+            .search_orders(customer_id, status, start_date, end_date, page, per_page)
+            .await
+            .map_err(|e| {
+                error!("Failed to list orders: {}", e);
+                e.into_grpc_status()
+            })?;
+
         let orders: Vec<Order> = list.orders.iter().map(map_service_order_to_proto).collect();
-        let response = ListOrdersResponse { orders, pagination: None };
+        let total_pages = ((list.total + per_page - 1) / per_page) as i32;
+        let pagination = Some(crate::proto::common::PaginationResponse {
+            total_items: list.total as i32,
+            total_pages,
+            current_page: page as i32,
+            items_per_page: per_page as i32,
+            has_next_page: (page as u64) < (total_pages as u64),
+            has_previous_page: page > 1,
+        });
+        let response = ListOrdersResponse { orders, pagination };
         Ok(Response::new(response))
     }
 }
@@ -303,7 +342,7 @@ impl inventory_service_server::InventoryService for StateSetApi {
             .await
             .map_err(|e| {
                 error!("Failed to update inventory: {}", e);
-                Status::internal(format!("Failed to update inventory: {}", e))
+                e.into_grpc_status()
             })?;
             
         // Get updated inventory to return actual quantity
@@ -325,16 +364,27 @@ impl inventory_service_server::InventoryService for StateSetApi {
 
     async fn list_inventory(
         &self,
-        _request: Request<ListInventoryRequest>,
+        request: Request<ListInventoryRequest>,
     ) -> Result<Response<ListInventoryResponse>, Status> {
         info!("Listing inventory");
-        let svc = InvService::new(self.db_pool.clone(), crate::events::EventSender::new(tokio::sync::mpsc::channel(1).0));
-        let page = 1u64;
-        let limit = 50u64;
-        let (models, _total) = svc
+        let req = request.into_inner();
+        let (page, limit) = match req.pagination {
+            Some(p) => {
+                let page = if p.page <= 0 { 1 } else { p.page as u64 };
+                let mut per_page = if p.per_page <= 0 { 50 } else { p.per_page as u64 };
+                if per_page > 100 { per_page = 100; }
+                (page, per_page)
+            }
+            None => (1u64, 50u64),
+        };
+        let (models, total) = self
+            .inventory_service
             .list_inventory(page, limit)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to list inventory: {}", e);
+                e.into_grpc_status()
+            })?;
         let items: Vec<InventoryItem> = models
             .into_iter()
             .map(|inv| InventoryItem {
@@ -348,9 +398,17 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 }),
             })
             .collect();
-        Ok(Response::new(ListInventoryResponse { items, pagination: None }))
+        let total_pages = ((total + limit - 1) / limit) as i32;
+        let pagination = Some(crate::proto::common::PaginationResponse {
+            total_items: total as i32,
+            total_pages,
+            current_page: page as i32,
+            items_per_page: limit as i32,
+            has_next_page: (page as u64) < (total_pages as u64),
+            has_previous_page: page > 1,
+        });
+        Ok(Response::new(ListInventoryResponse { items, pagination }))
     }
-
     #[instrument(skip(self, request), fields(product_id, order_id, quantity))]
     async fn reserve_inventory(
         &self,

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 use sea_orm::QueryOrder;
 use uuid::Uuid;
+use async_trait::async_trait;
 
 /// Maintenance Record entity model
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -82,7 +83,7 @@ impl Related<crate::models::machine::Entity> for Entity {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

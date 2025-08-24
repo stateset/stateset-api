@@ -34,10 +34,10 @@ pub fn products_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_products))
         .route("/", post(create_product))
-        .route("/:id", get(get_product))
-        .route("/:id/variants", get(get_product_variants))
-        .route("/:id/variants", post(create_variant))
-        .route("/variants/:variant_id/price", put(update_variant_price))
+        .route("/{id}", get(get_product))
+        .route("/{id}/variants", get(get_product_variants))
+        .route("/{id}/variants", post(create_variant))
+        .route("/variants/{variant_id}/price", put(update_variant_price))
         .route("/search", get(search_products))
 }
 
@@ -53,10 +53,9 @@ async fn create_product(
         name: payload.name,
         slug: payload.slug,
         description: payload.description,
-        status: payload.status,
-        product_type: payload.product_type,
-        attributes: payload.attributes,
-        seo: payload.seo,
+        // The underlying entity doesn't use these enriched fields; provide defaults
+        attributes: Vec::new(),
+        seo: serde_json::json!({}),
     };
 
     let product = state
@@ -175,7 +174,7 @@ async fn list_products(
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let query = ProductSearchQuery {
         search: None,
-        status: None,
+        is_active: None,
         limit: Some(params.per_page),
         offset: Some(params.offset()),
     };
@@ -199,42 +198,25 @@ pub struct CreateProductRequest {
     #[validate(length(min = 1))]
     pub slug: String,
     pub description: String,
-    pub status: crate::entities::commerce::product::ProductStatus,
-    pub product_type: crate::entities::commerce::product::ProductType,
-    pub attributes: Vec<crate::entities::commerce::product::ProductAttribute>,
-    pub seo: crate::entities::commerce::product::SeoMetadata,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ProductResponse {
     pub id: Uuid,
     pub name: String,
-    pub slug: String,
-    pub description: String,
-    pub status: crate::entities::commerce::product::ProductStatus,
-    pub product_type: crate::entities::commerce::product::ProductType,
-    pub attributes: Vec<crate::entities::commerce::product::ProductAttribute>,
-    pub seo: crate::entities::commerce::product::SeoMetadata,
+    pub sku: String,
+    pub description: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl From<crate::entities::commerce::ProductModel> for ProductResponse {
     fn from(model: crate::entities::commerce::ProductModel) -> Self {
-        let attributes: Vec<crate::entities::commerce::product::ProductAttribute> = 
-            serde_json::from_value(model.attributes).unwrap_or_default();
-        let seo: crate::entities::commerce::product::SeoMetadata = 
-            serde_json::from_value(model.seo).unwrap_or_default();
-
         Self {
             id: model.id,
             name: model.name,
-            slug: model.slug,
+            sku: model.sku,
             description: model.description,
-            status: model.status,
-            product_type: model.product_type,
-            attributes,
-            seo,
             created_at: model.created_at,
             updated_at: model.updated_at,
         }

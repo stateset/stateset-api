@@ -70,3 +70,4 @@ fn main() {
 
     println!("The error types are working as expected!");
 }
+#![cfg(feature = "demos")]

@@ -45,7 +45,7 @@ impl Related<crate::models::order_entity::Entity> for Entity {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

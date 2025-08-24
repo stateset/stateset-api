@@ -5,6 +5,7 @@ use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 use uuid::Uuid;
+use async_trait::async_trait;
 
 /// Line item model for Bill of Materials
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -65,7 +66,7 @@ impl Related<crate::models::billofmaterials::Entity> for Entity {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

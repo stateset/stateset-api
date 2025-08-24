@@ -82,10 +82,7 @@ async fn get_current_customer(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let customer_id = Uuid::parse_str(&user.user_id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid user ID".to_string(),
-            error_code: None,
-        })?;
+        .map_err(|_| ApiError::ValidationError("Invalid user ID".to_string()))?;
 
     let customer = state
         .services
@@ -104,10 +101,7 @@ async fn update_current_customer(
     Json(payload): Json<UpdateCustomerRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let customer_id = Uuid::parse_str(&user.user_id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid user ID".to_string(),
-            error_code: None,
-        })?;
+        .map_err(|_| ApiError::ValidationError("Invalid user ID".to_string()))?;
 
     let input = UpdateCustomerInput {
         first_name: payload.first_name,
@@ -132,10 +126,7 @@ async fn get_customer_addresses(
     State(state): State<Arc<AppState>>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let customer_id = Uuid::parse_str(&user.user_id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid user ID".to_string(),
-            error_code: None,
-        })?;
+        .map_err(|_| ApiError::ValidationError("Invalid user ID".to_string()))?;
 
     let addresses = state
         .services
@@ -156,10 +147,7 @@ async fn add_customer_address(
     validate_input(&payload)?;
 
     let customer_id = Uuid::parse_str(&user.user_id)
-        .map_err(|_| ApiError::BadRequest {
-            message: "Invalid user ID".to_string(),
-            error_code: None,
-        })?;
+        .map_err(|_| ApiError::ValidationError("Invalid user ID".to_string()))?;
 
     let input = AddAddressInput {
         first_name: payload.first_name,

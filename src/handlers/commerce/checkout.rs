@@ -22,11 +22,11 @@ use validator::Validate;
 pub fn checkout_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", post(start_checkout))
-        .route("/:session_id", get(get_checkout_session))
-        .route("/:session_id/customer", put(set_customer_info))
-        .route("/:session_id/shipping-address", put(set_shipping_address))
-        .route("/:session_id/shipping-method", put(set_shipping_method))
-        .route("/:session_id/complete", post(complete_checkout))
+        .route("/{session_id}", get(get_checkout_session))
+        .route("/{session_id}/customer", put(set_customer_info))
+        .route("/{session_id}/shipping-address", put(set_shipping_address))
+        .route("/{session_id}/shipping-method", put(set_shipping_method))
+        .route("/{session_id}/complete", post(complete_checkout))
 }
 
 /// Start checkout from cart
@@ -48,13 +48,10 @@ async fn start_checkout(
 async fn get_checkout_session(
     State(_state): State<Arc<AppState>>,
     Path(_session_id): Path<Uuid>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<axum::response::Response, ApiError> {
     // For now, we'll need to store sessions in memory or cache
     // This is a simplified version
-    Err(ApiError::NotFound {
-        message: "Session storage not implemented yet".to_string(),
-        error_code: None,
-    })
+    Err(ApiError::NotFound("Session storage not implemented yet".to_string()))
 }
 
 /// Set customer info

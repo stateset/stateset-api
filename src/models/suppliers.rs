@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc, Datelike};
+use async_trait::async_trait;
 // use phonelib::PhoneValidator; // Commented out - dependency not available
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, Set, Condition, DatabaseConnection, QueryOrder, QuerySelect};
@@ -277,7 +277,7 @@ fn validate_optional_phone(phone: &String) -> Result<(), ValidationError> {
     validate_phone(phone)
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

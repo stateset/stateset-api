@@ -1,3 +1,5 @@
+#![cfg(feature = "demos")]
+
 use chrono::Utc;
 use dotenv::dotenv;
 use rust_decimal::Decimal;

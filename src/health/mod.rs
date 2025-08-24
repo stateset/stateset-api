@@ -252,6 +252,7 @@ pub async fn readiness_check_with_app_state(
         ),
     }
 }
+*/
 
 /// Run periodic health checks
 pub async fn run_health_checker(state: Arc<HealthState>) {
@@ -293,7 +294,6 @@ pub fn health_routes_with_state(db_pool: Arc<DatabaseConnection>) -> Router {
 }
 
 /// Creates router with health check endpoints (simplified version for use with AppState)
-*/
 
 pub fn health_routes() -> Router<()> {
     Router::new()

@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use async_trait::async_trait;
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
@@ -44,7 +44,7 @@ impl Related<crate::models::work_order::Entity> for Entity {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

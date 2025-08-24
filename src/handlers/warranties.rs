@@ -132,9 +132,9 @@ where
 {
     Router::new()
         .route("/", get(list_warranties::<S>).post(create_warranty::<S>))
-        .route("/:id", get(get_warranty::<S>).put(update_warranty::<S>).delete(delete_warranty::<S>))
-        .route("/:id/void", post(void_warranty::<S>))
-        .route("/:id/extend", post(extend_warranty::<S>))
+        .route("/{id}", get(get_warranty::<S>).put(update_warranty::<S>).delete(delete_warranty::<S>))
+        .route("/{id}/void", post(void_warranty::<S>))
+        .route("/{id}/extend", post(extend_warranty::<S>))
         .route("/claims", get(list_claims::<S>).post(create_claim::<S>))
         .route("/claims/:id", get(get_claim::<S>).put(update_claim::<S>))
         .route("/claims/:id/approve", post(approve_claim::<S>))

@@ -11,7 +11,6 @@
  * The module also provides role-based access control (RBAC) and permission verification.
  */
 
-use async_trait::async_trait;
 use axum::{
     extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
@@ -37,6 +36,9 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 use uuid::Uuid;
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use async_trait::async_trait;
 
 // Entity modules
 pub mod api_key;
@@ -618,85 +620,22 @@ impl IntoResponse for AuthError {
     }
 }
 
-/// Extract authentication from a request (either JWT or API key)
-// TODO: Fix lifetime issues with FromRequestParts implementation
-// Commenting out for now to get basic compilation working
-/*
-#[async_trait]
+/// Extract AuthUser from request extensions.
+/// Assumes `auth_middleware` has populated `AuthUser` in request extensions.
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
-    Arc<AuthService>: FromRequestParts<S>,
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts<'life0, 'life1, 'async_trait>(
-        parts: &'life0 mut axum::http::request::Parts,
-        state: &'life1 S,
-    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = Result<Self, Self::Rejection>> + core::marker::Send + 'async_trait>>
-    where
-        'life0: 'async_trait,
-        'life1: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-        // Extract auth service from the state
-        let auth_service = Arc::<AuthService>::from_request_parts(parts, state)
-            .await
-            .map_err(|_| AuthError::InternalError("Failed to extract auth service".to_string()))?;
-
-        // Try JWT first (from Authorization header)
-        if let Some(auth_header) = parts.headers.get(header::AUTHORIZATION) {
-            if let Ok(auth_value) = auth_header.to_str() {
-                if auth_value.starts_with("Bearer ") {
-                    let token = auth_value.trim_start_matches("Bearer ").trim();
-                    let claims = auth_service.validate_token(token).await?;
-
-                    return Ok(AuthUser {
-                        user_id: claims.sub,
-                        name: claims.name,
-                        email: claims.email,
-                        roles: claims.roles,
-                        permissions: claims.permissions,
-                        tenant_id: claims.tenant_id,
-                        token_id: claims.jti,
-                        is_api_key: false,
-                    });
-                }
-            }
-        }
-
-        // Try API key (from X-API-Key header)
-        if let Some(api_key_header) = parts.headers.get("X-API-Key") {
-            if let Ok(api_key) = api_key_header.to_str() {
-                let api_key_info = auth_service.validate_api_key(api_key).await?;
-
-                // Check if the API key has expired
-                if let Some(expires_at) = api_key_info.expires_at {
-                    if expires_at < Utc::now() {
-                        return Err(AuthError::ExpiredApiKey);
-                    }
-                }
-
-                return Ok(AuthUser {
-                    user_id: api_key_info.user_id.to_string(),
-                    name: Some(api_key_info.name),
-                    email: None,
-                    roles: api_key_info.roles,
-                    permissions: api_key_info.permissions,
-                    tenant_id: api_key_info.tenant_id,
-                    token_id: api_key_info.id.to_string(),
-                    is_api_key: true,
-                });
-            }
-        }
-
-        // No valid authentication found
-        Err(AuthError::MissingAuth)
-        })
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthUser>()
+            .cloned()
+            .ok_or(AuthError::MissingAuth)
     }
 }
-*/
 
 /// Permission requirement for endpoints
 #[derive(Clone, Debug)]
@@ -998,5 +937,3 @@ where
         .with_auth()
     }
 }
-
-

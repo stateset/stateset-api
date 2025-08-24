@@ -24,6 +24,7 @@
 use async_trait::async_trait;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
@@ -188,6 +189,38 @@ impl MetricsRegistry {
         }
 
         Ok(output)
+    }
+
+    pub async fn export_metrics_json(&self) -> Result<serde_json::Value, MetricsError> {
+        let mut counters = serde_json::Map::new();
+        for entry in self.counters.iter() {
+            let (name, counter) = entry.pair();
+            counters.insert(name.to_string(), json!(counter.get()));
+        }
+
+        let mut gauges = serde_json::Map::new();
+        for entry in self.gauges.iter() {
+            let (name, gauge) = entry.pair();
+            gauges.insert(name.to_string(), json!(gauge.get()));
+        }
+
+        let mut histograms = serde_json::Map::new();
+        for entry in self.histograms.iter() {
+            let (name, histogram) = entry.pair();
+            histograms.insert(
+                name.to_string(),
+                json!({
+                    "count": histogram.get_count(),
+                    "sum": histogram.get_sum(),
+                }),
+            );
+        }
+
+        Ok(json!({
+            "counters": counters,
+            "gauges": gauges,
+            "histograms": histograms,
+        }))
     }
 }
 
@@ -366,6 +399,10 @@ impl MetricsExporter for ConsoleExporter {
 // HTTP endpoint handler for metrics
 pub async fn metrics_handler() -> Result<String, MetricsError> {
     METRICS.export_metrics().await
+}
+
+pub async fn metrics_json_handler() -> Result<serde_json::Value, MetricsError> {
+    METRICS.export_metrics_json().await
 }
 
 // Initialize metrics system

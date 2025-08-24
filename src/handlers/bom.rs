@@ -30,12 +30,12 @@ pub fn bom_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", post(create_bom))
         .route("/", get(list_boms))
-        .route("/:id", get(get_bom))
-        .route("/:id", put(update_bom))
-        .route("/:id/audit", post(audit_bom))
-        .route("/:id/components", get(get_bom_components))
-        .route("/:id/components", post(add_component_to_bom))
-        .route("/:id/components/:component_id", delete(remove_component_from_bom))
+        .route("/{id}", get(get_bom))
+        .route("/{id}", put(update_bom))
+        .route("/{id}/audit", post(audit_bom))
+        .route("/{id}/components", get(get_bom_components))
+        .route("/{id}/components", post(add_component_to_bom))
+        .route("/{id}/components/{component_id}", delete(remove_component_from_bom))
 }
 
 // Request and response DTOs

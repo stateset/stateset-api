@@ -85,19 +85,19 @@ async fn create_user(
 
     // Check if current user has admin role
     if !current_user.roles.contains(&"admin".to_string()) {
-        return Err(ApiError::Forbidden {
-            message: "Only admin users can create new users".to_string(),
-        });
+        return Err(ApiError::ServiceError(ServiceError::Forbidden(
+            "Only admin users can create new users".to_string(),
+        )));
     }
 
     let user_id = Uuid::new_v4();
 
     info!("User created: {}", user_id);
 
-    created_response(serde_json::json!({
+    Ok(created_response(serde_json::json!({
         "id": user_id,
         "message": "User created successfully"
-    }))
+    })))
 }
 
 /// Get a user by ID
@@ -107,10 +107,12 @@ async fn get_user(
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Check authorization - users can only view their own profile unless they're admin
-    if current_user.user_id != user_id.to_string() && !current_user.roles.contains(&"admin".to_string()) {
-        return Err(ApiError::Forbidden {
-            message: "You can only view your own profile".to_string(),
-        });
+    if current_user.user_id != user_id.to_string()
+        && !current_user.roles.contains(&"admin".to_string())
+    {
+        return Err(ApiError::ServiceError(ServiceError::Forbidden(
+            "You can only view your own profile".to_string(),
+        )));
     }
 
     let user = User {
@@ -125,7 +127,7 @@ async fn get_user(
         updated_at: Some("2023-01-02T00:00:00Z".to_string()),
     };
 
-    success_response(user)
+    Ok(success_response(user))
 }
 
 /// Update a user
@@ -138,17 +140,19 @@ async fn update_user(
     validate_input(&payload)?;
 
     // Check authorization - users can only update their own profile unless they're admin
-    if current_user.user_id != user_id.to_string() && !current_user.roles.contains(&"admin".to_string()) {
-        return Err(ApiError::Forbidden {
-            message: "You can only update your own profile".to_string(),
-        });
+    if current_user.user_id != user_id.to_string()
+        && !current_user.roles.contains(&"admin".to_string())
+    {
+        return Err(ApiError::ServiceError(ServiceError::Forbidden(
+            "You can only update your own profile".to_string(),
+        )));
     }
 
     info!("User updated: {}", user_id);
 
-    success_response(serde_json::json!({
+    Ok(success_response(serde_json::json!({
         "message": "User updated successfully"
-    }))
+    })))
 }
 
 /// Delete a user
@@ -159,14 +163,14 @@ async fn delete_user(
 ) -> Result<impl IntoResponse, ApiError> {
     // Check if current user has admin role
     if !current_user.roles.contains(&"admin".to_string()) {
-        return Err(ApiError::Forbidden {
-            message: "Only admin users can delete users".to_string(),
-        });
+        return Err(ApiError::ServiceError(ServiceError::Forbidden(
+            "Only admin users can delete users".to_string(),
+        )));
     }
 
     info!("User deleted: {}", user_id);
 
-    no_content_response()
+    Ok(no_content_response())
 }
 
 /// List all users with pagination
@@ -177,9 +181,9 @@ async fn list_users(
 ) -> Result<impl IntoResponse, ApiError> {
     // Check if current user has admin role
     if !current_user.roles.contains(&"admin".to_string()) {
-        return Err(ApiError::Forbidden {
-            message: "Only admin users can list all users".to_string(),
-        });
+        return Err(ApiError::ServiceError(ServiceError::Forbidden(
+            "Only admin users can list all users".to_string(),
+        )));
     }
 
     // This is a mock implementation
@@ -210,12 +214,12 @@ async fn list_users(
         },
     ];
 
-    success_response(serde_json::json!({
+    Ok(success_response(serde_json::json!({
         "users": users,
         "total": 2,
         "page": pagination.page,
         "per_page": pagination.per_page
-    }))
+    })))
 }
 
 /// Change user password
@@ -231,16 +235,16 @@ async fn change_password(
     // Either the user is changing their own password or they are an admin
     let user_id_str = user_id.to_string();
     if current_user.user_id != user_id_str && !current_user.roles.contains(&"admin".to_string()) {
-        return Err(ApiError::Forbidden {
-            message: "You can only update your own profile".to_string(),
-        });
+        return Err(ApiError::ServiceError(ServiceError::Forbidden(
+            "You can only update your own profile".to_string(),
+        )));
     }
 
     info!("Password changed for user: {}", user_id);
 
-    success_response(serde_json::json!({
+    Ok(success_response(serde_json::json!({
         "message": "Password changed successfully"
-    }))
+    })))
 }
 
 /// Get current user profile
@@ -263,7 +267,7 @@ async fn get_current_user(
         updated_at: Some("2023-01-02T00:00:00Z".to_string()),
     };
 
-    success_response(user)
+    Ok(success_response(user))
 }
 
 /// Creates the router for user endpoints
@@ -272,8 +276,8 @@ pub fn user_routes() -> Router<Arc<AppState>> {
         .route("/", post(create_user))
         .route("/", get(list_users))
         .route("/profile", get(get_current_user))
-        .route("/:id", get(get_user))
-        .route("/:id", put(update_user))
-        .route("/:id", delete(delete_user))
-        .route("/:id/change-password", post(change_password))
+        .route("/{id}", get(get_user))
+        .route("/{id}", put(update_user))
+        .route("/{id}", delete(delete_user))
+        .route("/{id}/change-password", post(change_password))
 }

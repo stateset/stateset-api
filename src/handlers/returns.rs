@@ -118,12 +118,12 @@ where
 {
     Router::new()
         .route("/", get(list_returns::<S>).post(create_return::<S>))
-        .route("/:id", get(get_return::<S>).put(update_return::<S>).delete(delete_return::<S>))
-        .route("/:id/process", post(process_return::<S>))
-        .route("/:id/approve", post(approve_return::<S>))
-        .route("/:id/reject", post(reject_return::<S>))
-        .route("/:id/restock", post(restock_return::<S>))
-        .route("/:id/refund", post(issue_refund::<S>))
+        .route("/{id}", get(get_return::<S>).put(update_return::<S>).delete(delete_return::<S>))
+        .route("/{id}/process", post(process_return::<S>))
+        .route("/{id}/approve", post(approve_return::<S>))
+        .route("/{id}/reject", post(reject_return::<S>))
+        .route("/{id}/restock", post(restock_return::<S>))
+        .route("/{id}/refund", post(issue_refund::<S>))
 }
 
 /// List returns with optional filtering

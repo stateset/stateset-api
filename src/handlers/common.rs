@@ -64,6 +64,13 @@ impl Default for PaginationParams {
     }
 }
 
+impl PaginationParams {
+    /// Calculate zero-based offset for pagination
+    pub fn offset(&self) -> u64 {
+        self.page.saturating_sub(1) * self.per_page
+    }
+}
+
 /// Standard pagination response metadata
 #[derive(Debug, Serialize)]
 pub struct PaginationMeta {

@@ -4,6 +4,7 @@ use sea_orm::{Set, ActiveValue};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use validator::{Validate, ValidationError};
+use async_trait::async_trait;
 use uuid::Uuid;
 
 /// Bill of Materials main entity
@@ -46,7 +47,7 @@ pub enum Relation {
 //     }
 // }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

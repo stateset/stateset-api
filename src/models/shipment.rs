@@ -227,7 +227,7 @@ impl Related<super::shipment_event::Entity> for Entity {
 }
 
 /// Active model behavior for database hooks
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     /// Hook that is triggered before insert/update
     async fn before_save<C: ConnectionTrait>(

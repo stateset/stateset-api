@@ -10,6 +10,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use validator::{Validate, ValidationError};
 use uuid::Uuid;
+use async_trait::async_trait;
 
 /// Custom error type for machine operations
 #[derive(Error, Debug)]
@@ -286,7 +287,7 @@ impl Related<super::maintenance_record::Entity> for Entity {
 //     }
 // }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
         self,

@@ -66,6 +66,14 @@ use uuid::Uuid;
         schemas(
             // Only include types that actually exist
             super::errors::ErrorResponse,
+            crate::handlers::inventory::InventoryItem,
+            crate::handlers::inventory::InventoryAdjustment,
+            crate::handlers::inventory::CreateInventoryRequest,
+            crate::handlers::inventory::UpdateInventoryRequest,
+            crate::handlers::inventory::AdjustInventoryRequest,
+            crate::handlers::inventory::AllocateInventoryRequest,
+            crate::handlers::inventory::ReserveInventoryRequest,
+            crate::handlers::inventory::InventoryFilters,
             // TODO: Add order-related schemas when handlers module is implemented
         )
     ),
@@ -323,8 +331,8 @@ pub async fn docs_home() -> impl IntoResponse {
 pub fn create_docs_routes() -> Router {
     Router::new()
         .route("/", get(docs_home))
-        .route("/:version", get(openapi_handler))
-        .route("/openapi/:version", get(openapi_json))
+        .route("/{version}", get(openapi_handler))
+        .route("/openapi/{version}", get(openapi_json))
 }
 
 /*

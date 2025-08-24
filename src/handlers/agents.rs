@@ -13,9 +13,11 @@ use crate::{
 
 /// Agents API routes: recommend products and act on behalf of customers
 pub fn agents_routes() -> Router<AppState> {
+    use crate::auth::AuthRouterExt;
     Router::new()
         .route("/recommendations", get(get_recommendations))
-        .route("/customers/:customer_id/carts/:cart_id/items", post(agent_add_to_cart))
+        .route("/customers/{customer_id}/carts/{cart_id}/items", post(agent_add_to_cart))
+        .with_permission("agents:access")
 }
 
 #[derive(Debug, Deserialize, Default)]

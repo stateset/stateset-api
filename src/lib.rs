@@ -43,6 +43,7 @@ use utoipa::ToSchema;
 
 // Import handler traits
 use handlers::inventory::InventoryHandlerState;
+use crate::auth::AuthRouterExt;
 
 // App state definition
 #[derive(Clone)]
@@ -51,6 +52,7 @@ pub struct AppState {
     pub config: config::AppConfig,
     pub event_sender: events::EventSender,
     pub inventory_service: services::inventory::InventoryService,
+    pub services: handlers::AppServices,
 }
 
 // Common query parameters for list endpoints
@@ -117,59 +119,148 @@ impl<T> ApiResponse<T> {
 
 // Enhanced API routes function
 pub fn api_v1_routes() -> Router<AppState> {
+    // Orders routes with permission gating
+    let orders_read = Router::new()
+        .route("/orders", get(handlers::orders::list_orders))
+        .route("/orders/{id}", get(handlers::orders::get_order))
+        .route("/orders/{id}/items", get(handlers::orders::get_order_items))
+        .with_permission("orders:read");
+
+    let orders_write = Router::new()
+        .route("/orders", axum::routing::post(handlers::orders::create_order))
+        .route("/orders/{id}", axum::routing::put(handlers::orders::update_order))
+        .route("/orders/{id}/items", axum::routing::post(handlers::orders::add_order_item))
+        .route("/orders/{id}/status", axum::routing::put(handlers::orders::update_order_status))
+        .route("/orders/{id}/cancel", axum::routing::post(handlers::orders::cancel_order::<AppState>))
+        .route("/orders/{id}/archive", axum::routing::post(handlers::orders::archive_order::<AppState>))
+        .with_permission("orders:write");
+
+    let orders_delete = Router::new()
+        .route("/orders/{id}", axum::routing::delete(handlers::orders::delete_order))
+        .with_permission("orders:delete");
+
+    // Inventory routes with permission gating
+    let inventory_read = Router::new()
+        .route("/inventory", get(handlers::inventory::list_inventory::<AppState>))
+        .route("/inventory/{id}", get(handlers::inventory::get_inventory::<AppState>))
+        .route("/inventory/low-stock", get(handlers::inventory::get_low_stock_items::<AppState>))
+        .with_permission("inventory:read");
+
+    let inventory_write = Router::new()
+        .route("/inventory", axum::routing::post(handlers::inventory::create_inventory::<AppState>))
+        .route("/inventory/{id}", axum::routing::put(handlers::inventory::update_inventory::<AppState>))
+        .route("/inventory/{id}/reserve", axum::routing::post(handlers::inventory::reserve_inventory::<AppState>))
+        .route("/inventory/{id}/release", axum::routing::post(handlers::inventory::release_inventory::<AppState>))
+        .with_permission("inventory:write");
+
+    let inventory_delete = Router::new()
+        .route("/inventory/{id}", axum::routing::delete(handlers::inventory::delete_inventory::<AppState>))
+        .with_permission("inventory:delete");
+
+    // Returns routes with permission gating
+    let returns_read = Router::new()
+        .route("/returns", get(handlers::returns::list_returns::<AppState>))
+        .route("/returns/{id}", get(handlers::returns::get_return::<AppState>))
+        .with_permission("returns:read");
+
+    let returns_write = Router::new()
+        .route("/returns", axum::routing::post(handlers::returns::create_return::<AppState>))
+        .route("/returns/{id}", axum::routing::put(handlers::returns::update_return::<AppState>))
+        .route("/returns/{id}/status", axum::routing::put(handlers::returns::update_return_status::<AppState>))
+        .route("/returns/{id}/process", axum::routing::post(handlers::returns::process_return::<AppState>))
+        .with_permission("returns:write");
+
+    let returns_delete = Router::new()
+        .route("/returns/{id}", axum::routing::delete(handlers::returns::delete_return::<AppState>))
+        .with_permission("returns:delete");
+
+    // Shipments routes with permission gating
+    let shipments_read = Router::new()
+        .route("/shipments", get(handlers::shipments::list_shipments::<AppState>))
+        .route("/shipments/{id}", get(handlers::shipments::get_shipment::<AppState>))
+        .route("/shipments/{id}/track", get(handlers::shipments::track_shipment::<AppState>))
+        .with_permission("shipments:read");
+
+    let shipments_write = Router::new()
+        .route("/shipments", axum::routing::post(handlers::shipments::create_shipment::<AppState>))
+        .route("/shipments/{id}", axum::routing::put(handlers::shipments::update_shipment::<AppState>))
+        .route("/shipments/{id}/status", axum::routing::put(handlers::shipments::update_shipment_status::<AppState>))
+        .with_permission("shipments:write");
+
+    let shipments_delete = Router::new()
+        .route("/shipments/{id}", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
+        .with_permission("shipments:delete");
+
+    // Warranties routes with permission gating
+    let warranties_read = Router::new()
+        .route("/warranties", get(handlers::warranties::list_warranties::<AppState>))
+        .route("/warranties/{id}", get(handlers::warranties::get_warranty::<AppState>))
+        .with_permission("warranties:read");
+
+    let warranties_write = Router::new()
+        .route("/warranties", axum::routing::post(handlers::warranties::create_warranty::<AppState>))
+        .route("/warranties/{id}", axum::routing::put(handlers::warranties::update_warranty::<AppState>))
+        .route("/warranties/{id}/claim", axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>))
+        .with_permission("warranties:write");
+
+    let warranties_delete = Router::new()
+        .route("/warranties/{id}", axum::routing::delete(handlers::warranties::delete_warranty::<AppState>))
+        .with_permission("warranties:delete");
+
+    // Work Orders routes with permission gating
+    let work_orders_read = Router::new()
+        .route("/work-orders", get(handlers::work_orders::list_work_orders::<AppState>))
+        .route("/work-orders/{id}", get(handlers::work_orders::get_work_order::<AppState>))
+        .with_permission("work_orders:read");
+
+    let work_orders_write = Router::new()
+        .route("/work-orders", axum::routing::post(handlers::work_orders::create_work_order::<AppState>))
+        .route("/work-orders/{id}", axum::routing::put(handlers::work_orders::update_work_order::<AppState>))
+        .route("/work-orders/{id}/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
+        .route("/work-orders/{id}/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
+        .route("/work-orders/{id}/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
+        .with_permission("work_orders:write");
+
+    let work_orders_delete = Router::new()
+        .route("/work-orders/{id}", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
+        .with_permission("work_orders:delete");
+
     Router::new()
         // Status and health endpoints
         .route("/status", get(api_status))
         .route("/health", get(health_check))
         
-        // Inventory API (working endpoints)
-        .route("/inventory", get(handlers::inventory::list_inventory::<AppState>))
-        .route("/inventory", axum::routing::post(handlers::inventory::create_inventory::<AppState>))
-        .route("/inventory/:id", get(handlers::inventory::get_inventory::<AppState>))
-        .route("/inventory/:id", axum::routing::put(handlers::inventory::update_inventory::<AppState>))
-        .route("/inventory/:id", axum::routing::delete(handlers::inventory::delete_inventory::<AppState>))
-        .route("/inventory/:id/reserve", axum::routing::post(handlers::inventory::reserve_inventory::<AppState>))
-        .route("/inventory/:id/release", axum::routing::post(handlers::inventory::release_inventory::<AppState>))
-        .route("/inventory/low-stock", get(handlers::inventory::get_low_stock_items::<AppState>))
-        
-        // Returns API
-        .route("/returns", get(handlers::returns::list_returns::<AppState>))
-        .route("/returns", axum::routing::post(handlers::returns::create_return::<AppState>))
-        .route("/returns/:id", get(handlers::returns::get_return::<AppState>))
-        .route("/returns/:id", axum::routing::put(handlers::returns::update_return::<AppState>))
-        .route("/returns/:id", axum::routing::delete(handlers::returns::delete_return::<AppState>))
-        .route("/returns/:id/status", axum::routing::put(handlers::returns::update_return_status::<AppState>))
-        .route("/returns/:id/process", axum::routing::post(handlers::returns::process_return::<AppState>))
-        
-        // Shipments API
-        .route("/shipments", get(handlers::shipments::list_shipments::<AppState>))
-        .route("/shipments", axum::routing::post(handlers::shipments::create_shipment::<AppState>))
-        .route("/shipments/:id", get(handlers::shipments::get_shipment::<AppState>))
-        .route("/shipments/:id", axum::routing::put(handlers::shipments::update_shipment::<AppState>))
-        .route("/shipments/:id", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
-        .route("/shipments/:id/track", get(handlers::shipments::track_shipment::<AppState>))
-        .route("/shipments/:id/status", axum::routing::put(handlers::shipments::update_shipment_status::<AppState>))
-        
-                 // Warranties API
-         .route("/warranties", get(handlers::warranties::list_warranties::<AppState>))
-         .route("/warranties", axum::routing::post(handlers::warranties::create_warranty::<AppState>))
-         .route("/warranties/:id", get(handlers::warranties::get_warranty::<AppState>))
-         .route("/warranties/:id", axum::routing::put(handlers::warranties::update_warranty::<AppState>))
-         .route("/warranties/:id", axum::routing::delete(handlers::warranties::delete_warranty::<AppState>))
-         .route("/warranties/:id/claim", axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>))
-         
+        // Orders API (auth + permissions)
+        .merge(orders_read)
+        .merge(orders_write)
+        .merge(orders_delete)
+        // Inventory API (auth + permissions)
+        .merge(inventory_read)
+        .merge(inventory_write)
+        .merge(inventory_delete)
+
+        // Returns API (auth + permissions)
+        .merge(returns_read)
+        .merge(returns_write)
+        .merge(returns_delete)
+
+        // Shipments API (auth + permissions)
+        .merge(shipments_read)
+        .merge(shipments_write)
+        .merge(shipments_delete)
+
+        // Warranties API (auth + permissions)
+        .merge(warranties_read)
+        .merge(warranties_write)
+        .merge(warranties_delete)
+
          // Agents API
          .nest("/agents", handlers::agents::agents_routes())
          
-         // Work Orders API
-         .route("/work-orders", get(handlers::work_orders::list_work_orders::<AppState>))
-         .route("/work-orders", axum::routing::post(handlers::work_orders::create_work_order::<AppState>))
-         .route("/work-orders/:id", get(handlers::work_orders::get_work_order::<AppState>))
-         .route("/work-orders/:id", axum::routing::put(handlers::work_orders::update_work_order::<AppState>))
-         .route("/work-orders/:id", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
-         .route("/work-orders/:id/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
-         .route("/work-orders/:id/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
-         .route("/work-orders/:id/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
+         // Work Orders API (auth + permissions)
+         .merge(work_orders_read)
+         .merge(work_orders_write)
+         .merge(work_orders_delete)
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {

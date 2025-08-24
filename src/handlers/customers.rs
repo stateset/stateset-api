@@ -109,7 +109,7 @@ pub fn customer_routes() -> Router {
         .route("/", post(create_customer))
         .route("/", get(list_customers))
         .route("/search", get(search_customers))
-        .route("/:id", get(get_customer))
-        .route("/:id", put(update_customer))
-        .route("/:id", delete(delete_customer))
+        .route("/{id}", get(get_customer))
+        .route("/{id}", put(update_customer))
+        .route("/{id}", delete(delete_customer))
 }
