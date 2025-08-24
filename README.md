@@ -85,9 +85,10 @@ stateset-api/
 ### Prerequisites
 
 Ensure you have the following installed:
-- Rust (latest stable version)
-- PostgreSQL 14+
+- Rust (latest stable)
 - Protocol Buffer compiler (for gRPC)
+
+Note: The app defaults to SQLite for local development (via SeaORM). PostgreSQL is optional and can be enabled by changing configuration.
 
 ### Quick Install
 
@@ -97,13 +98,13 @@ Ensure you have the following installed:
    cd stateset-api
    ```
 
-2. Create a `.env` file with your configuration:
-   ```sh
-   DATABASE_URL=postgres://username:password@localhost/stateset
-   SERVER_HOST=0.0.0.0
-   SERVER_PORT=8080
-   JWT_SECRET=your_jwt_secret
-   ```
+2. Configure the app (choose one):
+   - Using config files (recommended): edit `config/default.toml` (already set to SQLite by default).
+   - Using env overrides: set environment variables with the `APP__` prefix (e.g., `APP__DATABASE_URL`, `APP__HOST`, `APP__PORT`).
+
+   Examples:
+   - SQLite (default): `APP__DATABASE_URL=sqlite:stateset.db?mode=rwc`
+   - PostgreSQL: `APP__DATABASE_URL=postgres://user:pass@localhost:5432/stateset`
 
 3. Run database migrations:
    ```sh
@@ -117,6 +118,8 @@ Ensure you have the following installed:
 
 The API will be available at `http://localhost:8080`.
 Requests to unknown routes return a JSON 404 response.
+
+Docker: `docker-compose up -d` starts the API and Redis. Compose reads values from `.env` for container env, which is separate from the app’s `APP__*` variables used by the config system.
 
 ## API Endpoints
 

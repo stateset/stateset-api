@@ -4,27 +4,32 @@ This document lists all environment variables used by the StateSet API. Copy the
 
 ## Required Variables
 
+The application loads configuration primarily from `config/*.toml`. You can override any value using environment variables with the `APP__` prefix (double underscore as separator). Examples below show both SQLite (default) and Postgres options.
+
 ### Database Configuration
 ```bash
-# PostgreSQL connection string
-DATABASE_URL=postgres://username:password@localhost:5432/stateset_db
+# SQLite (default for development)
+APP__DATABASE_URL=sqlite:stateset.db?mode=rwc
+
+# Or PostgreSQL
+APP__DATABASE_URL=postgres://username:password@localhost:5432/stateset_db
 ```
 
 ### Redis Configuration
 ```bash
 # Redis connection string for caching and pub/sub
-REDIS_URL=redis://localhost:6379
+APP__REDIS_URL=redis://localhost:6379
 ```
 
 ### Security Configuration
 ```bash
 # JWT secret key - MUST be changed in production
 # Generate with: openssl rand -base64 32
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+APP__JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 
 # Token expiration times (in seconds)
-JWT_EXPIRATION=3600              # 1 hour
-REFRESH_TOKEN_EXPIRATION=604800  # 7 days
+APP__JWT_EXPIRATION=3600              # 1 hour
+APP__REFRESH_TOKEN_EXPIRATION=604800  # 7 days
 ```
 
 ## Optional Variables
@@ -32,20 +37,20 @@ REFRESH_TOKEN_EXPIRATION=604800  # 7 days
 ### Server Configuration
 ```bash
 # Server host and port
-HOST=0.0.0.0
-PORT=8080
+APP__HOST=0.0.0.0
+APP__PORT=8080
 
 # Environment (development, staging, production)
-ENVIRONMENT=development
+APP__ENVIRONMENT=development
 
-# Logging level (debug, info, warn, error)
-LOG_LEVEL=info
+# Logging level (trace, debug, info, warn, error)
+APP__LOG_LEVEL=info
 ```
 
 ### Feature Flags
 ```bash
 # Automatically run database migrations on startup
-AUTO_MIGRATE=false
+APP__AUTO_MIGRATE=false
 
 # Enable metrics collection
 ENABLE_METRICS=true
@@ -78,7 +83,7 @@ CACHE_CAPACITY=1000
 ### CORS Configuration
 ```bash
 # Comma-separated list of allowed origins
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+APP__CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
 ```
 
 ### Security Settings
@@ -127,19 +132,20 @@ DEV_SEED_DATABASE=false    # Populate database with test data
 DEV_ENABLE_SWAGGER=true    # Enable Swagger UI documentation
 ```
 
-## Example .env File
+## Example Overrides
 
-Create a `.env` file in your project root:
+Minimal overrides for local development (without editing `config/default.toml`):
 
 ```bash
-# Minimal configuration for local development
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/stateset_dev
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=development-secret-key-do-not-use-in-production
-ENVIRONMENT=development
-LOG_LEVEL=debug
-AUTO_MIGRATE=true
+APP__DATABASE_URL=sqlite:stateset.db?mode=rwc
+APP__REDIS_URL=redis://localhost:6379
+APP__JWT_SECRET=development-secret-key-do-not-use-in-production
+APP__ENVIRONMENT=development
+APP__LOG_LEVEL=debug
+APP__AUTO_MIGRATE=true
 ```
+
+Docker Compose uses the root `.env` file for container variables (e.g., `DATABASE_URL`, `REDIS_URL`, `PORT`). These are separate from `APP__*` variables consumed by the app’s config loader.
 
 ## Production Considerations
 

@@ -10,8 +10,13 @@ help:
 	@echo "  test          - Run tests (with error logging)"
 	@echo "  clean         - Clean build artifacts and logs"
 	@echo "  run           - Run the main server"
+	@echo "  run-admin     - Run server with admin/test permissions"
 	@echo "  logs          - View build error logs"
 	@echo "  tail-logs     - Tail build error logs"
+	@echo "  smoke         - Run API smoke tests (server must be running)"
+	@echo "  test-orders   - Run order endpoint tests"
+	@echo "  test-returns  - Run returns endpoint tests"
+	@echo "  test-shipments- Run shipments endpoint tests"
 
 # Build in debug mode with error logging
 build:
@@ -48,6 +53,11 @@ run:
 	@echo "Running StateSet API server..."
 	@cargo run --bin stateset-api
 
+.PHONY: run-admin
+run-admin:
+	@echo "Running StateSet API server with admin/test permissions..."
+	@bash bin/run_admin.sh
+
 # View build logs
 logs:
 	@if [ -f build_errors.log ]; then \
@@ -63,6 +73,23 @@ tail-logs:
 	else \
 		echo "No build logs found."; \
 	fi
+
+# Run API smoke tests against localhost
+.PHONY: smoke
+smoke:
+	@bash bin/smoke.sh
+
+.PHONY: test-orders
+test-orders:
+	@bash bin/test_orders.sh
+
+.PHONY: test-returns
+test-returns:
+	@bash bin/test_returns.sh
+
+.PHONY: test-shipments
+test-shipments:
+	@bash bin/test_shipments.sh
 
 # Build with the build-logger binary
 build-with-logger:

@@ -17,6 +17,34 @@ use crate::{
     // Remove handler imports since handlers module doesn't exist
     versioning::ApiVersion,
 };
+// Bring returns handlers into scope for path registration
+use crate::handlers::returns::{
+    list_returns,
+    get_return,
+    create_return,
+    update_return,
+    update_return_status,
+    process_return,
+    approve_return,
+    reject_return,
+    restock_return,
+    issue_refund,
+    delete_return,
+};
+// Shipments
+use crate::handlers::shipments::{
+    list_shipments,
+    get_shipment,
+    create_shipment,
+    update_shipment,
+    delete_shipment,
+    update_shipment_status,
+    mark_shipped,
+    mark_delivered,
+    track_shipment,
+    track_by_number,
+    add_tracking_event,
+};
 use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
 use axum::Json;
 use std::sync::Arc;
@@ -53,15 +81,7 @@ use uuid::Uuid;
         (url = "/api/v1", description = "Production API v1"),
         (url = "/api/v1-beta", description = "Beta API v1")
     ),
-    paths(
-        // TODO: Uncomment when handlers module is implemented
-        // create_order,
-        // get_order,
-        // update_order_status,
-        // list_orders,
-        // cancel_order,
-        // add_order_item,
-    ),
+    // paths are temporarily omitted to resolve compile issues with path macros
     components(
         schemas(
             // Only include types that actually exist
@@ -74,6 +94,28 @@ use uuid::Uuid;
             crate::handlers::inventory::AllocateInventoryRequest,
             crate::handlers::inventory::ReserveInventoryRequest,
             crate::handlers::inventory::InventoryFilters,
+            // Returns types
+            crate::handlers::returns::Return,
+            crate::handlers::returns::ReturnItem,
+            crate::handlers::returns::CreateReturnRequest,
+            crate::handlers::returns::CreateReturnItemRequest,
+            crate::handlers::returns::UpdateReturnRequest,
+            crate::handlers::returns::ProcessReturnRequest,
+            crate::handlers::returns::ProcessReturnItemRequest,
+            crate::handlers::returns::RestockReturnRequest,
+            crate::handlers::returns::RestockItemRequest,
+            crate::handlers::returns::ReturnFilters,
+            // Shipments types
+            crate::handlers::shipments::Shipment,
+            crate::handlers::shipments::ShipmentItem,
+            crate::handlers::shipments::Address,
+            crate::handlers::shipments::Dimensions,
+            crate::handlers::shipments::TrackingEvent,
+            crate::handlers::shipments::CreateShipmentRequest,
+            crate::handlers::shipments::CreateShipmentItemRequest,
+            crate::handlers::shipments::UpdateShipmentRequest,
+            crate::handlers::shipments::TrackingUpdateRequest,
+            crate::handlers::shipments::ShipmentFilters,
             // TODO: Add order-related schemas when handlers module is implemented
         )
     ),
@@ -154,10 +196,21 @@ impl Modify for SecurityAddon {
 
 /// Lightweight Swagger UI + OpenAPI JSON routes for Axum
 pub fn swagger_routes() -> Router {
-    Router::new().merge(
-        SwaggerUi::new("/docs")
-            .url("/api-docs/v1/openapi.json", ApiDocV1::openapi())
-            .url("/api-docs/v2/openapi.json", ApiDocV2::openapi()),
+    Router::new()
+        .merge(
+            SwaggerUi::new("/docs")
+                .url("/api-docs/v1/openapi.json", ApiDocV1::openapi())
+                .url("/api-docs/v2/openapi.json", ApiDocV2::openapi()),
+        )
+        // Convenience alias: serve v1 spec at /swagger.json
+        .route("/swagger.json", get(swagger_json))
+}
+
+/// Serve the primary OpenAPI spec at /swagger.json (alias for v1)
+pub async fn swagger_json() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(ApiDocV1::openapi()).unwrap()),
     )
 }
 

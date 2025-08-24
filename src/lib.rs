@@ -168,6 +168,10 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route("/returns/{id}", axum::routing::put(handlers::returns::update_return::<AppState>))
         .route("/returns/{id}/status", axum::routing::put(handlers::returns::update_return_status::<AppState>))
         .route("/returns/{id}/process", axum::routing::post(handlers::returns::process_return::<AppState>))
+        .route("/returns/{id}/approve", axum::routing::post(handlers::returns::approve_return::<AppState>))
+        .route("/returns/{id}/reject", axum::routing::post(handlers::returns::reject_return::<AppState>))
+        .route("/returns/{id}/restock", axum::routing::post(handlers::returns::restock_return::<AppState>))
+        .route("/returns/{id}/refund", axum::routing::post(handlers::returns::issue_refund::<AppState>))
         .with_permission("returns:write");
 
     let returns_delete = Router::new()
@@ -185,6 +189,9 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route("/shipments", axum::routing::post(handlers::shipments::create_shipment::<AppState>))
         .route("/shipments/{id}", axum::routing::put(handlers::shipments::update_shipment::<AppState>))
         .route("/shipments/{id}/status", axum::routing::put(handlers::shipments::update_shipment_status::<AppState>))
+        .route("/shipments/{id}/ship", axum::routing::post(handlers::shipments::mark_shipped::<AppState>))
+        .route("/shipments/{id}/deliver", axum::routing::post(handlers::shipments::mark_delivered::<AppState>))
+        .route("/shipments/{id}/tracking", axum::routing::post(handlers::shipments::add_tracking_event::<AppState>))
         .with_permission("shipments:write");
 
     let shipments_delete = Router::new()

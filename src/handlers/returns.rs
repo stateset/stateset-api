@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::{ToSchema, IntoParams};
 use serde_json::json;
 use uuid::Uuid;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ pub trait ReturnsAppState: Clone + Send + Sync + 'static {}
 impl<T> ReturnsAppState for T where T: Clone + Send + Sync + 'static {}
 
 #[derive(Debug, Serialize, Deserialize)]
+#[derive(ToSchema)]
 pub struct Return {
     pub id: String,
     pub order_id: String,
@@ -35,7 +37,7 @@ pub struct Return {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ReturnItem {
     pub id: String,
     pub order_item_id: String,
@@ -47,7 +49,7 @@ pub struct ReturnItem {
     pub restockable: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReturnRequest {
     pub order_id: String,
     pub reason: String,
@@ -56,28 +58,28 @@ pub struct CreateReturnRequest {
     pub items: Vec<CreateReturnItemRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReturnItemRequest {
     pub order_item_id: String,
     pub quantity: i32,
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateReturnRequest {
     pub status: Option<String>,
     pub inspection_notes: Option<String>,
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ProcessReturnRequest {
     pub action: String, // "approve", "reject", "partial_approve"
     pub inspection_notes: String,
     pub items: Vec<ProcessReturnItemRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ProcessReturnItemRequest {
     pub return_item_id: String,
     pub approved_quantity: i32,
@@ -85,21 +87,22 @@ pub struct ProcessReturnItemRequest {
     pub restockable: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RestockReturnRequest {
     pub return_id: String,
     pub location_id: String,
     pub items: Vec<RestockItemRequest>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RestockItemRequest {
     pub return_item_id: String,
     pub quantity: i32,
     pub condition: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ReturnFilters {
     pub status: Option<String>,
     pub customer_id: Option<String>,
@@ -109,6 +112,11 @@ pub struct ReturnFilters {
     pub end_date: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateReturnStatusBody {
+    pub status: String,
 }
 
 /// Create the returns router
@@ -127,6 +135,13 @@ where
 }
 
 /// List returns with optional filtering
+#[utoipa::path(
+    get,
+    path = "/api/v1/returns",
+    params(ReturnFilters),
+    responses((status = 200, description = "List returns")),
+    tag = "returns"
+)]
 pub async fn list_returns<S>(
     State(_state): State<S>,
     Query(filters): Query<ReturnFilters>,
@@ -219,6 +234,13 @@ where
 }
 
 /// Create a new return
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns",
+    request_body = CreateReturnRequest,
+    responses((status = 201, description = "Return created", body = Return)),
+    tag = "returns"
+)]
 pub async fn create_return<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateReturnRequest>,
@@ -266,6 +288,13 @@ where
 }
 
 /// Get a specific return by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/returns/{id}",
+    params(("id" = String, Path, description = "Return ID")),
+    responses((status = 200, description = "Return details", body = Return)),
+    tag = "returns"
+)]
 pub async fn get_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -306,6 +335,14 @@ where
 }
 
 /// Update a return
+#[utoipa::path(
+    put,
+    path = "/api/v1/returns/{id}",
+    params(("id" = String, Path, description = "Return ID")),
+    request_body = UpdateReturnRequest,
+    responses((status = 200, description = "Return updated", body = Return)),
+    tag = "returns"
+)]
 pub async fn update_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -336,15 +373,23 @@ where
 }
 
 /// Update return status
+#[utoipa::path(
+    put,
+    path = "/api/v1/returns/{id}/status",
+    params(("id" = String, Path, description = "Return ID")),
+    request_body = UpdateReturnStatusBody,
+    responses((status = 200, description = "Status updated")),
+    tag = "returns"
+)]
 pub async fn update_return_status<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-    Json(payload): Json<serde_json::Value>,
+    Json(payload): Json<UpdateReturnStatusBody>,
 ) -> Result<impl IntoResponse, ServiceError> 
 where 
     S: ReturnsAppState,
 {
-    let new_status = payload.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
+    let new_status = payload.status.as_str();
     
     let response = json!({
         "message": format!("Return {} status updated to {}", id, new_status),
@@ -357,6 +402,13 @@ where
 }
 
 /// Delete a return
+#[utoipa::path(
+    delete,
+    path = "/api/v1/returns/{id}",
+    params(("id" = String, Path, description = "Return ID")),
+    responses((status = 200, description = "Return deleted")),
+    tag = "returns"
+)]
 pub async fn delete_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -373,6 +425,14 @@ where
 }
 
 /// Process a return (inspect and make approval decision)
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/process",
+    params(("id" = String, Path, description = "Return ID")),
+    request_body = ProcessReturnRequest,
+    responses((status = 200, description = "Return processed")),
+    tag = "returns"
+)]
 pub async fn process_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -400,7 +460,14 @@ where
 }
 
 /// Approve a return
-async fn approve_return<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/approve",
+    params(("id" = String, Path, description = "Return ID")),
+    responses((status = 200, description = "Return approved")),
+    tag = "returns"
+)]
+pub async fn approve_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ServiceError> 
@@ -418,7 +485,14 @@ where
 }
 
 /// Reject a return
-async fn reject_return<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/reject",
+    params(("id" = String, Path, description = "Return ID")),
+    responses((status = 200, description = "Return rejected")),
+    tag = "returns"
+)]
+pub async fn reject_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ServiceError> 
@@ -436,7 +510,15 @@ where
 }
 
 /// Restock returned items
-async fn restock_return<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/restock",
+    params(("id" = String, Path, description = "Return ID")),
+    request_body = RestockReturnRequest,
+    responses((status = 200, description = "Items restocked")),
+    tag = "returns"
+)]
+pub async fn restock_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<RestockReturnRequest>,
@@ -456,7 +538,14 @@ where
 }
 
 /// Issue refund for return
-async fn issue_refund<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/refund",
+    params(("id" = String, Path, description = "Return ID")),
+    responses((status = 200, description = "Refund issued")),
+    tag = "returns"
+)]
+pub async fn issue_refund<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ServiceError> 

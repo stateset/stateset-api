@@ -23,6 +23,10 @@ Cargo.lock
 
 # Logs
 *.log
+check*.log
+check*.txt
+cargo_check*.log
+server.out
 logs/
 log/
 
@@ -90,6 +94,13 @@ temp/
 # Specific project files
 CLAUDE.md
 build_errors.log
+
+# Local build/output directories
+target_local/
+data/
+
+# Misc binaries
+protoc.zip
 
 # Config directory (if it contains sensitive data)
 # Uncomment if needed:

@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::{ToSchema, IntoParams};
 use serde_json::json;
 use uuid::Uuid;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 pub trait ShipmentsAppState: Clone + Send + Sync + 'static {}
 impl<T> ShipmentsAppState for T where T: Clone + Send + Sync + 'static {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Shipment {
     pub id: String,
     pub order_id: String,
@@ -37,7 +38,7 @@ pub struct Shipment {
     pub delivered_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ShipmentItem {
     pub id: String,
     pub order_item_id: String,
@@ -46,7 +47,7 @@ pub struct ShipmentItem {
     pub serial_numbers: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Address {
     pub street1: String,
     pub street2: Option<String>,
@@ -56,7 +57,7 @@ pub struct Address {
     pub country: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Dimensions {
     pub length: f64,
     pub width: f64,
@@ -64,7 +65,7 @@ pub struct Dimensions {
     pub unit: String, // "in", "cm"
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TrackingEvent {
     pub id: String,
     pub shipment_id: String,
@@ -75,7 +76,7 @@ pub struct TrackingEvent {
     pub carrier_event_code: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateShipmentRequest {
     pub order_id: String,
     pub carrier: String,
@@ -86,14 +87,14 @@ pub struct CreateShipmentRequest {
     pub dimensions: Option<Dimensions>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateShipmentItemRequest {
     pub order_item_id: String,
     pub quantity: i32,
     pub serial_numbers: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateShipmentRequest {
     pub status: Option<String>,
     pub tracking_number: Option<String>,
@@ -101,7 +102,7 @@ pub struct UpdateShipmentRequest {
     pub carrier: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TrackingUpdateRequest {
     pub status: String,
     pub description: String,
@@ -109,7 +110,8 @@ pub struct TrackingUpdateRequest {
     pub carrier_event_code: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ShipmentFilters {
     pub status: Option<String>,
     pub carrier: Option<String>,
@@ -119,6 +121,11 @@ pub struct ShipmentFilters {
     pub end_date: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateShipmentStatusBody {
+    pub status: String,
 }
 
 /// Create the shipments router
@@ -137,6 +144,13 @@ where
 }
 
 /// List shipments with optional filtering
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments",
+    params(ShipmentFilters),
+    responses((status = 200, description = "List shipments")),
+    tag = "shipments"
+)]
 pub async fn list_shipments<S>(
     State(_state): State<S>,
     Query(filters): Query<ShipmentFilters>,
@@ -251,6 +265,13 @@ where
 }
 
 /// Create a new shipment
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments",
+    request_body = CreateShipmentRequest,
+    responses((status = 201, description = "Shipment created", body = Shipment)),
+    tag = "shipments"
+)]
 pub async fn create_shipment<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateShipmentRequest>,
@@ -291,6 +312,13 @@ where
 }
 
 /// Get a specific shipment by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments/{id}",
+    params(("id" = String, Path, description = "Shipment ID")),
+    responses((status = 200, description = "Shipment details", body = Shipment)),
+    tag = "shipments"
+)]
 pub async fn get_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -342,6 +370,14 @@ where
 }
 
 /// Update a shipment
+#[utoipa::path(
+    put,
+    path = "/api/v1/shipments/{id}",
+    params(("id" = String, Path, description = "Shipment ID")),
+    request_body = UpdateShipmentRequest,
+    responses((status = 200, description = "Shipment updated", body = Shipment)),
+    tag = "shipments"
+)]
 pub async fn update_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -381,6 +417,13 @@ where
 }
 
 /// Delete a shipment
+#[utoipa::path(
+    delete,
+    path = "/api/v1/shipments/{id}",
+    params(("id" = String, Path, description = "Shipment ID")),
+    responses((status = 200, description = "Shipment deleted")),
+    tag = "shipments"
+)]
 pub async fn delete_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -397,7 +440,14 @@ where
 }
 
 /// Mark shipment as shipped
-async fn mark_shipped<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments/{id}/ship",
+    params(("id" = String, Path, description = "Shipment ID")),
+    responses((status = 200, description = "Shipment marked shipped")),
+    tag = "shipments"
+)]
+pub async fn mark_shipped<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ServiceError> 
@@ -415,7 +465,14 @@ where
 }
 
 /// Mark shipment as delivered
-async fn mark_delivered<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments/{id}/deliver",
+    params(("id" = String, Path, description = "Shipment ID")),
+    responses((status = 200, description = "Shipment marked delivered")),
+    tag = "shipments"
+)]
+pub async fn mark_delivered<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ServiceError> 
@@ -433,6 +490,13 @@ where
 }
 
 /// Track shipment by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments/{id}/track",
+    params(("id" = String, Path, description = "Shipment ID")),
+    responses((status = 200, description = "Shipment tracking")),
+    tag = "shipments"
+)]
 pub async fn track_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -481,7 +545,14 @@ where
 }
 
 /// Track shipment by tracking number
-async fn track_by_number<S>(
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments/track/{tracking_number}",
+    params(("tracking_number" = String, Path, description = "Tracking Number")),
+    responses((status = 200, description = "Tracking by number")),
+    tag = "shipments"
+)]
+pub async fn track_by_number<S>(
     State(_state): State<S>,
     Path(tracking_number): Path<String>,
 ) -> Result<impl IntoResponse, ServiceError> 
@@ -521,7 +592,15 @@ where
 }
 
 /// Add tracking event to shipment
-async fn add_tracking_event<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments/{id}/tracking",
+    params(("id" = String, Path, description = "Shipment ID")),
+    request_body = TrackingUpdateRequest,
+    responses((status = 201, description = "Tracking event added", body = TrackingEvent)),
+    tag = "shipments"
+)]
+pub async fn add_tracking_event<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<TrackingUpdateRequest>,
@@ -543,15 +622,23 @@ where
 }
 
 /// Update shipment status
+#[utoipa::path(
+    put,
+    path = "/api/v1/shipments/{id}/status",
+    params(("id" = String, Path, description = "Shipment ID")),
+    request_body = UpdateShipmentStatusBody,
+    responses((status = 200, description = "Status updated")),
+    tag = "shipments"
+)]
 pub async fn update_shipment_status<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-    Json(payload): Json<serde_json::Value>,
+    Json(payload): Json<UpdateShipmentStatusBody>,
 ) -> Result<impl IntoResponse, ServiceError> 
 where 
     S: ShipmentsAppState,
 {
-    let new_status = payload.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
+    let new_status = payload.status.as_str();
     
     let response = json!({
         "message": format!("Shipment {} status updated to {}", id, new_status),

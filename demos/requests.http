@@ -1,0 +1,51 @@
+### Stateset API - HTTP Request Collection (for VS Code REST Client / IntelliJ HTTP)
+
+@baseUrl = http://localhost:8080
+@apiKey = sk_test_example123
+
+### Health
+GET {{baseUrl}}/health
+
+### Readiness
+GET {{baseUrl}}/health/ready
+
+### Metrics
+GET {{baseUrl}}/metrics
+
+### API v1 Status
+GET {{baseUrl}}/api/v1/status
+
+### Auth: Login (mock)
+# @name login
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "tester@example.com",
+  "password": "secret"
+}
+
+### Extract access token
+@accessToken = {{login.response.body.$.access_token}}
+
+### Orders - List (API Key)
+GET {{baseUrl}}/api/v1/orders?page=1&limit=2
+X-API-Key: {{apiKey}}
+
+### Orders - List (JWT)
+GET {{baseUrl}}/api/v1/orders?page=1&limit=2
+Authorization: Bearer {{accessToken}}
+
+### Orders - Create (JWT) - may return 403 without orders:write
+POST {{baseUrl}}/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "customer_id": "cust_001",
+  "items": [
+    {"product_id": "sku_123", "quantity": 2, "unit_price": "19.99"},
+    {"product_id": "sku_456", "quantity": 1}
+  ]
+}
+

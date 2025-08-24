@@ -364,17 +364,30 @@ impl AuthService {
     }
 
     /// Get user roles
-    async fn get_user_roles(&self, user_id: Uuid) -> Result<Vec<String>, AuthError> {
-        // This would fetch the user's roles from the database
-        // For now, we'll just return some mock roles
-        Ok(vec!["user".to_string()])
+    async fn get_user_roles(&self, _user_id: Uuid) -> Result<Vec<String>, AuthError> {
+        // In production, fetch roles from DB. For local/testing, allow env override.
+        let mut roles = vec!["user".to_string()];
+        if let Ok(raw) = std::env::var("AUTH_DEFAULT_ROLES") {
+            for r in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                if !roles.iter().any(|x| x == r) { roles.push(r.to_string()); }
+            }
+        }
+        if std::env::var("AUTH_ADMIN").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+            if !roles.iter().any(|x| x == "admin") { roles.push("admin".to_string()); }
+        }
+        Ok(roles)
     }
 
     /// Get user permissions
-    async fn get_user_permissions(&self, user_id: Uuid) -> Result<Vec<String>, AuthError> {
-        // This would fetch the user's permissions from the database
-        // For now, we'll just return some mock permissions
-        Ok(vec!["orders:read".to_string(), "orders:create".to_string()])
+    async fn get_user_permissions(&self, _user_id: Uuid) -> Result<Vec<String>, AuthError> {
+        // In production, fetch permissions from DB. For local/testing, allow env override.
+        let mut perms = vec!["orders:read".to_string(), "orders:create".to_string()];
+        if let Ok(raw) = std::env::var("AUTH_DEFAULT_PERMISSIONS") {
+            for p in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                if !perms.iter().any(|x| x == p) { perms.push(p.to_string()); }
+            }
+        }
+        Ok(perms)
     }
 
     /// Store a refresh token

@@ -8,31 +8,21 @@ autobins = false
 members = [".", "migrations", "src/bin/only_standalone"]
 
 [dependencies]
-async-graphql = "4.0"
 async-trait = "0.1.81"
 tokio = { version = "1.34.0", features = ["full"] }
 axum = "0.8"
-axum-macros = "0.4"
-actix-web = "4.4"
-actix-cors = "0.7"
-env_logger = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
 rust_decimal = { version = "1.30", features = ["serde"] }
 tower = { version = "0.5.2", features = ["util"] }
 tower-http = { version = "0.5.0", features = ["fs", "trace", "cors", "timeout", "compression-full"] }
-juniper = "0.15"
-juniper_actix = "0.6"
 jsonwebtoken = "8.0"
-dotenv = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-dsl_auto_type = "0.1.2"
 prost = "0.13"
 prost-types = "0.13"
 # Temporarily disabled due to TLS issues
 redis = { version = "0.21.5", features = ["aio", "tokio-comp", "connection-manager"], default-features = false }
 lazy_static = "1.4"
-lru = "0.7.8"
 tonic = "0.13"
 tonic-web = "0.13"
 validator = { version = "0.14", features = ["derive"] }
@@ -41,43 +31,37 @@ uuid = { version = "1.4", features = ["fast-rng", "v4", "serde"] }
 sea-orm = { version = "1.0.0", features = ["sqlx-sqlite", "debug-print", "with-chrono", "with-uuid", "with-rust_decimal", "with-time"] }
 sea-orm-migration = "1.0.0"
 anyhow = "1.0"
-base64 = "0.22"
 # Temporarily disabled due to TLS issues
 # diesel = { version = "1.4", features = ["postgres", "uuid", "chrono", "serde_json", "numeric"] }
-log = "0.4"
-bigdecimal = { version = "0.3", features = ["serde"] }
-futures = "0.3"
 # Temporarily disabled due to TLS issues
 # prometheus = { version = "0.13", features = ["push", "process"] }
-http-body-util = "0.1"
-bytes = "1"
 http = "1"
-slog = { version = "2.7", features = ["max_level_trace", "release_max_level_info"] }
-slog-term = "2.9"
-slog-async = "2.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-opentelemetry = "0.21.0"
-sqlx = { version = "0.7", features = ["sqlite", "uuid", "chrono", "time", "json", "runtime-tokio"] }
 migrations = { path = "migrations" }
 # OpenAPI documentation
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid", "decimal"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+dashmap = "5.5"
+config = "0.13"
+rust_decimal_macros = "1.30"
+
+# Required by modules in the repo
+base64 = "0.22"
 rand = "0.8"
-strum = { version = "0.25", features = ["derive"] }
+hmac = "0.12"
+sha2 = "0.10"
+bytes = "1"
+http-body-util = "0.1"
+futures = "0.3"
+bigdecimal = { version = "0.3", features = ["serde"] }
+slog = { version = "2.7", features = ["max_level_trace", "release_max_level_info"] }
+metrics = "0.21"
 opentelemetry = { version = "0.21", features = ["trace", "metrics"] }
 opentelemetry-stdout = { version = "0.3", features = ["trace"] }
 opentelemetry_sdk = "0.21.2"
-
 pin-project-lite = "0.2"
 hyper = { version = "1.0", features = ["full"] }
-dashmap = "5.5"
-sha2 = "0.10"
-hmac = "0.12"
-config = "0.13"
-metrics = "0.21"
-mockall = "0.11"
-rust_decimal_macros = "1.30"
 
 [features]
 demos = []
