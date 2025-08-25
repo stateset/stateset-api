@@ -48,8 +48,8 @@ async fn main() -> anyhow::Result<()> {
     let db_arc = Arc::new(db::establish_connection_from_app_config(&config).await?);
     tracing::info!("Database connection established");
 
-    // Run database migrations if enabled
-    if config.auto_migrate {
+    // Run database migrations in development by default, or when explicitly enabled
+    if config.auto_migrate || !config.is_production() {
         if let Err(e) = db::run_migrations(&db_arc).await {
             tracing::warn!("Migration warning: {}", e);
         }
@@ -99,6 +99,13 @@ async fn main() -> anyhow::Result<()> {
         ),
         redis: redis_client.clone(),
     };
+
+    // Seed demo data in development for smoother local testing
+    if !state.config.is_production() {
+        if let Err(e) = state.services.order.ensure_demo_order().await {
+            tracing::warn!("Demo order seeding failed: {}", e);
+        }
+    }
 
     // Create StateSet API for gRPC with shared event sender
     let stateset_api = StateSetApi::with_event_sender(db_access, db_arc.clone(), event_sender.clone());

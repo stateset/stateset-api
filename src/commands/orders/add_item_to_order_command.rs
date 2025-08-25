@@ -35,7 +35,6 @@ pub struct AddItemToOrderCommand {
     pub product_id: Uuid,
     #[validate(range(min = 1, message = "Quantity must be at least 1"))]
     pub quantity: i32,
-    #[validate(range(min = 0.01, message = "Unit price must be positive"))]
     pub unit_price: BigDecimal,
     pub product_name: Option<String>,
     pub product_sku: Option<String>,
@@ -96,7 +95,7 @@ impl AddItemToOrderCommand {
             product_sku: Set(self.product_sku.clone().unwrap_or_default()),
             quantity: Set(self.quantity),
             unit_price: Set(self.unit_price.to_f64().unwrap_or(0.0)),
-            total_price: Set((self.unit_price.clone() * rust_decimal::Decimal::from(self.quantity)).to_f64().unwrap_or(0.0)),
+            total_price: Set((self.unit_price.clone() * BigDecimal::from(self.quantity)).to_f64().unwrap_or(0.0)),
             discount_amount: Set(0.0),
             tax_amount: Set(0.0),
             status: Set(order_item_entity::OrderItemStatus::Pending),

@@ -134,8 +134,8 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route("/orders/{id}", axum::routing::put(handlers::orders::update_order))
         .route("/orders/{id}/items", axum::routing::post(handlers::orders::add_order_item))
         .route("/orders/{id}/status", axum::routing::put(handlers::orders::update_order_status))
-        .route("/orders/{id}/cancel", axum::routing::post(handlers::orders::cancel_order::<AppState>))
-        .route("/orders/{id}/archive", axum::routing::post(handlers::orders::archive_order::<AppState>))
+        .route("/orders/{id}/cancel", axum::routing::post(handlers::orders::cancel_order))
+        .route("/orders/{id}/archive", axum::routing::post(handlers::orders::archive_order))
         .with_permission("orders:write");
 
     let orders_delete = Router::new()

@@ -26,30 +26,28 @@ pub trait Command: Send + Sync {
     ) -> Result<Self::Result, ServiceError>;
 }
 
-pub mod advancedshippingnotice;
-pub mod billofmaterials;
-pub mod inventory;
 pub mod orders;
-pub mod purchaseorders;
-pub mod returns;
-pub mod shipments;
-pub mod warranties;
-pub mod workorders;
-
-// Newly added command modules
-pub mod picking;
-pub mod receiving;
-// Additional command modules
-pub mod analytics;
-pub mod audit;
-pub mod carriers;
-pub mod customers;
-pub mod forecasting;
-pub mod kitting;
-pub mod maintenance;
-pub mod packaging;
-pub mod payments;
-pub mod quality;
-pub mod suppliers;
-pub mod transfers;
-pub mod warehouses;
+// Other command modules are temporarily disabled to reduce compile surface
+// pub mod advancedshippingnotice;
+// pub mod billofmaterials;
+// pub mod inventory;
+// pub mod purchaseorders;
+// pub mod returns;
+// pub mod shipments;
+// pub mod warranties;
+// pub mod workorders;
+// pub mod picking;
+// pub mod receiving;
+// pub mod analytics;
+// pub mod audit;
+// pub mod carriers;
+// pub mod customers;
+// pub mod forecasting;
+// pub mod kitting;
+// pub mod maintenance;
+// pub mod packaging;
+// pub mod payments;
+// pub mod quality;
+// pub mod suppliers;
+// pub mod transfers;
+// pub mod warehouses;

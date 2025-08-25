@@ -37,6 +37,7 @@ pub struct AppServices {
     pub cart: Arc<crate::services::commerce::CartService>,
     pub checkout: Arc<crate::services::commerce::CheckoutService>,
     pub customer: Arc<crate::services::commerce::CustomerService>,
+    pub order: Arc<crate::services::orders::OrderService>,
     // pub cash_sales: Arc<crate::services::cash_sale::CashSaleService>,
     // pub reports: Arc<crate::services::reports::ReportService>,
 }
@@ -68,7 +69,7 @@ impl AppServices {
         let checkout = Arc::new(crate::services::commerce::CheckoutService::new(
             db_pool.clone(),
             event_sender.clone(),
-            order_service,
+            order_service.clone(),
         ));
         let customer = Arc::new(crate::services::commerce::CustomerService::new(
             db_pool.clone(),
@@ -76,7 +77,7 @@ impl AppServices {
             auth_service,
         ));
 
-        Self { product_catalog, cart, checkout, customer }
+        Self { product_catalog, cart, checkout, customer, order: order_service }
     }
 }
 

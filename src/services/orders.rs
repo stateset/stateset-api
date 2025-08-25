@@ -14,7 +14,7 @@ use validator::Validate;
 use crate::{
     db::DbPool,
     entities::order::{self, ActiveModel as OrderActiveModel, Entity as OrderEntity, Model as OrderModel},
-    entities::order_item::{Entity as OrderItemEntity, Model as OrderItemModel},
+    entities::order_item::{Entity as OrderItemEntity, Model as OrderItemModel, Column as OrderItemColumn, ActiveModel as OrderItemActiveModel},
     errors::ServiceError,
     events::{Event, EventSender},
 };
@@ -96,6 +96,56 @@ impl OrderService {
             db_pool,
             event_sender,
         }
+    }
+
+    /// Creates a minimal order with sensible defaults. Does not insert items.
+    #[instrument(skip(self), fields(customer_id = %customer_id))]
+    pub async fn create_order_minimal(
+        &self,
+        customer_id: Uuid,
+        total_amount: Decimal,
+        currency: Option<String>,
+        notes: Option<String>,
+        shipping_address: Option<String>,
+        billing_address: Option<String>,
+        payment_method: Option<String>,
+    ) -> Result<OrderResponse, ServiceError> {
+        let db = &*self.db_pool;
+        let now = Utc::now();
+        let order_id = Uuid::new_v4();
+
+        let order_active = OrderActiveModel {
+            id: Set(order_id),
+            order_number: Set(format!("ORD-{}", now.timestamp_millis())),
+            customer_id: Set(customer_id),
+            status: Set(STATUS_PENDING.to_string()),
+            order_date: Set(now),
+            total_amount: Set(total_amount),
+            currency: Set(currency.unwrap_or_else(|| "USD".to_string())),
+            payment_status: Set("pending".to_string()),
+            fulfillment_status: Set("unfulfilled".to_string()),
+            payment_method: Set(payment_method),
+            shipping_method: Set(None),
+            tracking_number: Set(None),
+            notes: Set(notes),
+            shipping_address: Set(shipping_address),
+            billing_address: Set(billing_address),
+            is_archived: Set(false),
+            created_at: Set(now),
+            updated_at: Set(Some(now)),
+            version: Set(1),
+        };
+
+        let model = order_active.insert(db).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to create minimal order");
+            ServiceError::DatabaseError(e.into())
+        })?;
+
+        if let Some(event_sender) = &self.event_sender {
+            let _ = event_sender.send(Event::OrderCreated(order_id)).await;
+        }
+
+        Ok(self.model_to_response(model))
     }
 
     /// Creates a new order in the database
@@ -242,6 +292,70 @@ impl OrderService {
             page,
             per_page,
         })
+    }
+
+    /// Retrieves items for a given order
+    #[instrument(skip(self), fields(order_id = %order_id))]
+    pub async fn get_order_items(&self, order_id: Uuid) -> Result<Vec<OrderItemModel>, ServiceError> {
+        let db = &*self.db_pool;
+        let items = OrderItemEntity::find()
+            .filter(OrderItemColumn::OrderId.eq(order_id))
+            .order_by_asc(OrderItemColumn::CreatedAt)
+            .all(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to fetch order items");
+                ServiceError::DatabaseError(e.into())
+            })?;
+        Ok(items)
+    }
+
+    /// Adds an item to an order
+    #[instrument(skip(self), fields(order_id = %order_id, sku = %sku))]
+    pub async fn add_order_item(
+        &self,
+        order_id: Uuid,
+        sku: String,
+        product_id: Option<Uuid>,
+        name: Option<String>,
+        quantity: i32,
+        unit_price: Decimal,
+        tax_rate: Option<Decimal>,
+    ) -> Result<OrderItemModel, ServiceError> {
+        let db = &*self.db_pool;
+
+        let total_price = unit_price * Decimal::from(quantity);
+        let rate = tax_rate.unwrap_or(Decimal::ZERO);
+        let tax_amount = (total_price * rate).round_dp(2);
+
+        let am = OrderItemActiveModel {
+            id: Set(Uuid::new_v4()),
+            order_id: Set(order_id),
+            product_id: Set(product_id.unwrap_or_else(Uuid::new_v4)),
+            sku: Set(sku),
+            name: Set(name.unwrap_or_else(|| "".to_string())),
+            quantity: Set(quantity),
+            unit_price: Set(unit_price),
+            total_price: Set(total_price),
+            discount: Set(Decimal::ZERO),
+            tax_rate: Set(rate),
+            tax_amount: Set(tax_amount),
+            status: Set("pending".to_string()),
+            notes: Set(None),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Some(Utc::now())),
+        };
+
+        let saved = am.insert(db).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to add order item");
+            ServiceError::DatabaseError(e.into())
+        })?;
+
+        if let Some(sender) = &self.event_sender {
+            let _ = sender.send(Event::OrderUpdated(order_id)).await;
+        }
+
+        Ok(saved)
     }
 
     /// Updates an order's status
@@ -394,6 +508,134 @@ impl OrderService {
         info!(order_id = %order_id, "Order archived successfully");
 
         Ok(self.model_to_response(archived_order))
+    }
+
+    /// Find an order by its order_number (string identifier)
+    #[instrument(skip(self))]
+    pub async fn get_order_by_order_number(
+        &self,
+        order_number: &str,
+    ) -> Result<Option<OrderResponse>, ServiceError> {
+        let db = &*self.db_pool;
+        let found = OrderEntity::find()
+            .filter(order::Column::OrderNumber.eq(order_number.to_string()))
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_number = order_number, "Failed to fetch order by order_number");
+                ServiceError::DatabaseError(e.into())
+            })?;
+        Ok(found.map(|m| self.model_to_response(m)))
+    }
+
+    /// Resolve an order's UUID by order_number
+    #[instrument(skip(self))]
+    pub async fn find_order_id_by_order_number(
+        &self,
+        order_number: &str,
+    ) -> Result<Option<Uuid>, ServiceError> {
+        let db = &*self.db_pool;
+        let found = OrderEntity::find()
+            .filter(order::Column::OrderNumber.eq(order_number.to_string()))
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_number = order_number, "Failed to resolve order id by order_number");
+                ServiceError::DatabaseError(e.into())
+            })?;
+        Ok(found.map(|m| m.id))
+    }
+
+    /// Ensure a demo order with order_number "order_123" exists in development
+    #[instrument(skip(self))]
+    pub async fn ensure_demo_order(&self) -> Result<Uuid, ServiceError> {
+        use sea_orm::ActiveValue::Set;
+        let db = &*self.db_pool;
+
+        if let Some(existing) = OrderEntity::find()
+            .filter(order::Column::OrderNumber.eq("order_123"))
+            .one(db)
+            .await
+            .map_err(|e| ServiceError::DatabaseError(e.into()))? {
+            return Ok(existing.id);
+        }
+
+        let now = Utc::now();
+        let order_id = Uuid::new_v4();
+        let header = OrderActiveModel {
+            id: Set(order_id),
+            order_number: Set("order_123".to_string()),
+            customer_id: Set(Uuid::new_v4()),
+            status: Set(STATUS_PROCESSING.to_string()),
+            order_date: Set(now),
+            total_amount: Set(Decimal::new(6997, 2)),
+            currency: Set("USD".to_string()),
+            payment_status: Set("paid".to_string()),
+            fulfillment_status: Set("unfulfilled".to_string()),
+            payment_method: Set(Some("pm_123".to_string())),
+            shipping_method: Set(Some("standard".to_string())),
+            tracking_number: Set(Some("ship_456".to_string())),
+            notes: Set(Some("Demo order".to_string())),
+            shipping_address: Set(Some("123 Main St, Anytown, CA, US 12345".to_string())),
+            billing_address: Set(None),
+            is_archived: Set(false),
+            created_at: Set(now - chrono::Duration::hours(2)),
+            updated_at: Set(Some(now)),
+            version: Set(1),
+        };
+        let _model = header.insert(db).await.map_err(|e| ServiceError::DatabaseError(e.into()))?;
+
+        // Add a couple of items if none exist
+        let existing_items = OrderItemEntity::find()
+            .filter(OrderItemColumn::OrderId.eq(order_id))
+            .count(db)
+            .await
+            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+        if existing_items == 0 {
+            let _ = OrderItemActiveModel {
+                id: Set(Uuid::new_v4()),
+                order_id: Set(order_id),
+                product_id: Set(Uuid::new_v4()),
+                sku: Set("prod_123".to_string()),
+                name: Set("Sample Product 1".to_string()),
+                quantity: Set(2),
+                unit_price: Set(Decimal::new(1999, 2)),
+                total_price: Set(Decimal::new(3998, 2)),
+                discount: Set(Decimal::ZERO),
+                tax_rate: Set(Decimal::new(160, 2) / Decimal::new(1999, 2)),
+                tax_amount: Set(Decimal::new(320, 2)),
+                status: Set("pending".to_string()),
+                notes: Set(None),
+                created_at: Set(now - chrono::Duration::hours(2)),
+                updated_at: Set(Some(now)),
+            }
+            .insert(db)
+            .await
+            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+
+            let _ = OrderItemActiveModel {
+                id: Set(Uuid::new_v4()),
+                order_id: Set(order_id),
+                product_id: Set(Uuid::new_v4()),
+                sku: Set("prod_456".to_string()),
+                name: Set("Sample Product 2".to_string()),
+                quantity: Set(1),
+                unit_price: Set(Decimal::new(2999, 2)),
+                total_price: Set(Decimal::new(2999, 2)),
+                discount: Set(Decimal::ZERO),
+                tax_rate: Set(Decimal::new(120, 2) / Decimal::new(2999, 2)),
+                tax_amount: Set(Decimal::new(240, 2)),
+                status: Set("pending".to_string()),
+                notes: Set(None),
+                created_at: Set(now - chrono::Duration::hours(2)),
+                updated_at: Set(Some(now)),
+            }
+            .insert(db)
+            .await
+            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+        }
+
+        Ok(order_id)
     }
 
     /// Validates if a status transition is allowed

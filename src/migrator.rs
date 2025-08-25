@@ -36,18 +36,76 @@ mod m20230101_000001_create_orders_table {
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
         async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-            // Create orders table
+            // Create orders table aligned with entities::order Model
             manager
                 .create_table(
                     Table::create()
                         .table(Orders::Table)
                         .if_not_exists()
                         .col(ColumnDef::new(Orders::Id).uuid().primary_key().not_null())
+                        .col(ColumnDef::new(Orders::OrderNumber).string().not_null())
                         .col(ColumnDef::new(Orders::CustomerId).uuid().not_null())
                         .col(ColumnDef::new(Orders::Status).string().not_null())
-                        .col(ColumnDef::new(Orders::TotalAmount).decimal().default(0.0))
+                        .col(ColumnDef::new(Orders::OrderDate).timestamp().not_null())
+                        .col(ColumnDef::new(Orders::TotalAmount).decimal().not_null().default(0))
+                        .col(ColumnDef::new(Orders::Currency).string().not_null())
+                        .col(ColumnDef::new(Orders::PaymentStatus).string().not_null())
+                        .col(ColumnDef::new(Orders::FulfillmentStatus).string().not_null())
+                        .col(ColumnDef::new(Orders::PaymentMethod).string().null())
+                        .col(ColumnDef::new(Orders::ShippingMethod).string().null())
+                        .col(ColumnDef::new(Orders::TrackingNumber).string().null())
+                        .col(ColumnDef::new(Orders::Notes).string().null())
+                        .col(ColumnDef::new(Orders::ShippingAddress).string().null())
+                        .col(ColumnDef::new(Orders::BillingAddress).string().null())
+                        .col(ColumnDef::new(Orders::IsArchived).boolean().not_null().default(false))
                         .col(ColumnDef::new(Orders::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(Orders::UpdatedAt).timestamp().null())
+                        .col(ColumnDef::new(Orders::Version).integer().not_null().default(1))
+                        .to_owned(),
+                )
+                .await?;
+
+            // Useful indexes
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_orders_customer_id")
+                        .table(Orders::Table)
+                        .col(Orders::CustomerId)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_orders_status")
+                        .table(Orders::Table)
+                        .col(Orders::Status)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_orders_created_at")
+                        .table(Orders::Table)
+                        .col(Orders::CreatedAt)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_orders_order_number")
+                        .table(Orders::Table)
+                        .col(Orders::OrderNumber)
                         .to_owned(),
                 )
                 .await
@@ -65,11 +123,24 @@ mod m20230101_000001_create_orders_table {
     enum Orders {
         Table,
         Id,
+        OrderNumber,
         CustomerId,
         Status,
+        OrderDate,
         TotalAmount,
+        Currency,
+        PaymentStatus,
+        FulfillmentStatus,
+        PaymentMethod,
+        ShippingMethod,
+        TrackingNumber,
+        Notes,
+        ShippingAddress,
+        BillingAddress,
+        IsArchived,
         CreatedAt,
         UpdatedAt,
+        Version,
     }
 }
 
@@ -83,7 +154,7 @@ mod m20230101_000002_create_order_items_table {
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
         async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-            // Create order_items table
+            // Create order_items table aligned with entities::order_item Model
             manager
                 .create_table(
                     Table::create()
@@ -92,18 +163,37 @@ mod m20230101_000002_create_order_items_table {
                         .col(ColumnDef::new(OrderItems::Id).uuid().primary_key().not_null())
                         .col(ColumnDef::new(OrderItems::OrderId).uuid().not_null())
                         .col(ColumnDef::new(OrderItems::ProductId).uuid().not_null())
+                        .col(ColumnDef::new(OrderItems::Sku).string().not_null())
+                        .col(ColumnDef::new(OrderItems::Name).string().not_null())
                         .col(ColumnDef::new(OrderItems::Quantity).integer().not_null())
                         .col(ColumnDef::new(OrderItems::UnitPrice).decimal().not_null())
+                        .col(ColumnDef::new(OrderItems::TotalPrice).decimal().not_null())
+                        .col(ColumnDef::new(OrderItems::Discount).decimal().not_null().default(0))
+                        .col(ColumnDef::new(OrderItems::TaxRate).decimal().not_null().default(0))
+                        .col(ColumnDef::new(OrderItems::TaxAmount).decimal().not_null().default(0))
+                        .col(ColumnDef::new(OrderItems::Status).string().not_null())
+                        .col(ColumnDef::new(OrderItems::Notes).string().null())
                         .col(ColumnDef::new(OrderItems::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(OrderItems::UpdatedAt).timestamp().null())
                         .foreign_key(
                             ForeignKey::create()
                                 .name("fk_order_items_order_id")
                                 .from(OrderItems::Table, OrderItems::OrderId)
-                                .to("orders", "id")
+                                .to(Orders::Table, Orders::Id)
                                 .on_delete(ForeignKeyAction::Cascade)
                                 .on_update(ForeignKeyAction::Cascade),
                         )
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_order_items_order_id")
+                        .table(OrderItems::Table)
+                        .col(OrderItems::OrderId)
                         .to_owned(),
                 )
                 .await
@@ -123,10 +213,24 @@ mod m20230101_000002_create_order_items_table {
         Id,
         OrderId,
         ProductId,
+        Sku,
+        Name,
         Quantity,
         UnitPrice,
+        TotalPrice,
+        Discount,
+        TaxRate,
+        TaxAmount,
+        Status,
+        Notes,
         CreatedAt,
         UpdatedAt,
+    }
+
+    #[derive(DeriveIden)]
+    enum Orders {
+        Table,
+        Id,
     }
 }
 

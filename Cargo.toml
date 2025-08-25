@@ -34,7 +34,8 @@ anyhow = "1.0"
 # Temporarily disabled due to TLS issues
 # diesel = { version = "1.4", features = ["postgres", "uuid", "chrono", "serde_json", "numeric"] }
 # Temporarily disabled due to TLS issues
-# prometheus = { version = "0.13", features = ["push", "process"] }
+prometheus = { version = "0.13" }
+strum = { version = "0.26", features = ["derive"] }
 http = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

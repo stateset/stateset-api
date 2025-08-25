@@ -16,6 +16,48 @@ use crate::{
     AppState, ApiResponse, ListQuery, PaginatedResponse,
     auth::AuthUser,
 };
+// Commands are not directly used by handlers at this time
+use std::str::FromStr;
+use crate::services::orders as svc_orders;
+
+fn map_status_str(s: &str) -> OrderStatus {
+    match s.to_lowercase().as_str() {
+        "pending" => OrderStatus::Pending,
+        "processing" => OrderStatus::Processing,
+        "shipped" => OrderStatus::Shipped,
+        "delivered" => OrderStatus::Delivered,
+        "cancelled" | "canceled" => OrderStatus::Cancelled,
+        _ => OrderStatus::Pending,
+    }
+}
+
+// Resolve an order identifier that may be a UUID or an order_number string
+async fn resolve_order_id(state: &AppState, id: &str) -> Result<Uuid, ServiceError> {
+    if let Ok(uuid) = Uuid::parse_str(id) {
+        return Ok(uuid);
+    }
+    if let Some(uuid) = state.services.order.find_order_id_by_order_number(id).await? {
+        return Ok(uuid);
+    }
+    Err(ServiceError::NotFound(format!("Order with ID {} not found", id)))
+}
+
+fn map_service_order(o: svc_orders::OrderResponse) -> OrderResponse {
+    OrderResponse {
+        id: o.id.to_string(),
+        customer_id: o.customer_id.to_string(),
+        status: map_status_str(&o.status),
+        total_amount: Some(o.total_amount),
+        currency: Some(o.currency),
+        items: vec![],
+        shipping_address: None,
+        billing_address: None,
+        payment_method_id: o.payment_method,
+        shipment_id: o.tracking_number,
+        created_at: o.created_at,
+        updated_at: o.updated_at.unwrap_or(o.created_at),
+    }
+}
 
 // Trait for order handler state - blanket implementation for all compatible types
 pub trait OrderHandlerState: Clone + Send + Sync + 'static {}
@@ -155,31 +197,18 @@ pub async fn list_orders(
         return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
     }
 
-    // For now, return mock data
-    let mock_orders = create_mock_orders();
-    
-    // Apply pagination
-    let total = mock_orders.len() as u64;
-    let start = ((query.page - 1) * query.limit) as usize;
-    let end = std::cmp::min(start + query.limit as usize, mock_orders.len());
-    
-    let items = if start < mock_orders.len() {
-        mock_orders[start..end].to_vec()
-    } else {
-        vec![]
-    };
-    
-    let total_pages = (total + query.limit - 1) / query.limit;
-    
-    let response = PaginatedResponse {
+    // Use service layer
+    let svc = state.services.order.clone();
+    let result = svc.list_orders(query.page, query.limit).await?;
+    let total_pages = (result.total + query.limit - 1) / query.limit;
+    let items: Vec<OrderResponse> = result.orders.into_iter().map(map_service_order).collect();
+    Ok(Json(ApiResponse::success(PaginatedResponse {
         items,
-        total,
+        total: result.total,
         page: query.page,
         limit: query.limit,
         total_pages,
-    };
-    
-    Ok(Json(ApiResponse::success(response)))
+    })))
 }
 
 /// Create a new order
@@ -211,7 +240,7 @@ pub async fn create_order(
     Json(request): Json<CreateOrderRequest>,
 ) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:create") {
+    if !auth_user.has_permission("orders:write") {
         return Err(ServiceError::Forbidden("Insufficient permissions to create orders".to_string()));
     }
 
@@ -230,47 +259,75 @@ pub async fn create_order(
         return Ok(Json(ApiResponse::validation_errors(errors)));
     }
 
-    // Create the order
-    let order_id = Uuid::new_v4().to_string();
-    let now = chrono::Utc::now();
-    
-    // Convert items
-    let items: Vec<OrderItem> = request.items.into_iter().enumerate().map(|(i, item)| {
-        let unit_price = item.unit_price.unwrap_or_else(|| rust_decimal::Decimal::new(1999, 2)); // $19.99 default
-        let total_price = unit_price * rust_decimal::Decimal::from(item.quantity);
-        
-        OrderItem {
+    // Compute totals from items
+    let mut items: Vec<OrderItem> = Vec::new();
+    for (i, it) in request.items.iter().enumerate() {
+        let unit_price = it.unit_price.unwrap_or_else(|| rust_decimal::Decimal::new(1999, 2));
+        let total_price = unit_price * rust_decimal::Decimal::from(it.quantity);
+        items.push(OrderItem {
             id: format!("item_{}", i + 1),
-            product_id: item.product_id,
-            product_name: "Sample Product".to_string(), // Would be fetched from product service
-            quantity: item.quantity,
+            product_id: it.product_id.clone(),
+            product_name: "Sample Product".to_string(),
+            quantity: it.quantity,
             unit_price,
             total_price,
-            tax_amount: item.tax_rate.map(|rate| total_price * rate),
-        }
-    }).collect();
-    
-    let total_amount = items.iter().map(|item| item.total_price).sum();
-    
-    let order = OrderResponse {
-        id: order_id,
-        customer_id: request.customer_id,
-        status: OrderStatus::Pending,
-        total_amount: Some(total_amount),
-        currency: Some("USD".to_string()),
-        items,
-        shipping_address: request.shipping_address,
-        billing_address: request.billing_address,
-        payment_method_id: request.payment_method_id,
-        shipment_id: None,
-        created_at: now,
-        updated_at: now,
-    };
+            tax_amount: it.tax_rate.map(|rate| total_price * rate),
+        });
+    }
+    let total_amount: rust_decimal::Decimal = items.iter().map(|it| it.total_price).sum();
 
-    // TODO: Save to database
-    // let saved_order = orders_service.create(order).await?;
+    // Persist minimal order header via service
+    let customer_uuid = Uuid::parse_str(&request.customer_id).unwrap_or_else(|_| Uuid::new_v4());
+    let created = state
+        .services
+        .order
+        .create_order_minimal(
+            customer_uuid,
+            total_amount,
+            Some("USD".to_string()),
+            request.notes.clone(),
+            request.shipping_address.as_ref().map(|a| format!("{}, {}, {}, {} {}", a.street, a.city, a.state, a.country, a.postal_code)),
+            request.billing_address.as_ref().map(|a| format!("{}, {}, {}, {} {}", a.street, a.city, a.state, a.country, a.postal_code)),
+            request.payment_method_id.clone(),
+        )
+        .await?;
 
-    Ok(Json(ApiResponse::success(order)))
+    // Persist items for this order
+    let created_id = created.id;
+    for it in &items {
+        // Treat provided product_id as SKU; attempt to parse UUID if client sent one
+        let product_uuid = Uuid::parse_str(&it.product_id).ok();
+        let _ = state
+            .services
+            .order
+            .add_order_item(
+                created_id,
+                it.product_id.clone(),
+                product_uuid,
+                Some(it.product_name.clone()),
+                it.quantity,
+                it.unit_price,
+                it.tax_amount.map(|t| if it.total_price.is_zero() { rust_decimal::Decimal::ZERO } else { (t / it.total_price) }).or(Some(rust_decimal::Decimal::ZERO)),
+            )
+            .await?;
+    }
+
+    // Build API response using created header, then re-fetch items from DB
+    let mut api = map_service_order(created);
+    let persisted = state.services.order.get_order_items(created_id).await?;
+    api.items = persisted
+        .into_iter()
+        .map(|m| OrderItem {
+            id: m.id.to_string(),
+            product_id: if !m.sku.is_empty() { m.sku } else { m.product_id.to_string() },
+            product_name: m.name,
+            quantity: m.quantity,
+            unit_price: m.unit_price,
+            total_price: m.total_price,
+            tax_amount: Some(m.tax_amount),
+        })
+        .collect();
+    Ok(Json(ApiResponse::success(api)))
 }
 
 /// Get order by ID
@@ -307,12 +364,19 @@ pub async fn get_order(
         return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
     }
 
-    // For now, return mock data
-    if id == "order_123" {
-        let order = create_mock_order();
-        Ok(Json(ApiResponse::success(order)))
+    // Accept UUIDs or order_number (e.g., "order_123")
+    if let Ok(uuid) = Uuid::parse_str(&id) {
+        let svc = state.services.order.clone();
+        match svc.get_order(uuid).await? {
+            Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))) ,
+            None => Err(ServiceError::NotFound(format!("Order with ID {} not found", id))),
+        }
     } else {
-        Err(ServiceError::NotFound(format!("Order with ID {} not found", id)))
+        let svc = state.services.order.clone();
+        match svc.get_order_by_order_number(&id).await? {
+            Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))) ,
+            None => Err(ServiceError::NotFound(format!("Order with ID {} not found", id))),
+        }
     }
 }
 
@@ -343,13 +407,13 @@ pub async fn get_order(
     )
 )]
 pub async fn update_order(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Path(id): Path<String>,
     auth_user: AuthUser,
     Json(request): Json<UpdateOrderRequest>,
 ) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:update") {
+    if !auth_user.has_permission("orders:write") {
         return Err(ServiceError::Forbidden("Insufficient permissions to update orders".to_string()));
     }
 
@@ -420,8 +484,8 @@ pub async fn delete_order(
         return Err(ServiceError::Forbidden("Insufficient permissions to delete orders".to_string()));
     }
 
-    // TODO: Delete from database
-    // orders_service.delete(id).await?;
+    let order_id = resolve_order_id(&state, &id).await?;
+    state.services.order.delete_order(order_id).await?;
 
     let response = serde_json::json!({
         "message": format!("Order {} deleted successfully", id)
@@ -463,7 +527,7 @@ pub async fn update_order_status(
     Json(request): Json<UpdateOrderStatusRequest>,
 ) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:update") {
+    if !auth_user.has_permission("orders:write") {
         return Err(ServiceError::Forbidden("Insufficient permissions to update orders".to_string()));
     }
 
@@ -482,12 +546,25 @@ pub async fn update_order_status(
         return Ok(Json(ApiResponse::validation_errors(errors)));
     }
 
-    // For now, return mock updated order
-    let mut order = create_mock_order();
-    order.id = id;
-    order.status = request.status;
-    order.updated_at = chrono::Utc::now();
-
+    // Use service to update status
+    let order_id = resolve_order_id(&state, &id).await?;
+    let status_str = match request.status {
+        OrderStatus::Pending => "pending",
+        OrderStatus::Confirmed => "processing",
+        OrderStatus::Processing => "processing",
+        OrderStatus::Shipped => "shipped",
+        OrderStatus::Delivered => "delivered",
+        OrderStatus::Cancelled => "cancelled",
+        OrderStatus::Refunded => "refunded",
+    };
+    let svc = state.services.order.clone();
+    let _updated = svc
+        .update_order_status(order_id, svc_orders::UpdateOrderStatusRequest { status: status_str.to_string(), notes: request.reason })
+        .await?;
+    // Re-fetch to build API response
+    let order = svc.get_order(order_id).await?
+        .map(map_service_order)
+        .ok_or_else(|| ServiceError::NotFound("Order not found after update".to_string()))?;
     Ok(Json(ApiResponse::success(order)))
 }
 
@@ -521,29 +598,19 @@ pub async fn get_order_items(
         return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
     }
 
-    // For now, return mock items
-    let items = vec![
-        OrderItem {
-            id: "item_1".to_string(),
-            product_id: "prod_123".to_string(),
-            product_name: "Sample Product 1".to_string(),
-            quantity: 2,
-            unit_price: rust_decimal::Decimal::new(1999, 2),
-            total_price: rust_decimal::Decimal::new(3998, 2),
-            tax_amount: Some(rust_decimal::Decimal::new(320, 2)),
-        },
-        OrderItem {
-            id: "item_2".to_string(),
-            product_id: "prod_456".to_string(),
-            product_name: "Sample Product 2".to_string(),
-            quantity: 1,
-            unit_price: rust_decimal::Decimal::new(2999, 2),
-            total_price: rust_decimal::Decimal::new(2999, 2),
-            tax_amount: Some(rust_decimal::Decimal::new(240, 2)),
-        },
-    ];
-
-    Ok(Json(ApiResponse::success(items)))
+    let order_id = resolve_order_id(&state, &id).await?;
+    let svc = state.services.order.clone();
+    let items = svc.get_order_items(order_id).await?;
+    let mapped: Vec<OrderItem> = items.into_iter().map(|m| OrderItem {
+        id: m.id.to_string(),
+        product_id: m.product_id.to_string(),
+        product_name: m.name,
+        quantity: m.quantity,
+        unit_price: m.unit_price,
+        total_price: m.total_price,
+        tax_amount: Some(m.tax_amount),
+    }).collect();
+    Ok(Json(ApiResponse::success(mapped)))
 }
 
 /// Add item to order
@@ -579,7 +646,7 @@ pub async fn add_order_item(
     Json(request): Json<CreateOrderItem>,
 ) -> Result<Json<ApiResponse<OrderItem>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:update") {
+    if !auth_user.has_permission("orders:write") {
         return Err(ServiceError::Forbidden("Insufficient permissions to update orders".to_string()));
     }
 
@@ -598,18 +665,36 @@ pub async fn add_order_item(
         return Ok(Json(ApiResponse::validation_errors(errors)));
     }
 
-    // Create the new item
+    let order_id = resolve_order_id(&state, &id).await?;
+
     let unit_price = request.unit_price.unwrap_or_else(|| rust_decimal::Decimal::new(1999, 2));
     let total_price = unit_price * rust_decimal::Decimal::from(request.quantity);
-    
+    let tax_rate = request.tax_rate;
+
+    // Treat product_id as SKU by default; parse UUID if provided
+    let product_uuid = Uuid::parse_str(&request.product_id).ok();
+    let saved = state
+        .services
+        .order
+        .add_order_item(
+            order_id,
+            request.product_id.clone(),
+            product_uuid,
+            Some("Sample Product".to_string()),
+            request.quantity,
+            unit_price,
+            tax_rate,
+        )
+        .await?;
+
     let item = OrderItem {
-        id: Uuid::new_v4().to_string(),
-        product_id: request.product_id,
-        product_name: "Sample Product".to_string(),
-        quantity: request.quantity,
-        unit_price,
-        total_price,
-        tax_amount: request.tax_rate.map(|rate| total_price * rate),
+        id: saved.id.to_string(),
+        product_id: if !saved.sku.is_empty() { saved.sku } else { saved.product_id.to_string() },
+        product_name: saved.name,
+        quantity: saved.quantity,
+        unit_price: saved.unit_price,
+        total_price: saved.total_price,
+        tax_amount: Some(saved.tax_amount),
     };
 
     Ok(Json(ApiResponse::success(item)))
@@ -697,21 +782,25 @@ fn create_mock_orders() -> Vec<OrderResponse> {
 }
 
 /// Cancel an existing order
-pub async fn cancel_order<S>(
-    State(_state): State<S>,
+pub async fn cancel_order(
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    let cancellation_reason = payload.get("reason").and_then(|r| r.as_str()).unwrap_or("Customer request");
-    
+) -> Result<impl IntoResponse, ServiceError> {
+    let order_id = resolve_order_id(&state, &id).await?;
+    let reason = payload
+        .get("reason")
+        .and_then(|r| r.as_str())
+        .unwrap_or("Customer request")
+        .to_string();
+
+    let _ = state.services.order.cancel_order(order_id, Some(reason.clone())).await?;
+
     let response = json!({
         "message": format!("Order {} has been cancelled", id),
         "order_id": id,
         "status": "cancelled",
-        "cancellation_reason": cancellation_reason,
+        "cancellation_reason": reason,
         "cancelled_at": Utc::now()
     });
 
@@ -719,13 +808,13 @@ where
 }
 
 /// Archive an existing order
-pub async fn archive_order<S>(
-    State(_state): State<S>,
+pub async fn archive_order(
+    State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: Clone + Send + Sync + 'static,
-{
+) -> Result<impl IntoResponse, ServiceError> {
+    let order_id = resolve_order_id(&state, &id).await?;
+    let _ = state.services.order.archive_order(order_id).await?;
+
     let response = json!({
         "message": format!("Order {} has been archived", id),
         "order_id": id,
@@ -735,3 +824,4 @@ where
 
     Ok((StatusCode::OK, Json(response)))
 }
+// (Old command-based cancel/archive removed)
