@@ -17,34 +17,8 @@ use crate::{
     // Remove handler imports since handlers module doesn't exist
     versioning::ApiVersion,
 };
-// Bring returns handlers into scope for path registration
-use crate::handlers::returns::{
-    list_returns,
-    get_return,
-    create_return,
-    update_return,
-    update_return_status,
-    process_return,
-    approve_return,
-    reject_return,
-    restock_return,
-    issue_refund,
-    delete_return,
-};
-// Shipments
-use crate::handlers::shipments::{
-    list_shipments,
-    get_shipment,
-    create_shipment,
-    update_shipment,
-    delete_shipment,
-    update_shipment_status,
-    mark_shipped,
-    mark_delivered,
-    track_shipment,
-    track_by_number,
-    add_tracking_event,
-};
+// Handler functions are intentionally not imported here to avoid
+// tight coupling between documentation and handler modules during build.
 use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
 use axum::Json;
 use std::sync::Arc;
@@ -66,7 +40,7 @@ use uuid::Uuid;
     info(
         title = "Stateset API",
         version = "1.0.0",
-        description = "Stateset API for order, inventory, and supply chain management",
+        description = "Stateset API for order, inventory, and supply chain management. Standard headers: X-Request-Id on responses, X-RateLimit-* and RateLimit-* on rate-limited routes.",
         license(
             name = "MIT",
             url = "https://opensource.org/licenses/MIT"
@@ -81,11 +55,19 @@ use uuid::Uuid;
         (url = "/api/v1", description = "Production API v1"),
         (url = "/api/v1-beta", description = "Beta API v1")
     ),
-    // paths are temporarily omitted to resolve compile issues with path macros
     components(
         schemas(
             // Only include types that actually exist
             super::errors::ErrorResponse,
+            // Orders types
+            crate::handlers::orders::OrderResponse,
+            crate::handlers::orders::CreateOrderRequest,
+            crate::handlers::orders::UpdateOrderRequest,
+            crate::handlers::orders::CreateOrderItem,
+            crate::handlers::orders::OrderItem,
+            crate::handlers::orders::Address,
+            crate::handlers::orders::OrderStatus,
+            crate::handlers::orders::UpdateOrderStatusRequest,
             crate::handlers::inventory::InventoryItem,
             crate::handlers::inventory::InventoryAdjustment,
             crate::handlers::inventory::CreateInventoryRequest,
@@ -116,6 +98,21 @@ use uuid::Uuid;
             crate::handlers::shipments::UpdateShipmentRequest,
             crate::handlers::shipments::TrackingUpdateRequest,
             crate::handlers::shipments::ShipmentFilters,
+            // Users types
+            crate::handlers::users::User,
+            crate::handlers::users::CreateUserRequest,
+            crate::handlers::users::UpdateUserRequest,
+            crate::handlers::users::ChangePasswordRequest,
+            // Work Orders types
+            crate::handlers::work_orders::WorkOrder,
+            crate::handlers::work_orders::WorkOrderMaterial,
+            crate::handlers::work_orders::WorkOrderTask,
+            crate::handlers::work_orders::CreateWorkOrderRequest,
+            crate::handlers::work_orders::UpdateWorkOrderRequest,
+            crate::handlers::work_orders::ScheduleWorkOrderRequest,
+            crate::handlers::work_orders::MaterialConsumptionRequest,
+            crate::handlers::work_orders::TaskUpdateRequest,
+            crate::handlers::work_orders::WorkOrderFilters,
             // TODO: Add order-related schemas when handlers module is implemented
         )
     ),
@@ -180,13 +177,22 @@ impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
         // Add API key auth
         if let Some(components) = &mut openapi.components {
+            // Lowercase scheme names
             components.add_security_scheme(
                 "api_key",
                 SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("X-API-Key"))),
             );
-            // Add JWT bearer auth
             components.add_security_scheme(
                 "jwt_auth",
+                SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).bearer_format("JWT").build()),
+            );
+            // Aliases for common names used in annotations
+            components.add_security_scheme(
+                "ApiKey",
+                SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("X-API-Key"))),
+            );
+            components.add_security_scheme(
+                "Bearer",
                 SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).bearer_format("JWT").build()),
             );
             // Add OAuth2 (if implemented in the future)

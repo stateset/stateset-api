@@ -25,6 +25,7 @@ pub mod rate_limiter;
 pub mod services;
 pub mod tracing;
 pub mod versioning;
+pub mod migrator;
 
 use axum::{
     extract::State,
@@ -38,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use utoipa::ToSchema;
+use redis::AsyncCommands;
 
 // Tracing imports - use external tracing crate directly to avoid conflicts
 
@@ -53,6 +55,7 @@ pub struct AppState {
     pub event_sender: events::EventSender,
     pub inventory_service: services::inventory::InventoryService,
     pub services: handlers::AppServices,
+    pub redis: Arc<redis::Client>,
 }
 
 // Common query parameters for list endpoints
@@ -289,12 +292,21 @@ async fn health_check(State(state): State<AppState>) -> Result<Json<ApiResponse<
         Err(_) => "unhealthy",
     };
     
+    // Check Redis connectivity
+    let redis_status = match state.redis.get_async_connection().await {
+        Ok(mut conn) => match redis::cmd("PING").query_async::<_, String>(&mut conn).await {
+            Ok(_) => "healthy",
+            Err(_) => "unhealthy",
+        },
+        Err(_) => "unhealthy",
+    };
+    
     let health_data = json!({
-        "status": if db_status == "healthy" { "healthy" } else { "unhealthy" },
+        "status": if db_status == "healthy" && redis_status == "healthy" { "healthy" } else { "unhealthy" },
         "checks": {
             "database": db_status,
-            "cache": "healthy", // TODO: Add actual cache health check
-            "message_queue": "healthy", // TODO: Add actual MQ health check
+            "cache": redis_status,
+            "message_queue": "unknown",
         },
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "uptime": "unknown", // TODO: Calculate actual uptime

@@ -15,6 +15,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -22,7 +23,7 @@ use validator::Validate;
 
 // Request and response DTOs
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateUserRequest {
     #[validate(length(min = 2, message = "Name must be at least 2 characters long"))]
     pub name: String,
@@ -35,7 +36,7 @@ pub struct CreateUserRequest {
     pub phone: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateUserRequest {
     pub name: Option<String>,
     #[validate(email)]
@@ -46,7 +47,7 @@ pub struct UpdateUserRequest {
     pub is_active: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct ChangePasswordRequest {
     #[validate(length(
         min = 6,
@@ -60,7 +61,7 @@ pub struct ChangePasswordRequest {
 }
 
 // Example User model for responses
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct User {
     pub id: Uuid,
     pub name: String,
@@ -76,7 +77,23 @@ pub struct User {
 // Handler functions
 
 /// Create a new user
-async fn create_user(
+#[utoipa::path(
+    post,
+    path = "/api/v1/users",
+    request_body = CreateUserRequest,
+    responses(
+        (status = 201, description = "User created",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn create_user(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Json(payload): Json<CreateUserRequest>,
@@ -101,7 +118,22 @@ async fn create_user(
 }
 
 /// Get a user by ID
-async fn get_user(
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/{id}",
+    params(("id" = String, Path, description = "User ID (UUID)")),
+    responses(
+        (status = 200, description = "User returned", body = User,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn get_user(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
@@ -131,7 +163,24 @@ async fn get_user(
 }
 
 /// Update a user
-async fn update_user(
+#[utoipa::path(
+    put,
+    path = "/api/v1/users/{id}",
+    params(("id" = String, Path, description = "User ID (UUID)")),
+    request_body = UpdateUserRequest,
+    responses(
+        (status = 200, description = "User updated",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn update_user(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
@@ -156,7 +205,21 @@ async fn update_user(
 }
 
 /// Delete a user
-async fn delete_user(
+#[utoipa::path(
+    delete,
+    path = "/api/v1/users/{id}",
+    params(("id" = String, Path, description = "User ID (UUID)")),
+    responses(
+        (status = 204, description = "User deleted",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn delete_user(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
@@ -174,7 +237,25 @@ async fn delete_user(
 }
 
 /// List all users with pagination
-async fn list_users(
+#[utoipa::path(
+    get,
+    path = "/api/v1/users",
+    responses(
+        (status = 200, description = "Users listed",
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn list_users(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Query(pagination): Query<PaginationParams>,
@@ -223,7 +304,22 @@ async fn list_users(
 }
 
 /// Change user password
-async fn change_password(
+#[utoipa::path(
+    post,
+    path = "/api/v1/users/{id}/change-password",
+    params(("id" = String, Path, description = "User ID (UUID)")),
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 200, description = "Password changed",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn change_password(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
@@ -248,7 +344,18 @@ async fn change_password(
 }
 
 /// Get current user profile
-async fn get_current_user(
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/profile",
+    responses(
+        (status = 200, description = "Current user", body = User,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
+    ),
+    tag = "users"
+)]
+pub async fn get_current_user(
     State(state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ApiError> {

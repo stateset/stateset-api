@@ -50,6 +50,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
+use metrics::counter;
 use tracing::{debug, info, warn};
 
 // In-memory rate limiter implementation
@@ -461,6 +462,26 @@ where
                 Ok(result) => {
                     if !result.allowed {
                         warn!("Rate limit exceeded for key: {}", key);
+                        // Emit rate-limit denial metric
+                        let key_type = if key.starts_with("api_key:") {
+                            "api_key"
+                        } else if key.starts_with("user:") {
+                            "user"
+                        } else {
+                            "ip"
+                        };
+                        counter!(
+                            "rate_limit_denied_total",
+                            1,
+                            "key_type" => key_type.to_string(),
+                            "path" => path.clone(),
+                        );
+                        // Also reflect in custom registry for /metrics
+                        let _ = {
+                            #[allow(unused_imports)]
+                            use crate::metrics::increment_counter;
+                            increment_counter("rate_limit_denied_total");
+                        };
                         
                         let mut response = Response::new(axum::body::Body::from("Rate limit exceeded"));
                         *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
@@ -481,6 +502,25 @@ where
                     
                     // Process request
                     let mut response = inner.call(request).await?;
+                    // Emit allowed metric
+                    let key_type = if key.starts_with("api_key:") {
+                        "api_key"
+                    } else if key.starts_with("user:") {
+                        "user"
+                    } else {
+                        "ip"
+                    };
+                    counter!(
+                        "rate_limit_allowed_total",
+                        1,
+                        "key_type" => key_type.to_string(),
+                        "path" => path.clone(),
+                    );
+                    let _ = {
+                        #[allow(unused_imports)]
+                        use crate::metrics::increment_counter;
+                        increment_counter("rate_limit_allowed_total");
+                    };
                     
                     // Add rate limit headers to successful response
                     if rate_limiter.config.enable_headers {

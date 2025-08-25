@@ -27,14 +27,14 @@ COPY build.rs ./
 COPY include/ ./include/
 
 # Build dependencies (this layer will be cached)
-RUN cargo build --release --bin stateset-api
+RUN cargo build --release --bin stateset-api --bin migration
 RUN rm -rf src migrations/src
 
 # Copy the actual source code
 COPY . .
 
 # Build the application
-RUN cargo build --release --bin stateset-api
+RUN cargo build --release --bin stateset-api --bin migration
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -52,6 +52,7 @@ WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /usr/src/app/target/release/stateset-api /app/stateset-api
+COPY --from=builder /usr/src/app/target/release/migration /app/migration
 
 # Copy migrations if needed at runtime
 COPY --from=builder /usr/src/app/migrations /app/migrations

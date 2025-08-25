@@ -1,0 +1,24 @@
+# Docker overrides for StateSet API
+
+# Use Postgres service from docker-compose by default
+database_url = "postgres://postgres:postgres@postgres:5432/stateset_db"
+redis_url = "redis://redis:6379"
+
+# Server configuration
+host = "0.0.0.0"
+port = 3000
+environment = "development"
+log_level = "info"
+
+# Enable migrations when running in containers
+auto_migrate = true
+
+# Cache configuration in Docker
+[cache]
+cache_type = "redis"
+redis_url = "redis://redis:6379"
+capacity = 1000
+cleanup_interval_secs = 60
+default_ttl_secs = 300
+debug = false
+

@@ -319,9 +319,10 @@ pub async fn run_migrations(pool: &DbPool) -> Result<(), AppError> {
     info!("Running database migrations");
     let start = std::time::Instant::now();
 
-    // TODO: Fix migrator module
-    // let result = crate::migrator::Migrator::up(pool, None)
-    let result: Result<(), AppError> = Ok((()));
+    // Execute migrations using our embedded migrator
+    let result = crate::migrator::Migrator::up(pool, None)
+        .await
+        .map_err(AppError::DatabaseError);
 
     let elapsed = start.elapsed();
     match &result {

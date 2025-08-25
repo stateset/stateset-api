@@ -148,7 +148,20 @@ where
     get,
     path = "/api/v1/shipments",
     params(ShipmentFilters),
-    responses((status = 200, description = "List shipments")),
+    responses(
+        (status = 200, description = "List shipments",
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn list_shipments<S>(
@@ -269,7 +282,16 @@ where
     post,
     path = "/api/v1/shipments",
     request_body = CreateShipmentRequest,
-    responses((status = 201, description = "Shipment created", body = Shipment)),
+    responses(
+        (status = 201, description = "Shipment created", body = Shipment,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn create_shipment<S>(
@@ -316,7 +338,15 @@ where
     get,
     path = "/api/v1/shipments/{id}",
     params(("id" = String, Path, description = "Shipment ID")),
-    responses((status = 200, description = "Shipment details", body = Shipment)),
+    responses(
+        (status = 200, description = "Shipment details", body = Shipment,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn get_shipment<S>(
@@ -375,7 +405,14 @@ where
     path = "/api/v1/shipments/{id}",
     params(("id" = String, Path, description = "Shipment ID")),
     request_body = UpdateShipmentRequest,
-    responses((status = 200, description = "Shipment updated", body = Shipment)),
+    responses(
+        (status = 200, description = "Shipment updated", body = Shipment,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn update_shipment<S>(
@@ -421,7 +458,14 @@ where
     delete,
     path = "/api/v1/shipments/{id}",
     params(("id" = String, Path, description = "Shipment ID")),
-    responses((status = 200, description = "Shipment deleted")),
+    responses(
+        (status = 200, description = "Shipment deleted",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn delete_shipment<S>(
@@ -444,7 +488,13 @@ where
     post,
     path = "/api/v1/shipments/{id}/ship",
     params(("id" = String, Path, description = "Shipment ID")),
-    responses((status = 200, description = "Shipment marked shipped")),
+    responses(
+        (status = 200, description = "Shipment marked shipped",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn mark_shipped<S>(
@@ -469,7 +519,13 @@ where
     post,
     path = "/api/v1/shipments/{id}/deliver",
     params(("id" = String, Path, description = "Shipment ID")),
-    responses((status = 200, description = "Shipment marked delivered")),
+    responses(
+        (status = 200, description = "Shipment marked delivered",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn mark_delivered<S>(
@@ -494,7 +550,12 @@ where
     get,
     path = "/api/v1/shipments/{id}/track",
     params(("id" = String, Path, description = "Shipment ID")),
-    responses((status = 200, description = "Shipment tracking")),
+    responses(
+        (status = 200, description = "Shipment tracking",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn track_shipment<S>(
@@ -549,7 +610,12 @@ where
     get,
     path = "/api/v1/shipments/track/{tracking_number}",
     params(("tracking_number" = String, Path, description = "Tracking Number")),
-    responses((status = 200, description = "Tracking by number")),
+    responses(
+        (status = 200, description = "Tracking by number",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn track_by_number<S>(
@@ -597,7 +663,14 @@ where
     path = "/api/v1/shipments/{id}/tracking",
     params(("id" = String, Path, description = "Shipment ID")),
     request_body = TrackingUpdateRequest,
-    responses((status = 201, description = "Tracking event added", body = TrackingEvent)),
+    responses(
+        (status = 201, description = "Tracking event added", body = TrackingEvent,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn add_tracking_event<S>(
@@ -627,7 +700,14 @@ where
     path = "/api/v1/shipments/{id}/status",
     params(("id" = String, Path, description = "Shipment ID")),
     request_body = UpdateShipmentStatusBody,
-    responses((status = 200, description = "Status updated")),
+    responses(
+        (status = 200, description = "Status updated",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "shipments"
 )]
 pub async fn update_shipment_status<S>(

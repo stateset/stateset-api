@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::{ToSchema, IntoParams};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -16,7 +17,7 @@ use uuid::Uuid;
 pub trait WorkOrdersAppState: Clone + Send + Sync + 'static {}
 impl<T> WorkOrdersAppState for T where T: Clone + Send + Sync + 'static {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct WorkOrder {
     pub id: String,
     pub order_id: Option<String>,
@@ -40,7 +41,7 @@ pub struct WorkOrder {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct WorkOrderMaterial {
     pub id: String,
     pub material_id: String,
@@ -52,7 +53,7 @@ pub struct WorkOrderMaterial {
     pub cost_per_unit: Option<f64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct WorkOrderTask {
     pub id: String,
     pub task_name: String,
@@ -67,7 +68,7 @@ pub struct WorkOrderTask {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkOrderRequest {
     pub order_id: Option<String>,
     pub product_id: String,
@@ -81,7 +82,7 @@ pub struct CreateWorkOrderRequest {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateWorkOrderRequest {
     pub status: Option<String>,
     pub priority: Option<String>,
@@ -92,7 +93,7 @@ pub struct UpdateWorkOrderRequest {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ScheduleWorkOrderRequest {
     pub work_center_id: String,
     pub scheduled_start: DateTime<Utc>,
@@ -100,21 +101,22 @@ pub struct ScheduleWorkOrderRequest {
     pub assigned_to: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct MaterialConsumptionRequest {
     pub material_id: String,
     pub quantity_consumed: f64,
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TaskUpdateRequest {
     pub status: Option<String>,
     pub actual_hours: Option<f64>,
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct WorkOrderFilters {
     pub status: Option<String>,
     pub priority: Option<String>,
@@ -146,6 +148,24 @@ where
 }
 
 /// List work orders with optional filtering
+#[utoipa::path(
+    get,
+    path = "/api/v1/work-orders",
+    params(WorkOrderFilters),
+    responses(
+        (status = 200, description = "List work orders",
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn list_work_orders<S>(
     State(_state): State<S>,
     Query(filters): Query<WorkOrderFilters>,
@@ -292,6 +312,20 @@ where
 }
 
 /// Create a new work order
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders",
+    request_body = CreateWorkOrderRequest,
+    responses(
+        (status = 201, description = "Work order created", body = WorkOrder,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn create_work_order<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateWorkOrderRequest>,
@@ -329,6 +363,20 @@ where
 }
 
 /// Get a specific work order by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/work-orders/{id}",
+    params(("id" = String, Path, description = "Work order ID")),
+    responses(
+        (status = 200, description = "Work order details", body = WorkOrder,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn get_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -388,6 +436,22 @@ where
 }
 
 /// Update a work order
+#[utoipa::path(
+    put,
+    path = "/api/v1/work-orders/{id}",
+    params(("id" = String, Path, description = "Work order ID")),
+    request_body = UpdateWorkOrderRequest,
+    responses(
+        (status = 200, description = "Work order updated", body = WorkOrder,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn update_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -423,6 +487,20 @@ where
 }
 
 /// Delete a work order
+#[utoipa::path(
+    delete,
+    path = "/api/v1/work-orders/{id}",
+    params(("id" = String, Path, description = "Work order ID")),
+    responses(
+        (status = 200, description = "Work order deleted",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn delete_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -439,7 +517,22 @@ where
 }
 
 /// Schedule a work order
-async fn schedule_work_order<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/schedule",
+    params(("id" = String, Path, description = "Work order ID")),
+    request_body = ScheduleWorkOrderRequest,
+    responses(
+        (status = 200, description = "Work order scheduled",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
+pub async fn schedule_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<ScheduleWorkOrderRequest>,
@@ -462,6 +555,19 @@ where
 }
 
 /// Start a work order
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/start",
+    params(("id" = String, Path, description = "Work order ID")),
+    responses(
+        (status = 200, description = "Work order started",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn start_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -480,6 +586,19 @@ where
 }
 
 /// Complete a work order
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/complete",
+    params(("id" = String, Path, description = "Work order ID")),
+    responses(
+        (status = 200, description = "Work order completed",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn complete_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -498,7 +617,20 @@ where
 }
 
 /// Put work order on hold
-async fn hold_work_order<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/hold",
+    params(("id" = String, Path, description = "Work order ID")),
+    responses(
+        (status = 200, description = "Work order on hold",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
+pub async fn hold_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
@@ -520,7 +652,20 @@ where
 }
 
 /// Cancel a work order
-async fn cancel_work_order<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/cancel",
+    params(("id" = String, Path, description = "Work order ID")),
+    responses(
+        (status = 200, description = "Work order cancelled",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
+pub async fn cancel_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
@@ -542,7 +687,25 @@ where
 }
 
 /// Consume material for work order
-async fn consume_material<S>(
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/materials/{material_id}/consume",
+    params(
+        ("id" = String, Path, description = "Work order ID"),
+        ("material_id" = String, Path, description = "Material ID")
+    ),
+    request_body = MaterialConsumptionRequest,
+    responses(
+        (status = 200, description = "Material consumed",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
+pub async fn consume_material<S>(
     State(_state): State<S>,
     Path((id, material_id)): Path<(String, String)>,
     Json(payload): Json<MaterialConsumptionRequest>,
@@ -563,7 +726,25 @@ where
 }
 
 /// Update a work order task
-async fn update_task<S>(
+#[utoipa::path(
+    put,
+    path = "/api/v1/work-orders/{id}/tasks/{task_id}",
+    params(
+        ("id" = String, Path, description = "Work order ID"),
+        ("task_id" = String, Path, description = "Task ID")
+    ),
+    request_body = TaskUpdateRequest,
+    responses(
+        (status = 200, description = "Task updated",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
+pub async fn update_task<S>(
     State(_state): State<S>,
     Path((id, task_id)): Path<(String, String)>,
     Json(payload): Json<TaskUpdateRequest>,
@@ -585,7 +766,24 @@ where
 }
 
 /// Get work center capacity
-async fn get_capacity<S>(
+#[utoipa::path(
+    get,
+    path = "/api/v1/work-orders/capacity/{work_center_id}",
+    params(("work_center_id" = String, Path, description = "Work center ID")),
+    responses(
+        (status = 200, description = "Capacity details",
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
+pub async fn get_capacity<S>(
     State(_state): State<S>,
     Path(work_center_id): Path<String>,
     Query(filters): Query<serde_json::Value>,

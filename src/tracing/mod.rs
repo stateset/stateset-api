@@ -34,6 +34,7 @@ use tokio::time::Instant as TokioInstant;
 use tower::{Layer, Service};
 use tower_http::{classify::StatusInRangeAsFailures, trace::TraceLayer};
 use tracing::{instrument, Level};
+use metrics::{counter, histogram};
 
 // Re-export tracing macros for use in lib.rs  
 pub use tracing::{debug, error, info, trace, warn};
@@ -350,6 +351,11 @@ where
         // Create request ID and context
         let request_id = format!("{}-{}", Uuid::new_v4(), req_count);
         let path = request.uri().path().to_string();
+        let route_label = request
+            .extensions()
+            .get::<axum::extract::MatchedPath>()
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| path.clone());
         let method = request.method().to_string();
         let start_time = TokioInstant::now();
 
@@ -588,6 +594,22 @@ where
                         "Request failed"
                     );
 
+                    // Emit failure metrics
+                    let status_code = StatusCode::INTERNAL_SERVER_ERROR.as_u16();
+                    let duration_ms = duration.as_secs_f64() * 1000.0;
+                    counter!("http_requests_total",
+                        1,
+                        "method" => method.clone(),
+                        "route" => route_label.clone(),
+                        "status" => status_code.to_string(),
+                    );
+                    histogram!("http_request_duration_ms",
+                        duration_ms,
+                        "method" => method.clone(),
+                        "route" => route_label.clone(),
+                        "status" => status_code.to_string(),
+                    );
+
                     let body = serde_json::json!({
                         "error": "Internal Server Error",
                         "message": err.to_string(),
@@ -602,7 +624,30 @@ where
                 }
             }?;
 
+            // Record metrics for the request
+            let status_code = response.status().as_u16();
+            let duration_ms = duration.as_secs_f64() * 1000.0;
+            counter!("http_requests_total",
+                1,
+                "method" => method.clone(),
+                "route" => route_label.clone(),
+                "status" => status_code.to_string(),
+            );
+            histogram!("http_request_duration_ms",
+                duration_ms,
+                "method" => method.clone(),
+                "route" => route_label.clone(),
+                "status" => status_code.to_string(),
+            );
+
             // Always return Ok with Infallible error type
+            // Update custom registry as well
+            let _ = {
+                // Avoid panics if metrics module changes; just call softly
+                #[allow(unused_imports)]
+                use crate::metrics::APP_METRICS;
+                APP_METRICS.record_request(duration);
+            };
             Ok(response)
         }
         .boxed()

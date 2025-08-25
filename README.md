@@ -59,6 +59,25 @@ Our carefully selected tech stack ensures high performance, scalability, and mai
 - **Health Checks**: Comprehensive service health monitoring
 - **Error Handling**: Structured error system with detailed context
 
+#### Metrics
+
+The API exposes metrics at `/metrics` (text) and `/metrics/json` (JSON).
+
+- Route-level metrics (via `metrics` crate):
+  - `http_requests_total{method,route,status}`: Request counts per route.
+  - `http_request_duration_ms{method,route,status}`: Request latency histogram (ms).
+  - `rate_limit_denied_total{key_type,path}` / `rate_limit_allowed_total{key_type,path}`.
+  - `auth_failures_total{code,status}`.
+
+- Aggregated metrics (custom registry also visible at `/metrics`):
+  - Counters: `http_requests_total`, `errors_total`, `cache_hits_total`, `cache_misses_total`.
+  - Histograms: `http_request_duration_seconds_count/sum`.
+  - Business: `orders_created_total`, `returns_processed_total`, etc.
+
+Standard response headers:
+- `X-Request-Id`: Unique id for tracing.
+- Rate limit: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (and RFC `RateLimit-*`).
+
 ## Project Structure
 
 ```
@@ -103,7 +122,7 @@ Note: The app defaults to SQLite for local development (via SeaORM). PostgreSQL 
    - Using env overrides: set environment variables with the `APP__` prefix (e.g., `APP__DATABASE_URL`, `APP__HOST`, `APP__PORT`).
 
    Examples:
-   - SQLite (default): `APP__DATABASE_URL=sqlite:stateset.db?mode=rwc`
+   - SQLite (default): `APP__DATABASE_URL=sqlite://stateset.db?mode=rwc`
    - PostgreSQL: `APP__DATABASE_URL=postgres://user:pass@localhost:5432/stateset`
 
 3. Run database migrations:
@@ -128,6 +147,12 @@ StateSet API provides a rich set of RESTful endpoints:
 ### Authentication
 - `POST /auth/login` - Authenticate user and get JWT token
 - `POST /auth/register` - Register a new user
+
+#### Auth and Permissions
+- Use `POST /api/v1/auth/login` with `{ email, password }` to obtain a JWT `access_token` and `refresh_token`.
+- Send `Authorization: Bearer <access_token>` on protected routes. API keys are also supported via `X-API-Key`.
+- Endpoints are permission-gated (e.g., `orders:read`, `orders:create`). Admins have full access.
+- Standard error responses include JSON with `error.code` and HTTP status; `X-Request-Id` is included on responses for tracing.
 
 ### Orders
 - `GET /orders` - List all orders

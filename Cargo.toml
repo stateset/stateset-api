@@ -28,8 +28,8 @@ tonic-web = "0.13"
 validator = { version = "0.14", features = ["derive"] }
 thiserror = "1.0"
 uuid = { version = "1.4", features = ["fast-rng", "v4", "serde"] }
-sea-orm = { version = "1.0.0", features = ["sqlx-sqlite", "debug-print", "with-chrono", "with-uuid", "with-rust_decimal", "with-time"] }
-sea-orm-migration = "1.0.0"
+sea-orm = { version = "1.0.0", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", "debug-print", "with-chrono", "with-uuid", "with-rust_decimal", "with-time"] }
+sea-orm-migration = { version = "1.0.0", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls"] }
 anyhow = "1.0"
 # Temporarily disabled due to TLS issues
 # diesel = { version = "1.4", features = ["postgres", "uuid", "chrono", "serde_json", "numeric"] }

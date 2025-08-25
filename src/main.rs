@@ -40,8 +40,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Load configuration
     let config = config::load_config()?;
-    // Re-init tracing with configured log level
-    stateset_api::config::init_tracing(&config.log_level);
+    // Re-init tracing with configured log level and format
+    stateset_api::config::init_tracing(&config.log_level, config.log_json);
     tracing::info!("Configuration loaded successfully");
 
     // Initialize database connection (with pool tuning)
@@ -97,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
             redis_client.clone(),
             auth_service.clone(),
         ),
+        redis: redis_client.clone(),
     };
 
     // Create StateSet API for gRPC with shared event sender
@@ -220,6 +221,8 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         // Health and metrics: minimal middleware, no rate limit
         .nest("/health", health::health_routes_with_state(db_arc.clone()))
+        // Root API info
+        .route("/", axum::routing::get(api_root_info))
         .route("/metrics", axum::routing::get(metrics_endpoint))
         .route("/metrics/json", axum::routing::get(metrics_json_endpoint))
         // API versions info and docs
@@ -284,7 +287,7 @@ async fn main() -> anyhow::Result<()> {
 
 // Build CORS layer based on AppConfig
 fn cross_origin_layer(cfg: &stateset_api::config::AppConfig) -> CorsLayer {
-    use tower_http::cors::{Any, AllowOrigin, CorsLayer as InnerCors};
+    use tower_http::cors::{AllowOrigin, CorsLayer as InnerCors};
     if let Some(list) = &cfg.cors_allowed_origins {
         let origins: Vec<_> = list
             .split(',')
@@ -365,4 +368,23 @@ async fn fallback_handler() -> (StatusCode, Json<serde_json::Value>) {
             "timestamp": chrono::Utc::now().to_rfc3339()
         }))
     )
+}
+
+#[instrument]
+async fn api_root_info() -> Json<serde_json::Value> {
+    Json(json!({
+        "name": "stateset-api",
+        "version": env!("CARGO_PKG_VERSION"),
+        "status": "up",
+        "docs": {
+            "openapi": "/api-docs",
+            "swagger_ui": "/swagger-ui",
+        },
+        "endpoints": {
+            "health": "/health",
+            "metrics": "/metrics",
+            "api_versions": "/api/versions",
+        },
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    }))
 }

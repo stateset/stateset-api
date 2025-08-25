@@ -84,7 +84,7 @@ pub struct ReserveInventoryRequest {
     pub reference_type: String, // "order", "quote", "hold"
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct InventoryFilters {
     pub product_id: Option<String>,
     pub location_id: Option<String>,
@@ -109,6 +109,29 @@ where
 }
 
 /// List inventory items with optional filtering
+#[utoipa::path(
+    get,
+    path = "/api/v1/inventory",
+    params(
+        InventoryFilters
+    ),
+    responses(
+        (status = 200, description = "Inventory list returned",
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id for tracing"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until window resets"),
+            )
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "inventory"
+)]
 pub async fn list_inventory<S>(
     State(state): State<S>,
     Query(filters): Query<InventoryFilters>,
@@ -169,6 +192,22 @@ where
 }
 
 /// Create new inventory item
+#[utoipa::path(
+    post,
+    path = "/api/v1/inventory",
+    request_body = CreateInventoryRequest,
+    responses(
+        (status = 201, description = "Inventory item created", body = InventoryItem,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "inventory"
+)]
 pub async fn create_inventory<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateInventoryRequest>,
@@ -193,6 +232,24 @@ where
 }
 
 /// Get specific inventory item
+#[utoipa::path(
+    get,
+    path = "/api/v1/inventory/{id}",
+    params(
+        ("id" = String, Path, description = "Inventory item ID")
+    ),
+    responses(
+        (status = 200, description = "Inventory item returned", body = InventoryItem,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "inventory"
+)]
 pub async fn get_inventory<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -217,6 +274,26 @@ where
 }
 
 /// Update inventory item
+#[utoipa::path(
+    put,
+    path = "/api/v1/inventory/{id}",
+    params(
+        ("id" = String, Path, description = "Inventory item ID")
+    ),
+    request_body = UpdateInventoryRequest,
+    responses(
+        (status = 200, description = "Inventory item updated", body = InventoryItem,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "inventory"
+)]
 pub async fn update_inventory<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -242,6 +319,24 @@ where
 }
 
 /// Delete inventory item
+#[utoipa::path(
+    delete,
+    path = "/api/v1/inventory/{id}",
+    params(
+        ("id" = String, Path, description = "Inventory item ID")
+    ),
+    responses(
+        (status = 200, description = "Inventory item deleted",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "inventory"
+)]
 pub async fn delete_inventory<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -366,6 +461,20 @@ where
 }
 
 /// Get low stock items
+#[utoipa::path(
+    get,
+    path = "/api/v1/inventory/low-stock",
+    responses(
+        (status = 200, description = "Low stock items returned",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    tag = "inventory"
+)]
 pub async fn get_low_stock_items<S>(
     State(_state): State<S>,
     Query(filters): Query<InventoryFilters>,

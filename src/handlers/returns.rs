@@ -139,7 +139,20 @@ where
     get,
     path = "/api/v1/returns",
     params(ReturnFilters),
-    responses((status = 200, description = "List returns")),
+    responses(
+        (status = 200, description = "List returns",
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn list_returns<S>(
@@ -238,7 +251,16 @@ where
     post,
     path = "/api/v1/returns",
     request_body = CreateReturnRequest,
-    responses((status = 201, description = "Return created", body = Return)),
+    responses(
+        (status = 201, description = "Return created", body = Return,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn create_return<S>(
@@ -378,7 +400,13 @@ where
     path = "/api/v1/returns/{id}/status",
     params(("id" = String, Path, description = "Return ID")),
     request_body = UpdateReturnStatusBody,
-    responses((status = 200, description = "Status updated")),
+    responses(
+        (status = 200, description = "Status updated",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn update_return_status<S>(
@@ -430,7 +458,14 @@ where
     path = "/api/v1/returns/{id}/process",
     params(("id" = String, Path, description = "Return ID")),
     request_body = ProcessReturnRequest,
-    responses((status = 200, description = "Return processed")),
+    responses(
+        (status = 200, description = "Return processed",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn process_return<S>(
@@ -464,7 +499,13 @@ where
     post,
     path = "/api/v1/returns/{id}/approve",
     params(("id" = String, Path, description = "Return ID")),
-    responses((status = 200, description = "Return approved")),
+    responses(
+        (status = 200, description = "Return approved",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn approve_return<S>(
@@ -489,7 +530,13 @@ where
     post,
     path = "/api/v1/returns/{id}/reject",
     params(("id" = String, Path, description = "Return ID")),
-    responses((status = 200, description = "Return rejected")),
+    responses(
+        (status = 200, description = "Return rejected",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn reject_return<S>(
@@ -515,7 +562,14 @@ where
     path = "/api/v1/returns/{id}/restock",
     params(("id" = String, Path, description = "Return ID")),
     request_body = RestockReturnRequest,
-    responses((status = 200, description = "Items restocked")),
+    responses(
+        (status = 200, description = "Items restocked",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
     tag = "returns"
 )]
 pub async fn restock_return<S>(

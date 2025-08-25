@@ -165,11 +165,19 @@ impl IntoResponse for ServiceError {
             ServiceError::Other(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
 
-        let body = Json(serde_json::json!({
-            "error": error_message,
-        }));
+        // Build standardized error response
+        let err = ErrorResponse {
+            error: status
+                .canonical_reason()
+                .unwrap_or("Error")
+                .to_string(),
+            message: error_message,
+            details: None,
+            request_id: None,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
 
-        (status, body).into_response()
+        (status, Json(err)).into_response()
     }
 }
 

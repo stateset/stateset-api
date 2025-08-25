@@ -33,6 +33,7 @@ use sha2::Digest;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
+use metrics::counter;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 use uuid::Uuid;
@@ -620,6 +621,20 @@ impl IntoResponse for AuthError {
                 "AUTH_INTERNAL_ERROR",
                 msg.clone(),
             ),
+        };
+
+        // Emit auth failure metric
+        counter!(
+            "auth_failures_total",
+            1,
+            "code" => error_code.to_string(),
+            "status" => status.as_u16().to_string(),
+        );
+        // Also update custom metrics registry for visibility in /metrics
+        let _ = {
+            #[allow(unused_imports)]
+            use crate::metrics::increment_counter;
+            increment_counter("auth_failures_total");
         };
 
         let body = Json(serde_json::json!({

@@ -126,10 +126,19 @@ pub struct UpdateOrderStatusRequest {
         ("customer_id" = Option<String>, Query, description = "Filter by customer ID"),
     ),
     responses(
-        (status = 200, description = "Orders retrieved successfully", body = ApiResponse<PaginatedResponse<OrderResponse>>),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Orders retrieved successfully", body = ApiResponse<PaginatedResponse<OrderResponse>>,
+            headers(
+                ("X-Request-Id" = String, description = "Unique request id"),
+                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
+            )
+        ),
+        (status = 400, description = "Invalid request parameters", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),
@@ -181,11 +190,15 @@ pub async fn list_orders(
     description = "Create a new order",
     request_body = CreateOrderRequest,
     responses(
-        (status = 201, description = "Order created successfully", body = ApiResponse<OrderResponse>),
-        (status = 400, description = "Invalid request data"),
-        (status = 401, description = "Unauthorized"),
-        (status = 422, description = "Validation error"),
-        (status = 500, description = "Internal server error"),
+        (status = 201, description = "Order created successfully", body = ApiResponse<OrderResponse>,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 400, description = "Invalid request data", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),
@@ -270,10 +283,14 @@ pub async fn create_order(
         ("id" = String, Path, description = "Order ID"),
     ),
     responses(
-        (status = 200, description = "Order retrieved successfully", body = ApiResponse<OrderResponse>),
-        (status = 404, description = "Order not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Order retrieved successfully", body = ApiResponse<OrderResponse>,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),
@@ -310,11 +327,15 @@ pub async fn get_order(
     ),
     request_body = UpdateOrderRequest,
     responses(
-        (status = 200, description = "Order updated successfully", body = ApiResponse<OrderResponse>),
-        (status = 404, description = "Order not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 422, description = "Validation error"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Order updated successfully", body = ApiResponse<OrderResponse>,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),
@@ -375,10 +396,14 @@ pub async fn update_order(
         ("id" = String, Path, description = "Order ID"),
     ),
     responses(
-        (status = 200, description = "Order deleted successfully"),
-        (status = 404, description = "Order not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Order deleted successfully",
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),
@@ -416,11 +441,15 @@ pub async fn delete_order(
     ),
     request_body = UpdateOrderStatusRequest,
     responses(
-        (status = 200, description = "Order status updated successfully", body = ApiResponse<OrderResponse>),
-        (status = 404, description = "Order not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 422, description = "Validation error"),
-        (status = 500, description = "Internal server error"),
+        (status = 200, description = "Order status updated successfully", body = ApiResponse<OrderResponse>,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),
@@ -528,11 +557,15 @@ pub async fn get_order_items(
     ),
     request_body = CreateOrderItem,
     responses(
-        (status = 201, description = "Item added successfully", body = ApiResponse<OrderItem>),
-        (status = 404, description = "Order not found"),
-        (status = 401, description = "Unauthorized"),
-        (status = 422, description = "Validation error"),
-        (status = 500, description = "Internal server error"),
+        (status = 201, description = "Item added successfully", body = ApiResponse<OrderItem>,
+            headers(("X-Request-Id" = String, description = "Unique request id"))
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse),
     ),
     security(
         ("Bearer" = []),

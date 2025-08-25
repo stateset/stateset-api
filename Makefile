@@ -1,6 +1,6 @@
 # Makefile for StateSet API with build error logging
 
-.PHONY: build build-release test clean run logs help
+.PHONY: build build-offline build-release build-release-offline test test-offline clean run logs help
 
 # Default target
 help:
@@ -23,6 +23,11 @@ build:
 	@echo "Building project (debug mode)..."
 	@./build.sh
 
+# Build in debug mode offline (no network)
+build-offline:
+	@echo "Building project (debug mode, offline)..."
+	@CARGO_OFFLINE=1 ./build.sh
+
 # Build in release mode with error logging
 build-release:
 	@echo "Building project (release mode)..."
@@ -37,10 +42,29 @@ build-release:
 		exit $${PIPESTATUS[0]}; \
 	fi
 
+# Build in release mode offline (no network)
+build-release-offline:
+	@echo "Building project (release mode, offline)..."
+	@echo "[`date '+%Y-%m-%d %H:%M:%S'`] ===== Release build started (offline) =====" >> build_errors.log
+	@cargo build --release --offline 2>&1 | tee -a build_errors.log; \
+	if [ $${PIPESTATUS[0]} -eq 0 ]; then \
+		echo "[`date '+%Y-%m-%d %H:%M:%S'`] Release build completed successfully (offline)" >> build_errors.log; \
+		echo "✅ Release build successful (offline)!"; \
+	else \
+		echo "[`date '+%Y-%m-%d %H:%M:%S'`] Release build failed with exit code: $${PIPESTATUS[0]} (offline)" >> build_errors.log; \
+		echo "❌ Release build failed (offline)! Check build_errors.log for details."; \
+		exit $${PIPESTATUS[0]}; \
+	fi
+
 # Run tests with error logging
 test:
 	@echo "Running tests..."
 	@./build.sh --with-tests
+
+# Run tests in offline mode
+test-offline:
+	@echo "Running tests (offline)..."
+	@CARGO_OFFLINE=1 ./build.sh --with-tests
 
 # Clean build artifacts
 clean:

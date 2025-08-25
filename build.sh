@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Build script with error logging
 # This script runs cargo build and logs any errors to build_errors.log
 
@@ -41,22 +43,27 @@ log_with_timestamp "===== Build started ====="
 # Check Rust version
 check_rust_version
 
-# Clear any existing file locks
-if [ -f "Cargo.lock" ]; then
-    echo -e "${YELLOW}Removing Cargo.lock to avoid file lock issues...${NC}"
-    rm -f Cargo.lock
+## Determine cargo args (support offline builds)
+OFFLINE_FLAG=""
+if [[ "${CARGO_OFFLINE:-0}" == "1" ]]; then
+    OFFLINE_FLAG="--offline"
+    echo -e "${YELLOW}Building in offline mode (--offline)${NC}"
+    log_with_timestamp "Building in offline mode"
 fi
 
-# Run cargo build and capture output
+# Run cargo build and capture output, ensuring cargo's exit code is preserved
 echo -e "${YELLOW}Running cargo build...${NC}"
-if cargo build 2>&1 | tee -a "$BUILD_LOG"; then
+set +e
+cargo build ${OFFLINE_FLAG} 2>&1 | tee -a "$BUILD_LOG"
+CARGO_STATUS=${PIPESTATUS[0]}
+set -e
+if [[ $CARGO_STATUS -eq 0 ]]; then
     echo -e "${GREEN}Build completed successfully!${NC}"
     log_with_timestamp "Build completed successfully"
 else
-    BUILD_STATUS=$?
-    echo -e "${RED}Build failed with exit code: $BUILD_STATUS${NC}"
-    log_with_timestamp "Build failed with exit code: $BUILD_STATUS"
-    
+    echo -e "${RED}Build failed with exit code: $CARGO_STATUS${NC}"
+    log_with_timestamp "Build failed with exit code: $CARGO_STATUS"
+
     # Check for specific error patterns
     if grep -q "edition2024" "$BUILD_LOG"; then
         echo -e "${RED}Error: A dependency requires Rust edition 2024${NC}"
@@ -65,29 +72,34 @@ else
         echo -e "  2. Or use an older version of the problematic dependency"
         log_with_timestamp "ERROR: Dependency requires Rust edition 2024 - consider using Rust nightly"
     fi
-    
+
     # Also try to capture more detailed error information
     echo -e "${YELLOW}Running cargo check for additional diagnostics...${NC}"
-    cargo check --message-format=json 2>&1 | while IFS= read -r line; do
+    set +e
+    cargo check ${OFFLINE_FLAG} --message-format=json 2>&1 | while IFS= read -r line; do
         # Parse JSON messages for errors
         if echo "$line" | grep -q '"level":"error"'; then
             log_with_timestamp "ERROR: $line"
         fi
     done
-    
-    exit $BUILD_STATUS
+    set -e
+
+    exit $CARGO_STATUS
 fi
 
 # Optional: Run tests and log any failures
-if [ "$1" == "--with-tests" ]; then
+if [ "${1:-}" == "--with-tests" ]; then
     echo -e "${YELLOW}Running tests...${NC}"
     log_with_timestamp "===== Running tests ====="
     
-    if cargo test 2>&1 | tee -a "$BUILD_LOG"; then
+    set +e
+    cargo test ${OFFLINE_FLAG} 2>&1 | tee -a "$BUILD_LOG"
+    TEST_STATUS=${PIPESTATUS[0]}
+    set -e
+    if [[ $TEST_STATUS -eq 0 ]]; then
         echo -e "${GREEN}Tests passed!${NC}"
         log_with_timestamp "Tests completed successfully"
     else
-        TEST_STATUS=$?
         echo -e "${RED}Tests failed with exit code: $TEST_STATUS${NC}"
         log_with_timestamp "Tests failed with exit code: $TEST_STATUS"
         exit $TEST_STATUS

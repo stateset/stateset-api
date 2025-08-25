@@ -96,6 +96,10 @@ pub struct AppConfig {
     #[serde(default = "default_log_level")]
     pub log_level: String,
 
+    /// Log in JSON format (structured logging)
+    #[serde(default)]
+    pub log_json: bool,
+
     /// Cache configuration
     #[serde(default)]
     pub cache: CacheConfig,
@@ -184,6 +188,7 @@ impl AppConfig {
             grpc_port: None,
             environment,
             log_level: default_log_level(),
+            log_json: false,
             cache: CacheConfig {
                 redis_url, // Use the same Redis URL for cache by default
                 ..Default::default()
@@ -294,14 +299,18 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
 }
 
 /// Initializes tracing using the provided log level as the default filter
-pub fn init_tracing(level: &str) {
+pub fn init_tracing(level: &str, json: bool) {
     use tracing_subscriber::{fmt, EnvFilter};
 
     let default_directive = format!("stateset_api={},tower_http=debug", level);
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
 
-    let _ = fmt().with_env_filter(filter).try_init();
+    let _ = if json {
+        fmt().with_env_filter(filter).json().try_init()
+    } else {
+        fmt().with_env_filter(filter).try_init()
+    };
 }
 
 /// Loads application configuration
@@ -312,7 +321,10 @@ pub fn init_tracing(level: &str) {
 /// 3. Docker config (config/docker.toml) if DOCKER env var is set
 /// 4. Environment variables (APP_*)
 pub fn load_config() -> Result<AppConfig, AppConfigError> {
-    let run_env = env::var("RUN_ENV").unwrap_or_else(|_| DEFAULT_ENV.to_string());
+    // Support both RUN_ENV and APP_ENV for selecting config profile
+    let run_env = env::var("RUN_ENV")
+        .or_else(|_| env::var("APP_ENV"))
+        .unwrap_or_else(|_| DEFAULT_ENV.to_string());
     info!("Loading configuration for environment: {}", run_env);
 
     // Ensure config directory exists

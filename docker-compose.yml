@@ -9,8 +9,7 @@ services:
       - "3000:3000"
     environment:
       - RUST_LOG=${RUST_LOG:-info}
-      - DATABASE_URL=${DATABASE_URL:-sqlite://data/stateset.db?mode=rwc}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DOCKER=1
       - JWT_SECRET=${JWT_SECRET:-your_secure_jwt_secret_key_please_change_in_production}
       - JWT_EXPIRATION=${JWT_EXPIRATION:-60}
       - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION:-7}
@@ -20,7 +19,10 @@ services:
       - ./data:/app/data
       - ./migrations:/app/migrations:ro
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     networks:
       - stateset-network
     restart: unless-stopped
@@ -37,23 +39,44 @@ services:
     command: redis-server --appendonly yes
 
   # Optional: PostgreSQL database (uncomment if needed)
-  # postgres:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     - POSTGRES_DB=stateset_db
-  #     - POSTGRES_USER=postgres
-  #     - POSTGRES_PASSWORD=postgres
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres-data:/var/lib/postgresql/data
-  #   networks:
-  #     - stateset-network
-  #   restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=stateset_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - stateset-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stateset_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-off migration job (run manually or on first boot)
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/stateset_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - stateset-network
+    command: ["./migration"]
+    restart: "no"
 
 volumes:
   redis-data:
-  # postgres-data:
+  postgres-data:
 
 networks:
   stateset-network:
