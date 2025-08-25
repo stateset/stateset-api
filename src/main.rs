@@ -221,8 +221,18 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         // Health and metrics: minimal middleware, no rate limit
         .nest("/health", health::health_routes_with_state(db_arc.clone()))
+        // Common health/readiness aliases
+        .route("/readyz", axum::routing::get(|| async { axum::response::Redirect::to("/health/ready") }))
+        .route("/livez", axum::routing::get(|| async { axum::response::Redirect::to("/health/live") }))
+        .route("/-/healthz", axum::routing::get(|| async { axum::response::Redirect::to("/health") }))
+        .route("/-/ready", axum::routing::get(|| async { axum::response::Redirect::to("/health/ready") }))
+        .route("/-/live", axum::routing::get(|| async { axum::response::Redirect::to("/health/live") }))
+        // Version info alias at root
+        .route("/version", axum::routing::get(health::version_info))
         // Root API info
         .route("/", axum::routing::get(api_root_info))
+        // Keep alias for historical link, redirect to /docs
+        .route("/swagger-ui", axum::routing::get(|| async { axum::response::Redirect::to("/docs") }))
         .route("/metrics", axum::routing::get(metrics_endpoint))
         .route("/metrics/json", axum::routing::get(metrics_json_endpoint))
         // API versions info and docs
@@ -377,13 +387,15 @@ async fn api_root_info() -> Json<serde_json::Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "status": "up",
         "docs": {
-            "openapi": "/api-docs",
-            "swagger_ui": "/swagger-ui",
+            "openapi_index": "/api-docs",
+            "swagger_ui": "/docs",
         },
         "endpoints": {
             "health": "/health",
+            "health_aliases": ["/readyz", "/livez", "/-/healthz"],
             "metrics": "/metrics",
             "api_versions": "/api/versions",
+            "version": "/version",
         },
         "timestamp": chrono::Utc::now().to_rfc3339(),
     }))

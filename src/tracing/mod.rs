@@ -15,6 +15,7 @@ use opentelemetry::{
 use pin_project_lite::pin_project;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json::{self, Value as JsonValue};
 use slog::Logger;
 use std::{
     collections::HashMap,
@@ -547,7 +548,29 @@ where
                             }
                         };
 
-                        let body_str = String::from_utf8_lossy(&bytes);
+                        // Potentially augment JSON error body with request_id
+                        let mut out_bytes = bytes.to_vec();
+                        let status = parts.status;
+                        let is_json = parts
+                            .headers
+                            .get("content-type")
+                            .and_then(|h| h.to_str().ok())
+                            .map(|ct| ct.contains("application/json"))
+                            .unwrap_or(false);
+                        if status.as_u16() >= 400 && is_json {
+                            if let Ok(mut val) = serde_json::from_slice::<JsonValue>(&out_bytes) {
+                                if let JsonValue::Object(ref mut map) = val {
+                                    if !map.contains_key("request_id") {
+                                        map.insert("request_id".to_string(), JsonValue::String(request_id.clone()));
+                                        if let Ok(new_bytes) = serde_json::to_vec(&val) {
+                                            out_bytes = new_bytes;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let body_str = String::from_utf8_lossy(&out_bytes);
                         let limited_body = RequestLogger::limit_body(&body_str, logger.max_body_size);
 
                         info!(
@@ -556,7 +579,7 @@ where
                             "Response body"
                         );
 
-                        let body = Body::from(bytes);
+                        let body = Body::from(out_bytes);
                         Ok::<Response<Body>, Infallible>(Response::from_parts(parts, body))
                     } else {
                         let (parts, body) = response.into_parts();
@@ -581,7 +604,29 @@ where
                                     .unwrap());
                             }
                         };
-                        let body = Body::from(bytes);
+                        // Potentially augment JSON error body with request_id
+                        let mut out_bytes = bytes.to_vec();
+                        let status = parts.status;
+                        let is_json = parts
+                            .headers
+                            .get("content-type")
+                            .and_then(|h| h.to_str().ok())
+                            .map(|ct| ct.contains("application/json"))
+                            .unwrap_or(false);
+                        if status.as_u16() >= 400 && is_json {
+                            if let Ok(mut val) = serde_json::from_slice::<JsonValue>(&out_bytes) {
+                                if let JsonValue::Object(ref mut map) = val {
+                                    if !map.contains_key("request_id") {
+                                        map.insert("request_id".to_string(), JsonValue::String(request_id.clone()));
+                                        if let Ok(new_bytes) = serde_json::to_vec(&val) {
+                                            out_bytes = new_bytes;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let body = Body::from(out_bytes);
                         Ok::<Response<Body>, Infallible>(Response::from_parts(parts, body))
                     }
                 }
