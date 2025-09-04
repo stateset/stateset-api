@@ -84,8 +84,8 @@ impl OrderService for OrderGrpcService {
         // Convert timestamp to prost_types::Timestamp
         let now = chrono::Utc::now();
         let timestamp = prost_types::Timestamp {
-            seconds: now.timestamp(),
-            nanos: now.timestamp_subsec_nanos() as i32,
+            seconds: now.and_utc().timestamp(),
+            nanos: now.and_utc().timestamp_subsec_nanos() as i32,
         };
         
         Ok(Response::new(CreateOrderResponse {

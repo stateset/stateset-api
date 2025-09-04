@@ -19,17 +19,13 @@ use axum::{
     Json,
     extract::DefaultBodyLimit,
 };
-use base64::Engine as _;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use hmac::Mac;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
 };
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
