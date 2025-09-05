@@ -1,15 +1,14 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry};
 use crate::message_queue::MessageQueue;
 use crate::{
-    // commands::shipments::{
-        // assign_shipment_carrier_command::AssignShipmentCarrierCommand,
+    commands::shipments::{
+        assign_shipment_carrier_command::AssignShipmentCarrierCommand,
         cancel_shipment_command::CancelShipmentCommand,
-        // confirm_shipment_delivery_command::ConfirmShipmentDeliveryCommand,
-        create_shipment_command::CreateShipmentCommand, ship_command::ShipOrderCommand,
-        // track_shipment_command::TrackShipmentCommand,
-        // update_shipment_command::UpdateShipmentStatusCommand,
+        confirm_shipment_delivery_command::ConfirmShipmentDeliveryCommand,
+        create_shipment_command::CreateShipmentCommand,
+        track_shipment_command::TrackShipmentCommand,
         update_shipment_general_command::UpdateShipmentCommand,
-    // },
+    },
     commands::Command,
     db::DbPool,
     errors::ServiceError,

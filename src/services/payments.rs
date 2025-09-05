@@ -13,7 +13,25 @@ use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
 use rust_decimal::Decimal;
-use validator::Validate;
+use validator::{Validate, ValidationError};
+
+fn validate_positive_decimal(value: &Decimal) -> Result<(), ValidationError> {
+    if *value > Decimal::ZERO {
+        Ok(())
+    } else {
+        let mut err = ValidationError::new("range");
+        err.message = Some("Amount must be greater than 0".into());
+        Err(err)
+    }
+}
+
+fn validate_optional_positive_decimal(value: &Option<Decimal>) -> Result<(), ValidationError> {
+    if let Some(v) = value {
+        validate_positive_decimal(v)
+    } else {
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaymentStatus {
@@ -51,7 +69,7 @@ pub enum PaymentMethod {
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ProcessPaymentRequest {
     pub order_id: Uuid,
-    #[validate(range(min = 0.01, message = "Amount must be greater than 0"))]
+    #[validate(custom = "validate_positive_decimal")]
     pub amount: Decimal,
     pub payment_method: PaymentMethod,
     pub payment_method_id: Option<String>,
@@ -76,7 +94,7 @@ pub struct PaymentResponse {
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RefundPaymentRequest {
     pub payment_id: Uuid,
-    #[validate(range(min = 0.01, message = "Refund amount must be greater than 0"))]
+    #[validate(custom = "validate_optional_positive_decimal")]
     pub amount: Option<Decimal>,
     pub reason: Option<String>,
 }

@@ -1,4 +1,5 @@
 use utoipa::{OpenApi, ToSchema};
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
@@ -92,8 +93,6 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::orders::create_order,
         crate::handlers::orders::update_order,
         crate::handlers::orders::update_order_status,
-        crate::handlers::orders::cancel_order,
-        crate::handlers::orders::archive_order,
         crate::handlers::orders::add_order_item,
 
         // Inventory
@@ -103,18 +102,8 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::inventory::update_inventory,
         crate::handlers::inventory::delete_inventory,
         crate::handlers::inventory::get_low_stock_items,
-        crate::handlers::inventory::reserve_inventory,
-        crate::handlers::inventory::release_inventory,
 
-        // Analytics
-        crate::handlers::analytics::get_dashboard_metrics,
-        crate::handlers::analytics::get_sales_metrics,
-        crate::handlers::analytics::get_sales_trends,
-        crate::handlers::analytics::get_inventory_metrics,
-        crate::handlers::analytics::get_shipment_metrics,
-
-        // Health
-        crate::handlers::health::health_check
+        // Analytics & Health intentionally omitted from OpenAPI paths for now
     ),
     components(
         schemas(
@@ -132,7 +121,7 @@ List endpoints support pagination with the following query parameters:
             crate::handlers::orders::Address,
 
             // Inventory types
-            crate::handlers::inventory::InventoryResponse,
+            crate::handlers::inventory::InventoryItem,
             crate::handlers::inventory::CreateInventoryRequest,
             crate::handlers::inventory::UpdateInventoryRequest,
 
@@ -144,20 +133,7 @@ List endpoints support pagination with the following query parameters:
 
             // Error types
             crate::errors::ErrorResponse
-        ),
-        security_schemes(
-            ("bearer_auth", SecurityScheme::Http(
-                Http::Bearer,
-                Some(HttpAuthScheme::Bearer)
-            )),
-            ("api_key", SecurityScheme::ApiKey(
-                ApiKey::Header(ApiKeyValue::new("X-API-Key"))
-            ))
         )
-    ),
-    security(
-        ("bearer_auth", []),
-        ("api_key", [])
     )
 )]
 pub struct ApiDocV1;

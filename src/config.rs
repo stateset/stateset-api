@@ -19,6 +19,7 @@ const DEFAULT_RATE_LIMIT_WINDOW_SECS: u64 = 60;
 
 /// Cache configuration
 #[derive(Clone, Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct CacheConfig {
     /// Type of cache to use: "in-memory", "redis", or "multi-level"
     #[serde(default = "default_cache_type")]
@@ -59,6 +60,7 @@ impl Default for CacheConfig {
 
 /// Application configuration structure with validation
 #[derive(Clone, Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct AppConfig {
     /// Database connection URL
     pub database_url: String,

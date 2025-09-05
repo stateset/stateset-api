@@ -5,6 +5,9 @@ use axum::{
     Router,
 };
 use tokio::signal;
+use tower::timeout::TimeoutLayer;
+use tower_http::{compression::CompressionLayer, cors::{CorsLayer, Any}};
+use http::HeaderValue;
 use tracing::{error, info};
 
 use stateset_api as api;
@@ -66,11 +69,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redis: redis_client.clone(),
     };
 
+    // Build CORS layer from config
+    let cors_layer = if cfg.cors_allowed_origins.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
+        let origins: Vec<HeaderValue> = cfg
+            .cors_allowed_origins
+            .as_ref()
+            .unwrap()
+            .split(',')
+            .filter_map(|o| HeaderValue::from_str(o.trim()).ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
+            .allow_credentials(cfg.cors_allow_credentials)
+    } else {
+        // Permissive for local/dev
+        CorsLayer::permissive()
+    };
+
     // Build router: status/health + full v1 API + Swagger UI
     let app = Router::new()
         .route("/", get(|| async { "stateset-api up" }))
         .merge(api::openapi::swagger_ui())
         .nest("/api/v1", api::api_v1_routes())
+        // HTTP tracing layer for consistent request/response telemetry
+        .layer(api::tracing::configure_http_tracing())
+        // Apply compression and timeouts
+        .layer(CompressionLayer::new())
+        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        // Apply CORS
+        .layer(cors_layer)
         // Inject AuthService into request extensions for auth middleware
         .layer(axum::middleware::from_fn_with_state(
             auth_service.clone(),

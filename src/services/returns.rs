@@ -3,16 +3,20 @@ use crate::message_queue::MessageQueue;
 use crate::{
     // commands::returns::{
         // approve_return_command::ApproveReturnCommand, cancel_return_command::CancelReturnCommand,
-        complete_return_command::CompleteReturnCommand,
+        // complete_return_command::CompleteReturnCommand,
         // create_return_command::InitiateReturnCommand as CreateReturnCommand,
         // refund_return_command::RefundReturnCommand, reject_return_command::RejectReturnCommand,
-        restock_returned_items_command::RestockReturnedItemsCommand,
+        // restock_returned_items_command::RestockReturnedItemsCommand,
     // },
     commands::Command,
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
     models::return_entity,
+};
+use crate::commands::returns::{
+    complete_return_command::CompleteReturnCommand,
+    restock_returned_items_command::RestockReturnedItemsCommand,
 };
 use anyhow::Result;
 use redis::Client as RedisClient;

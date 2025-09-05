@@ -1,6 +1,13 @@
 //! StateSet API Library
 //!
 //! This crate provides the core functionality for the StateSet API
+#![forbid(unsafe_code)]
+#![deny(rust_2018_idioms)]
+#![warn(
+    clippy::all,
+    clippy::perf,
+    clippy::dbg_macro
+)]
 
 // Core modules
 pub mod api;
@@ -46,6 +53,7 @@ use redis::AsyncCommands;
 // Import handler traits
 use handlers::inventory::InventoryHandlerState;
 use crate::auth::AuthRouterExt;
+use crate::auth::consts as perm;
 
 // App state definition
 #[derive(Clone)]
@@ -120,51 +128,61 @@ impl<T> ApiResponse<T> {
     }
 }
 
+/// Standard API result type for JSON responses
+pub type ApiResult<T> = Result<Json<ApiResponse<T>>, errors::ServiceError>;
+
 // Enhanced API routes function
 pub fn api_v1_routes() -> Router<AppState> {
     // Orders routes with permission gating
     let orders_read = Router::new()
         .route("/orders", get(handlers::orders::list_orders))
         .route("/orders/{id}", get(handlers::orders::get_order))
+        .route("/orders/by-number/{order_number}", get(handlers::orders::get_order_by_number))
         .route("/orders/{id}/items", get(handlers::orders::get_order_items))
-        .with_permission("orders:read");
+        .with_permission(perm::ORDERS_READ);
 
-    let orders_write = Router::new()
+    let orders_create = Router::new()
         .route("/orders", axum::routing::post(handlers::orders::create_order))
+        .with_permission(perm::ORDERS_CREATE);
+
+    let orders_update = Router::new()
         .route("/orders/{id}", axum::routing::put(handlers::orders::update_order))
         .route("/orders/{id}/items", axum::routing::post(handlers::orders::add_order_item))
         .route("/orders/{id}/status", axum::routing::put(handlers::orders::update_order_status))
-        .route("/orders/{id}/cancel", axum::routing::post(handlers::orders::cancel_order))
         .route("/orders/{id}/archive", axum::routing::post(handlers::orders::archive_order))
-        .with_permission("orders:write");
+        .with_permission(perm::ORDERS_UPDATE);
+
+    let orders_cancel = Router::new()
+        .route("/orders/{id}/cancel", axum::routing::post(handlers::orders::cancel_order))
+        .with_permission(perm::ORDERS_CANCEL);
 
     let orders_delete = Router::new()
         .route("/orders/{id}", axum::routing::delete(handlers::orders::delete_order))
-        .with_permission("orders:delete");
+        .with_permission(perm::ORDERS_DELETE);
 
     // Inventory routes with permission gating
     let inventory_read = Router::new()
         .route("/inventory", get(handlers::inventory::list_inventory::<AppState>))
         .route("/inventory/{id}", get(handlers::inventory::get_inventory::<AppState>))
         .route("/inventory/low-stock", get(handlers::inventory::get_low_stock_items::<AppState>))
-        .with_permission("inventory:read");
+        .with_permission(perm::INVENTORY_READ);
 
-    let inventory_write = Router::new()
+    let inventory_mutate = Router::new()
         .route("/inventory", axum::routing::post(handlers::inventory::create_inventory::<AppState>))
         .route("/inventory/{id}", axum::routing::put(handlers::inventory::update_inventory::<AppState>))
         .route("/inventory/{id}/reserve", axum::routing::post(handlers::inventory::reserve_inventory::<AppState>))
         .route("/inventory/{id}/release", axum::routing::post(handlers::inventory::release_inventory::<AppState>))
-        .with_permission("inventory:write");
+        .with_permission(perm::INVENTORY_ADJUST);
 
     let inventory_delete = Router::new()
         .route("/inventory/{id}", axum::routing::delete(handlers::inventory::delete_inventory::<AppState>))
-        .with_permission("inventory:delete");
+        .with_permission(perm::INVENTORY_ADJUST);
 
     // Returns routes with permission gating
     let returns_read = Router::new()
         // .route("/returns", get(handlers::returns::list_returns::<AppState>))
         // .route("/returns/{id}", get(handlers::returns::get_return::<AppState>))
-        .with_permission("returns:read");
+        .with_permission(perm::RETURNS_READ);
 
     let returns_write = Router::new()
         // .route("/returns", axum::routing::post(handlers::returns::create_return::<AppState>))
@@ -175,18 +193,18 @@ pub fn api_v1_routes() -> Router<AppState> {
         // .route("/returns/{id}/reject", axum::routing::post(handlers::returns::reject_return::<AppState>))
         // .route("/returns/{id}/restock", axum::routing::post(handlers::returns::restock_return::<AppState>))
         // .route("/returns/{id}/refund", axum::routing::post(handlers::returns::issue_refund::<AppState>))
-        .with_permission("returns:write");
+        .with_permission(perm::RETURNS_CREATE);
 
     let returns_delete = Router::new()
         // .route("/returns/{id}", axum::routing::delete(handlers::returns::delete_return::<AppState>))
-        .with_permission("returns:delete");
+        .with_permission(perm::RETURNS_REJECT);
 
     // Shipments routes with permission gating
     let shipments_read = Router::new()
         // .route("/shipments", get(handlers::shipments::list_shipments::<AppState>))
         // .route("/shipments/{id}", get(handlers::shipments::get_shipment::<AppState>))
         // .route("/shipments/{id}/track", get(handlers::shipments::track_shipment::<AppState>))
-        .with_permission("shipments:read");
+        .with_permission(perm::SHIPMENTS_READ);
 
     let shipments_write = Router::new()
         // .route("/shipments", axum::routing::post(handlers::shipments::create_shipment::<AppState>))
@@ -195,45 +213,51 @@ pub fn api_v1_routes() -> Router<AppState> {
         // .route("/shipments/{id}/ship", axum::routing::post(handlers::shipments::mark_shipped::<AppState>))
         // .route("/shipments/{id}/deliver", axum::routing::post(handlers::shipments::mark_delivered::<AppState>))
         // .route("/shipments/{id}/tracking", axum::routing::post(handlers::shipments::add_tracking_event::<AppState>))
-        .with_permission("shipments:write");
+        .with_permission(perm::SHIPMENTS_UPDATE);
 
     let shipments_delete = Router::new()
         // .route("/shipments/{id}", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
-        .with_permission("shipments:delete");
+        .with_permission(perm::SHIPMENTS_DELETE);
 
     // Warranties routes with permission gating
     let warranties_read = Router::new()
         .route("/warranties", get(handlers::warranties::list_warranties::<AppState>))
         .route("/warranties/{id}", get(handlers::warranties::get_warranty::<AppState>))
-        .with_permission("warranties:read");
+        .with_permission(perm::WARRANTIES_READ);
 
-    let warranties_write = Router::new()
+    let warranties_create = Router::new()
         .route("/warranties", axum::routing::post(handlers::warranties::create_warranty::<AppState>))
+        .with_permission(perm::WARRANTIES_CREATE);
+
+    let warranties_update = Router::new()
         .route("/warranties/{id}", axum::routing::put(handlers::warranties::update_warranty::<AppState>))
         .route("/warranties/{id}/claim", axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>))
-        .with_permission("warranties:write");
+        .with_permission(perm::WARRANTIES_UPDATE);
 
     let warranties_delete = Router::new()
         .route("/warranties/{id}", axum::routing::delete(handlers::warranties::delete_warranty::<AppState>))
-        .with_permission("warranties:delete");
+        .with_permission(perm::WARRANTIES_DELETE);
 
     // Work Orders routes with permission gating
     let work_orders_read = Router::new()
         .route("/work-orders", get(handlers::work_orders::list_work_orders::<AppState>))
         .route("/work-orders/{id}", get(handlers::work_orders::get_work_order::<AppState>))
-        .with_permission("work_orders:read");
+        .with_permission(perm::WORKORDERS_READ);
 
-    let work_orders_write = Router::new()
+    let work_orders_create = Router::new()
         .route("/work-orders", axum::routing::post(handlers::work_orders::create_work_order::<AppState>))
+        .with_permission(perm::WORKORDERS_CREATE);
+
+    let work_orders_update = Router::new()
         .route("/work-orders/{id}", axum::routing::put(handlers::work_orders::update_work_order::<AppState>))
         .route("/work-orders/{id}/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
         .route("/work-orders/{id}/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
         .route("/work-orders/{id}/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
-        .with_permission("work_orders:write");
+        .with_permission(perm::WORKORDERS_UPDATE);
 
     let work_orders_delete = Router::new()
         .route("/work-orders/{id}", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
-        .with_permission("work_orders:delete");
+        .with_permission(perm::WORKORDERS_DELETE);
 
     Router::new()
         // Status and health endpoints
@@ -242,12 +266,25 @@ pub fn api_v1_routes() -> Router<AppState> {
         
         // Orders API (auth + permissions)
         .merge(orders_read)
-        .merge(orders_write)
+        .merge(orders_create)
+        .merge(orders_update)
+        .merge(orders_cancel)
         .merge(orders_delete)
         // Inventory API (auth + permissions)
         .merge(inventory_read)
-        .merge(inventory_write)
+        .merge(inventory_mutate)
         .merge(inventory_delete)
+
+        // ASN API (auth + permissions) - temporarily disabled
+        // .route("/asns", get(handlers::asn::list_asns))
+        // .route("/asns/{id}", get(handlers::asn::get_asn))
+        // .route("/asns", post(handlers::asn::create_asn))
+        // .route("/asns/{id}", put(handlers::asn::update_asn))
+        // .route("/asns/{id}", delete(handlers::asn::delete_asn))
+        // .route("/asns/{id}/in-transit", post(handlers::asn::in_transit_asn))
+        // .route("/asns/{id}/delivered", post(handlers::asn::delivered_asn))
+        // .route("/asns/{id}/cancel", post(handlers::asn::cancel_asn))
+        // .with_permission("asn:read")
 
         // Returns API (auth + permissions)
         .merge(returns_read)
@@ -261,7 +298,8 @@ pub fn api_v1_routes() -> Router<AppState> {
 
         // Warranties API (auth + permissions)
         .merge(warranties_read)
-        .merge(warranties_write)
+        .merge(warranties_create)
+        .merge(warranties_update)
         .merge(warranties_delete)
 
          // Agents API
@@ -269,14 +307,20 @@ pub fn api_v1_routes() -> Router<AppState> {
          
          // Work Orders API (auth + permissions)
          .merge(work_orders_read)
-         .merge(work_orders_write)
+         .merge(work_orders_create)
+         .merge(work_orders_update)
          .merge(work_orders_delete)
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {
+    let version = env!("CARGO_PKG_VERSION");
+    let git = option_env!("GIT_HASH").unwrap_or("unknown");
+    let build_time = option_env!("BUILD_TIME").unwrap_or("unknown");
     let status_data = json!({
         "status": "ok",
-        "version": "1.0.0",
+        "version": version,
+        "git": git,
+        "build_time": build_time,
         "service": "stateset-api",
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "environment": std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
@@ -325,7 +369,7 @@ async fn request_logging_middleware(
     let start = std::time::Instant::now();
     
     // Log incoming request
-    println!("Incoming request: {} {}", method, uri);
+    tracing::info!(method = %method, uri = %uri, "Incoming request");
     
     let response = next.run(request).await;
     
@@ -333,7 +377,13 @@ async fn request_logging_middleware(
     let status = response.status();
     
     // Log completed request
-    println!("Request completed: {} {} - {} in {:?}", method, uri, status, duration);
+    tracing::info!(
+        method = %method,
+        uri = %uri,
+        status = status.as_u16(),
+        elapsed_ms = duration.as_millis() as u64,
+        "Request completed"
+    );
     
     response
 }

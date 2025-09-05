@@ -459,9 +459,7 @@ where
     path = "/api/v1/shipments/{id}",
     params(("id" = String, Path, description = "Shipment ID")),
     responses(
-        (status = 200, description = "Shipment deleted",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
+        (status = 204, description = "Shipment deleted"),
         (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
         (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
@@ -475,12 +473,8 @@ pub async fn delete_shipment<S>(
 where 
     S: ShipmentsAppState,
 {
-    let response = json!({
-        "message": format!("Shipment {} has been deleted", id),
-        "deleted_id": id
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    let _ = id; // placeholder until wired to DB
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Mark shipment as shipped

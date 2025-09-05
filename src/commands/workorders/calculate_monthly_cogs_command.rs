@@ -169,7 +169,7 @@ impl CalculateMonthlyCOGSCommand {
         let results = stream::iter(work_orders)
             .map(|work_order| async {
                 let command = CalculateCOGSCommand {
-                    work_order.id: work_order.number.clone(),
+                    work_order_id: work_order.id, work_order_number: work_order.number.clone(),
                 };
                 command
                     .execute(db_pool.clone(), Arc::new(EventSender::new()))
@@ -227,7 +227,7 @@ impl CalculateMonthlyCOGSCommand {
             ..Default::default()
         };
         
-        cog_entries::Entity::insert(new_cogs_data).exec(db).await.map_err(|e| {
+        cogs_data_entity::Entity::insert(new_cogs_data).exec(db).await.map_err(|e| {
             error!("Failed to store COGS data: {}", e);
             ServiceError::DatabaseError(e)
         })?;

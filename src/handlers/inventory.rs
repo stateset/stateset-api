@@ -326,9 +326,7 @@ where
         ("id" = String, Path, description = "Inventory item ID")
     ),
     responses(
-        (status = 200, description = "Inventory item deleted",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
+        (status = 204, description = "Inventory item deleted"),
         (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
         (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
@@ -344,12 +342,8 @@ pub async fn delete_inventory<S>(
 where 
     S: InventoryHandlerState,
 {
-    let response = json!({
-        "message": format!("Inventory item {} has been deleted", id),
-        "deleted_id": id
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    let _ = id; // placeholder until wired to DB
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Adjust inventory quantities

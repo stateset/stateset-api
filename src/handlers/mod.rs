@@ -3,19 +3,19 @@ pub mod auth;
 pub mod common;
 pub mod orders;
 pub mod inventory;
-// pub mod returns;
-// pub mod shipments;
+pub mod returns;
+pub mod shipments;
 pub mod warranties;
 pub mod work_orders;
-// pub mod asn;
-// pub mod bom;
-// pub mod cash_sales;
+// pub mod asn; // File removed due to compilation issues
+// pub mod bom; // Disabled due to missing service dependencies
+pub mod cash_sales;
 pub mod customers;
 pub mod payments;
-// pub mod notifications;
-// pub mod purchase_orders;
-// pub mod reports;
-// pub mod suppliers;
+pub mod notifications;
+// pub mod purchase_orders; // Disabled due to missing service dependencies
+// pub mod reports; // Disabled due to missing service dependencies
+// pub mod suppliers; // Disabled due to missing service dependencies
 pub mod users;
 pub mod commerce;
 pub mod agents;

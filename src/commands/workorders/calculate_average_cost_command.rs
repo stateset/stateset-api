@@ -159,9 +159,9 @@ impl CalculateAverageCostCommand {
         manufacturing_order_entity::Entity::find()
             .filter(
                 Condition::all()
-                    .add(manufacturing_order_entity::Column::ProductId.eq(self.product_id))
+                    // .add(manufacturing_order_entity::Column::ProductId.eq(self.product_id)) // ProductId field does not exist in manufacture_orders
                     .add(
-                        manufacture_orders::Column::CreatedOn
+                        manufacturing_order_entity::Column::CreatedOn
                             .between(self.start_date, self.end_date),
                     ),
             )

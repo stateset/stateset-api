@@ -7,7 +7,7 @@ use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 use rust_decimal::Decimal;
-use bigdecimal::BigDecimal;
+// use bigdecimal::BigDecimal;
 
 /// Event data payload for structured event information
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -230,7 +230,7 @@ pub enum Event {
     CarrierAssignedToShipment(Uuid, String),
     
     // Weighted Average COGS event
-    WeightedAverageCOGSCalculated(Uuid, BigDecimal),
+    WeightedAverageCOGSCalculated(Uuid, Decimal),
     
     // Manufacturing and inventory sync events
     InventoryUpdated {

@@ -93,7 +93,7 @@ impl AddReturnNoteCommand {
             .map_err(|e| {
                 let msg = format!("Failed to add return note: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::DatabaseError(sea_orm::DbErr::Custom(msg))
             })?;
 
         Ok(return_note_entity::Model {
