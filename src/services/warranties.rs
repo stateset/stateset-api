@@ -142,7 +142,7 @@ impl WarrantyService {
 
         let warranties = warranty::Entity::find()
             .filter(warranty::Column::CustomerId.eq(*customer_id))
-            .filter(warranty::Column::ExpirationDate.gt(now))
+            .filter(warranty::Column::CreatedDate.lt(now))
             .all(db)
             .await
             .map_err(|e| ServiceError::DatabaseError(e))?;
@@ -177,7 +177,7 @@ impl WarrantyService {
 
         let warranties = warranty::Entity::find()
 
-            .order_by_desc(warranty::Column::IncidentDate)
+            .order_by_desc(warranty::Column::CreatedDate)
 
             .offset((page - 1) * limit)
 

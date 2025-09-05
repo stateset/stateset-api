@@ -1,13 +1,13 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::message_queue::MessageQueue;
 use crate::{
-    commands::returns::{
-        approve_return_command::ApproveReturnCommand, cancel_return_command::CancelReturnCommand,
+    // commands::returns::{
+        // approve_return_command::ApproveReturnCommand, cancel_return_command::CancelReturnCommand,
         complete_return_command::CompleteReturnCommand,
-        create_return_command::InitiateReturnCommand as CreateReturnCommand,
-        refund_return_command::RefundReturnCommand, reject_return_command::RejectReturnCommand,
+        // create_return_command::InitiateReturnCommand as CreateReturnCommand,
+        // refund_return_command::RefundReturnCommand, reject_return_command::RejectReturnCommand,
         restock_returned_items_command::RestockReturnedItemsCommand,
-    },
+    // },
     commands::Command,
     db::DbPool,
     errors::ServiceError,
@@ -54,50 +54,68 @@ impl ReturnService {
         }
     }
 
-    /// Creates a new return
-    #[instrument(skip(self))]
-    pub async fn create_return(&self, command: CreateReturnCommand) -> Result<Uuid, ServiceError> {
-        let result = command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(result.id)
-    }
+    // /// Creates a new return
+    // #[instrument(skip(self))]
+    // // pub async fn create_return(
+    //     &self,
+    //     command: CreateReturnCommand,
+    // ) -> Result<Uuid, ServiceError> {
+    //     let result = command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    // /// Approves a return
+    // #[instrument(skip(self))]
+    // // pub async fn approve_return(
+    //     &self,
+    //     command: ApproveReturnCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    // /// Rejects a return
+    // #[instrument(skip(self))]
+    // // pub async fn reject_return(
+    //     &self,
+    //     command: RejectReturnCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    // /// Cancels a return
+    // #[instrument(skip(self))]
+    // // pub async fn cancel_return(
+    //     &self,
+    //     command: CancelReturnCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    // /// Processes a refund for a return
+    // #[instrument(skip(self))]
+    // // pub async fn refund_return(
+    //     &self,
+    //     command: RefundReturnCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
+    //     Ok(())
+    // }
+    // 
 
-    /// Approves a return
-    #[instrument(skip(self))]
-    pub async fn approve_return(&self, command: ApproveReturnCommand) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
-
-    /// Rejects a return
-    #[instrument(skip(self))]
-    pub async fn reject_return(&self, command: RejectReturnCommand) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
-
-    /// Cancels a return
-    #[instrument(skip(self))]
-    pub async fn cancel_return(&self, command: CancelReturnCommand) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
-
-    /// Processes a refund for a return
-    #[instrument(skip(self))]
-    pub async fn refund_return(&self, command: RefundReturnCommand) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
+    // /// Processes a refund for a return
+    // #[instrument(skip(self))]
+    // // pub async fn refund_return(
+    //     &self,
+    //     command: RefundReturnCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
 
     /// Completes a return process
     #[instrument(skip(self))]
@@ -161,7 +179,6 @@ impl ReturnService {
         // Get the total count of returns
         let total = paginator.num_items().await.map_err(|e| ServiceError::DatabaseError(e))?;
 
-        // Get the requested page of returns
         let returns = paginator.fetch_page(page - 1).await
             .map_err(|e| ServiceError::DatabaseError(e))?;
 

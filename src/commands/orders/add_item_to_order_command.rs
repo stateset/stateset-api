@@ -7,6 +7,7 @@ use crate::{
 };
 use bigdecimal::BigDecimal;
 use chrono::Utc;
+use std::str::FromStr;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
 use sea_orm::{*, Set};
@@ -94,8 +95,8 @@ impl AddItemToOrderCommand {
             product_name: Set(self.product_name.clone().unwrap_or_default()),
             product_sku: Set(self.product_sku.clone().unwrap_or_default()),
             quantity: Set(self.quantity),
-            unit_price: Set(self.unit_price.to_f64().unwrap_or(0.0)),
-            total_price: Set((self.unit_price.clone() * BigDecimal::from(self.quantity)).to_f64().unwrap_or(0.0)),
+            unit_price: Set(f64::from_str(&self.unit_price.to_string()).unwrap_or(0.0)),
+            total_price: Set(f64::from_str(&(self.unit_price.clone() * BigDecimal::from(self.quantity)).to_string()).unwrap_or(0.0)),
             discount_amount: Set(0.0),
             tax_amount: Set(0.0),
             status: Set(order_item_entity::OrderItemStatus::Pending),
@@ -136,5 +137,6 @@ impl AddItemToOrderCommand {
                 error!("{}", msg);
                 ServiceError::EventError(msg)
             })?;
+        Ok(())
     }
 }

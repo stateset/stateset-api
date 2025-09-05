@@ -25,8 +25,9 @@ lazy_static! {
     )
     .expect("metric can be created");
     static ref ORDER_CANCELLATION_FAILURES: IntCounterVec = IntCounterVec::new(
+        prometheus::Opts::new(
         "order_cancellation_failures_total",
-        "Total number of failed order cancellations",
+        "Total number of failed order cancellations"),
         &["error_type"]
     )
     .expect("metric can be created");
@@ -82,7 +83,7 @@ impl Command for CancelOrderCommand {
 
         Ok(CancelOrderResult {
             id: updated_order.id,
-            status: updated_order.status,
+            status: updated_order.status.to_string(),
             version: updated_order.version,
             cancellation_reason: self.reason.clone(),
         })

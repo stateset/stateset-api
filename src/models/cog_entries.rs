@@ -1,7 +1,8 @@
 use chrono::{DateTime, NaiveDate, Utc};
+use sea_orm::QueryOrder;
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
-use sea_orm::{DatabaseConnection, Set, QueryOrder};
+use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
@@ -199,7 +200,7 @@ impl ActiveModelBehavior for ActiveModel {
 impl ActiveModel {
     fn set_id_if_needed(&mut self) {
         if self.id.is_not_set() {
-            self.id = Set(Uuid::new_v4());
+            // i32 primary key: let the database assign it
         }
     }
 }

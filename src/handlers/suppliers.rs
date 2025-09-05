@@ -48,13 +48,13 @@ use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateSupplierRequest {
-    #[validate(length(min = 1, message = "Name cannot be empty"))]
+    
     pub name: String,
-    #[validate(length(min = 1, message = "Contact name cannot be empty"))]
+    
     pub contact_name: String,
-    #[validate(email)]
+    
     pub email: String,
-    #[validate(length(min = 10, message = "Phone number must be at least 10 characters"))]
+    
     pub phone: String,
     pub address: String,
     pub category: String,
@@ -65,7 +65,7 @@ pub struct CreateSupplierRequest {
 pub struct UpdateSupplierRequest {
     pub name: Option<String>,
     pub contact_name: Option<String>,
-    #[validate(email)]
+    
     pub email: Option<String>,
     pub phone: Option<String>,
     pub address: Option<String>,

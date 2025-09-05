@@ -35,7 +35,7 @@ impl Command for AddNoteToWorkOrderCommand {
         .map_err(|e| {
             error!("Transaction failed for adding note to work order: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err.to_string()),
+                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })?;
@@ -61,7 +61,7 @@ impl AddNoteToWorkOrderCommand {
                 "Failed to add note to Work Order ID {}: {}",
                 self.work_order_id, e
             );
-            ServiceError::DatabaseError(format!("Failed to add note: {}", e))
+            ServiceError::DatabaseError(e)
         })
     }
 
@@ -75,7 +75,7 @@ impl AddNoteToWorkOrderCommand {
             self.work_order_id, note.id
         );
         event_sender
-            .send(Event::WorkOrderNoteAdded(self.work_order_id, note.id))
+            .send(Event::OrderNoteAdded(self.work_order_id, note.id))
             .await
             .map_err(|e| {
                 error!(

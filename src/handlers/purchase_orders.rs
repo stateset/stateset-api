@@ -4,13 +4,13 @@ use super::common::{
 };
 use crate::{
     auth::AuthenticatedUser,
-    commands::purchaseorders::{
+    // commands::purchaseorders::{
         approve_purchase_order_command::ApprovePurchaseOrderCommand,
         cancel_purchase_order_command::CancelPurchaseOrderCommand,
         create_purchase_order_command::CreatePurchaseOrderCommand,
         receive_purchase_order_command::ReceivePurchaseOrderCommand,
         update_purchase_order_command::UpdatePurchaseOrderCommand,
-    },
+    // },
     errors::{ApiError, ServiceError},
     handlers::AppState,
     services::procurement::ProcurementService,
@@ -33,7 +33,7 @@ use validator::Validate;
 pub struct CreatePurchaseOrderRequest {
     pub supplier_id: Uuid,
     pub expected_delivery_date: String,
-    #[validate(length(min = 1, message = "Must have at least one item"))]
+    
     pub items: Vec<PurchaseOrderItemRequest>,
     pub shipping_address: String,
     pub notes: Option<String>,
@@ -42,7 +42,7 @@ pub struct CreatePurchaseOrderRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct PurchaseOrderItemRequest {
     pub product_id: Uuid,
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    
     pub quantity: i32,
     pub unit_price: Option<f64>,
 }
@@ -76,16 +76,16 @@ pub struct ReceivePurchaseOrderRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct ItemReceivedRequest {
     pub line_item_id: Uuid,
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    
     pub quantity_received: i32,
     pub condition: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct DateRangeParams {
-    #[validate]
+    
     pub start_date: String,
-    #[validate]
+    
     pub end_date: String,
 }
 
@@ -93,10 +93,10 @@ impl DateRangeParams {
     /// Converts string dates to NaiveDateTime
     pub fn to_datetime_range(&self) -> Result<(NaiveDateTime, NaiveDateTime), ApiError> {
         let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest { message: format!("Invalid start date format: {}", e), error_code: None })?;
+            .map_err(|e| ApiError::ValidationError(format!("Invalid start date format: {}", e)))?;
 
         let end_date = NaiveDate::parse_from_str(&self.end_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest { message: format!("Invalid end date format: {}", e), error_code: None })?;
+            .map_err(|e| ApiError::ValidationError(format!("Invalid end date format: {}", e)))?;
 
         Ok((
             start_date.and_hms_opt(0, 0, 0).unwrap(),
@@ -117,7 +117,7 @@ async fn create_purchase_order(
 
     // Parse the expected delivery date
     let expected_delivery = NaiveDate::parse_from_str(&payload.expected_delivery_date, "%Y-%m-%d")
-        .map_err(|e| ApiError::BadRequest { message: format!("Invalid date format: {}", e), error_code: None })?
+        .map_err(|e| ApiError::ValidationError(format!("Invalid date format: {}", e)))?
         .and_hms_opt(0, 0, 0)
         .unwrap();
 
@@ -179,7 +179,7 @@ async fn update_purchase_order(
     let expected_delivery_date = if let Some(date_str) = &payload.expected_delivery_date {
         Some(
             NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-                .map_err(|e| ApiError::BadRequest { message: format!("Invalid date format: {}", e), error_code: None })?
+                .map_err(|e| ApiError::ValidationError(format!("Invalid date format: {}", e)))?
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         )
@@ -372,7 +372,7 @@ async fn get_total_purchase_value(
 }
 
 /// Creates the router for purchase order endpoints
-pub fn purchase_order_routes() -> Router {
+pub fn purchase_order_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", post(create_purchase_order))
         .route("/{id}", get(get_purchase_order))

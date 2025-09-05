@@ -11,6 +11,7 @@ use crate::{
     },
 };
 use bigdecimal::BigDecimal;
+use std::str::FromStr;
 use validator::Validate;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
@@ -40,6 +41,7 @@ pub struct CreateOrderCommand {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Clone)]
 pub struct CreateOrderItem {
     pub product_id: Uuid,
     #[validate(range(min = 1))]
@@ -87,7 +89,7 @@ impl Command for CreateOrderCommand {
         Ok(CreateOrderResult {
             id: saved_order.id,
             customer_id: saved_order.customer_id,
-            status: saved_order.status,
+            status: saved_order.status.to_string(),
             created_at: saved_order.created_at,
             items: self.items.clone(),
         })
@@ -123,8 +125,8 @@ impl CreateOrderCommand {
                         product_name: Set(item.product_name.clone().unwrap_or_default()),
                         product_sku: Set(item.product_sku.clone().unwrap_or_default()),
                         quantity: Set(item.quantity),
-                        unit_price: Set(item.unit_price.to_f64().unwrap_or(0.0)),
-                        total_price: Set((item.unit_price.clone() * BigDecimal::from(item.quantity)).to_f64().unwrap_or(0.0)),
+                        unit_price: Set(f64::from_str(&item.unit_price.to_string()).unwrap_or(0.0)),
+                        total_price: Set(f64::from_str(&(item.unit_price.clone() * BigDecimal::from(item.quantity)).to_string()).unwrap_or(0.0)),
                         discount_amount: Set(0.0),
                         tax_amount: Set(0.0),
                         status: Set(OrderItemStatus::Pending),

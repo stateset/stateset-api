@@ -28,14 +28,14 @@ pub trait Command: Send + Sync {
 
 pub mod orders;
 // Other command modules are temporarily disabled to reduce compile surface
-// pub mod advancedshippingnotice;
+pub mod advancedshippingnotice;
 // pub mod billofmaterials;
 // pub mod inventory;
-// pub mod purchaseorders;
+pub mod purchaseorders;
 // pub mod returns;
-// pub mod shipments;
-// pub mod warranties;
-// pub mod workorders;
+pub mod shipments;
+pub mod warranties;
+pub mod workorders;
 // pub mod picking;
 // pub mod receiving;
 // pub mod analytics;

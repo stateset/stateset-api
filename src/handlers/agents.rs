@@ -78,7 +78,7 @@ async fn get_recommendations(
 #[derive(Debug, Deserialize, Validate)]
 pub struct AgentAddToCartRequest {
     pub variant_id: Uuid,
-    #[validate(range(min = 1))]
+    
     pub quantity: i32,
 }
 

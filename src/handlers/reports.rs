@@ -21,9 +21,9 @@ use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct DateRangeParams {
-    #[validate]
+    
     pub start_date: String,
-    #[validate]
+    
     pub end_date: String,
 }
 

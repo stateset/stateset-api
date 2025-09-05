@@ -9,7 +9,7 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use chrono::DateTime;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -43,13 +43,18 @@ impl Command for CreateWorkOrderCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
-        let work_order = db
-            .transaction(|txn| Box::pin(async move { self.create_work_order(txn).await }))
+        let work_order = match db
+            .transaction::<_, ServiceError, _>(|txn| {
+                Box::pin(async move {
+                    let model = self.create_work_order(&txn).await?;
+                    Ok::<_, ServiceError>(model)
+                })
+            })
             .await
-            .map_err(|e| {
-                error!("Transaction failed for creating Work Order: {}", e);
-                ServiceError::DatabaseError(format!("Transaction failed: {}", e))
-            })?;
+        {
+            Ok(model) => model,
+            Err(e) => return Err(ServiceError::DatabaseError(e.to_string())),
+        };
         self.log_and_trigger_event(event_sender, &work_order)
             .await?;
         Ok(work_order)
@@ -59,30 +64,17 @@ impl Command for CreateWorkOrderCommand {
 impl CreateWorkOrderCommand {
     async fn create_work_order(
         &self,
-        txn: &DatabaseConnection,
+        txn: &DatabaseTransaction,
     ) -> Result<work_order_entity::Model, ServiceError> {
         let new_work_order = work_order_entity::ActiveModel {
-            bom_id: Set(self.bom_id),
             title: Set(self.title.clone()),
             description: Set(self.description.clone()),
             priority: Set(self.priority),
             due_date: Set(self.due_date),
-            assigned_to: Set(self.assigned_to),
-            created_by: Set(self.created_by),
-            related_order_id: Set(self.related_order_id),
-            related_return_id: Set(self.related_return_id),
-            related_warranty_id: Set(self.related_warranty_id),
-            location_id: Set(self.location_id),
-            equipment_id: Set(self.equipment_id),
-            materials: Set(self.materials.clone()),
-            estimated_hours: Set(self.estimated_hours),
             created_at: Set(Utc::now()),
             ..Default::default()
         };
-        new_work_order.insert(txn).await.map_err(|e| {
-            error!("Failed to create Work Order: {}", e);
-            ServiceError::DatabaseError(format!("Failed to create Work Order: {}", e))
-        })
+        new_work_order.insert(txn).await.map_err(ServiceError::DatabaseError)
     }
 
     async fn log_and_trigger_event(

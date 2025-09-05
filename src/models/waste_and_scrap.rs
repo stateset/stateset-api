@@ -3,6 +3,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
+use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
 #[sea_orm(table_name = "waste_and_scrap")]
@@ -14,7 +15,7 @@ pub struct Model {
     #[sea_orm(column_type = "Uuid", nullable)]
     pub part_number: Option<Uuid>,
     pub quantity: Option<i32>,
-    pub reason: String,
+    pub reason: ScrapReason,
     pub created_at: DateTime<Utc>,
 }
 
@@ -48,8 +49,8 @@ impl Related<crate::models::part::Entity> for Entity {
 
 impl ActiveModelBehavior for ActiveModel {}
 
-#[derive(Debug, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String")]
+#[derive(Debug, EnumIter, DeriveActiveEnum, Clone, PartialEq, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ScrapReason {
     #[sea_orm(string_value = "Defective Material")]
     DefectiveMaterial,
@@ -65,6 +66,19 @@ pub enum ScrapReason {
     Other,
 }
 
+impl fmt::Display for ScrapReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScrapReason::DefectiveMaterial => write!(f, "Defective Material"),
+            ScrapReason::MachineMalfunction => write!(f, "Machine Malfunction"),
+            ScrapReason::OperatorError => write!(f, "Operator Error"),
+            ScrapReason::QualityControlRejection => write!(f, "Quality Control Rejection"),
+            ScrapReason::ProcessExperimentation => write!(f, "Process Experimentation"),
+            ScrapReason::Other => write!(f, "Other"),
+        }
+    }
+}
+
 impl Model {
     pub fn new(
         work_order_id: Option<Uuid>,
@@ -77,7 +91,7 @@ impl Model {
             work_order_id,
             part_number,
             quantity,
-            reason: reason.to_string(),
+            reason,
             created_at: Utc::now(),
         }
     }
@@ -87,7 +101,7 @@ impl Model {
     }
 
     pub fn update_reason(&mut self, new_reason: ScrapReason) {
-        self.reason = new_reason.to_string();
+        self.reason = new_reason;
     }
 
     pub async fn get_work_order(

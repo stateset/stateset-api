@@ -25,14 +25,14 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::work_order::Entity",
-        from = "Column::WorkOrderNumber",
-        to = "super::work_order::Column::Number"
+        from = "Column::AssignedTo",
+        to = "super::work_order::Column::AssignedTo"
     )]
     WorkOrder,
     #[sea_orm(
         belongs_to = "super::billofmaterials::Entity",
         from = "Column::BillOfMaterialsNumber",
-        to = "super::billofmaterials::Column::Number"
+        to = "super::billofmaterials::Column::Id"
     )]
     BillOfMaterials,
     #[sea_orm(has_many = "super::pick_item::Entity")]
@@ -72,7 +72,7 @@ impl Related<crate::entities::user_entity::Entity> for Entity {
 impl ActiveModelBehavior for ActiveModel {}
 
 #[derive(Debug, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum PickStatus {
     #[sea_orm(string_value = "Pending")]
     Pending,
@@ -96,7 +96,7 @@ impl fmt::Display for PickStatus {
 }
 
 #[derive(Debug, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum PickMethod {
     #[sea_orm(string_value = "Single Order")]
     SingleOrder,

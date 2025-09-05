@@ -5,7 +5,7 @@ edition = "2021"
 autobins = false
 
 [workspace]
-members = [".", "migrations", "src/bin/only_standalone"]
+members = [".", "migrations", "simple_api", "src/bin/only_standalone"]
 
 [dependencies]
 async-trait = "0.1.81"

@@ -17,6 +17,7 @@ pub struct Model {
     pub created_on: DateTime<Utc>,
     pub expected_completion_date: NaiveDate,
     pub issued_on: NaiveDate,
+    pub amount: rust_decimal::Decimal,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -43,6 +44,7 @@ impl Model {
         yield_location: String,
         expected_completion_date: NaiveDate,
         issued_on: NaiveDate,
+        amount: rust_decimal::Decimal,
     ) -> Result<Self, ValidationError> {
         let manufacture_order = Self {
             id: Uuid::new_v4().to_string(), // Generate a new UUID for the ID
@@ -54,6 +56,7 @@ impl Model {
             created_on: Utc::now(),
             expected_completion_date,
             issued_on,
+            amount,
         };
         manufacture_order.validate().map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(manufacture_order)

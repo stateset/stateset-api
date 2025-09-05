@@ -1,4 +1,5 @@
 #![cfg(feature = "demos")]
+use sea_orm::DatabaseTransaction;
 
 use chrono::Utc;
 use dotenv::dotenv;

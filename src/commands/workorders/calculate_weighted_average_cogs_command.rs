@@ -4,7 +4,7 @@ use crate::events::{Event, EventSender};
 use crate::{
     db::DbPool,
     errors::ServiceError,
-    models::{inventory_transaction_entity, manufacturing_cost_entity, purchase_order_entity},
+    models::{inventory_transaction_entity, manufacturing_cost_entity, purchase_order_item_entity},
 };
 use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
@@ -52,7 +52,7 @@ pub struct EndingInventory {
 
 #[derive(Debug)]
 enum Movement {
-    Purchase(purchase_order_entity::Model),
+    Purchase(purchase_order_item_entity::Model),
     InventoryMovement(inventory_transaction_entity::Model),
     Manufacturing(manufacturing_cost_entity::Model),
 }
@@ -60,7 +60,7 @@ enum Movement {
 impl Movement {
     fn date(&self) -> NaiveDateTime {
         match self {
-            Movement::Purchase(po) => po.date,
+            Movement::Purchase(poi) => poi.created_at.naive_utc(),
             Movement::InventoryMovement(im) => im.created_at.naive_utc(),
             Movement::Manufacturing(mc) => mc.created_at.naive_utc(),
         }
@@ -126,19 +126,18 @@ impl CalculateWeightedAverageCOGSCommand {
     async fn get_purchase_orders(
         &self,
         db: &DatabaseConnection,
-    ) -> Result<Vec<purchase_order_entity::Model>, ServiceError> {
-        purchase_order_entity::Entity::find()
-            .filter(purchase_order_entity::Column::ProductId.eq(self.product_id))
-            .filter(purchase_order_entity::Column::Date.between(self.start_date, self.end_date))
+    ) -> Result<Vec<purchase_order_item_entity::Model>, ServiceError> {
+        purchase_order_item_entity::Entity::find()
+            .filter(purchase_order_item_entity::Column::ProductName.is_not_null())
             .all(db)
             .await
             .map_err(|e| {
                 WAVG_COGS_CALCULATION_FAILURES.inc();
                 error!(
-                    "Failed to fetch purchase orders for product {}: {}",
+                    "Failed to fetch purchase order items for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch purchase orders: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 
@@ -157,7 +156,7 @@ impl CalculateWeightedAverageCOGSCommand {
                     "Failed to fetch inventory movements for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch inventory movements: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 
@@ -177,7 +176,7 @@ impl CalculateWeightedAverageCOGSCommand {
                     "Failed to fetch manufacturing costs for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch manufacturing costs: {}", e))
+                ServiceError::DatabaseError(e)
             })?;
         
         // For now, return all manufacturing costs
@@ -198,8 +197,11 @@ impl CalculateWeightedAverageCOGSCommand {
         
         for movement in movements {
             match movement {
-                Movement::Purchase(po) => {
-                    total_purchases.push((BigDecimal::from(po.quantity), po.unit_cost));
+                Movement::Purchase(poi) => {
+                    total_purchases.push((
+                        BigDecimal::from(poi.quantity_received),
+                        poi.unit_cost.to_string().parse::<BigDecimal>().unwrap_or_default(),
+                    ));
                 }
                 Movement::Manufacturing(mc) => {
                     // Get the quantity from the work order associated with this manufacturing cost

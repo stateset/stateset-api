@@ -55,12 +55,6 @@ pub enum Relation {
     OrderNotes,
 }
 
-impl Related<crate::models::order_line_item::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::OrderLineItems.def()
-    }
-}
-
 impl Related<crate::models::order_note_entity::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::OrderNotes.def()

@@ -54,6 +54,8 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub due_date: Option<DateTime<Utc>>,
+    pub bill_of_materials_number: Option<String>,
+    pub quantity_produced: Option<i32>,
     #[sea_orm(column_type = "Json")]
     pub parts_required: serde_json::Value,
 }

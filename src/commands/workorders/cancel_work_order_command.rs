@@ -7,7 +7,7 @@ use crate::{
     models::{work_order_entity, WorkOrderStatus},
 };
 use async_trait::async_trait;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -30,15 +30,13 @@ impl Command for CancelWorkOrderCommand {
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
         let updated_work_order = db
-            .transaction(|txn| Box::pin(async move { self.cancel_work_order(txn).await }))
-            .await
-            .map_err(|e| {
-                error!(
-                    "Transaction failed for canceling Work Order ID {}: {}",
-                    self.work_order_id, e
-                );
-                ServiceError::DatabaseError(format!("Transaction failed: {}", e))
-            })?;
+            .transaction::<_, ServiceError, _>(|txn| {
+                Box::pin(async move {
+                    let result = self.cancel_work_order(&txn).await;
+                    result
+                })
+            })
+            .await?;
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
         Ok(updated_work_order)
@@ -48,32 +46,19 @@ impl Command for CancelWorkOrderCommand {
 impl CancelWorkOrderCommand {
     async fn cancel_work_order(
         &self,
-        txn: &DatabaseConnection,
+        txn: &DatabaseTransaction,
     ) -> Result<work_order_entity::Model, ServiceError> {
-        let mut work_order: work_order_entity::ActiveModel =
-            work_order_entity::Entity::find_by_id(self.work_order_id)
-                .one(txn)
-                .await
-                .map_err(|e| {
-                    error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
-                    ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
-                })?
-                .ok_or_else(|| {
-                    ServiceError::NotFound(format!(
-                        "Work Order ID {} not found",
-                        self.work_order_id
-                    ))
-                })?
-                .into();
-        work_order.status = Set(WorkOrderStatus::Cancelled);
-        work_order.cancel_reason = Set(Some(self.reason.clone()));
-        work_order.update(txn).await.map_err(|e| {
-            error!(
-                "Failed to cancel Work Order ID {}: {}",
-                self.work_order_id, e
-            );
-            ServiceError::DatabaseError(format!("Failed to cancel Work Order: {}", e))
-        })
+        let mut work_order = work_order_entity::Entity::find_by_id(self.work_order_id)
+            .one(txn)
+            .await
+            .map_err(ServiceError::DatabaseError)?
+            .ok_or_else(|| ServiceError::NotFound(format!("Work Order with ID {} not found", self.work_order_id)))?;
+        let mut active_model = work_order.into_active_model();
+        active_model.status = Set(work_order_entity::WorkOrderStatus::Cancelled);
+        let saved = active_model
+            .update(txn)
+            .await?;
+        Ok(saved)
     }
 
     async fn log_and_trigger_event(

@@ -65,7 +65,7 @@ impl ActiveModelBehavior for ActiveModel {
 impl ActiveModel {
     fn set_id_if_needed(&mut self) {
         if self.id.is_not_set() {
-            self.id = Set(Uuid::new_v4());
+            // i32 primary key: let the database assign it
         }
     }
 }

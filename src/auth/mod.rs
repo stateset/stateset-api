@@ -23,7 +23,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use sea_orm::{
+use sea_orm::{DatabaseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

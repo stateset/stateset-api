@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -62,7 +63,7 @@ impl Model {
 }
 
 #[derive(Debug, EnumIter, DeriveActiveEnum)]
-#[sea_orm(rs_type = "String", db_type = "String")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ForecastMethod {
     #[sea_orm(string_value = "Moving Average")]
     MovingAverage,

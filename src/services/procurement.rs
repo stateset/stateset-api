@@ -1,13 +1,13 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::message_queue::MessageQueue;
 use crate::{
-    commands::purchaseorders::{
-        approve_purchase_order_command::ApprovePurchaseOrderCommand,
-        cancel_purchase_order_command::CancelPurchaseOrderCommand,
-        create_purchase_order_command::CreatePurchaseOrderCommand,
-        receive_purchase_order_command::ReceivePurchaseOrderCommand,
-        update_purchase_order_command::UpdatePurchaseOrderCommand,
-    },
+    // commands::purchaseorders::{
+        // approve_purchase_order_command::ApprovePurchaseOrderCommand,
+        // cancel_purchase_order_command::CancelPurchaseOrderCommand,
+        // create_purchase_order_command::CreatePurchaseOrderCommand,
+        // receive_purchase_order_command::ReceivePurchaseOrderCommand,
+        // update_purchase_order_command::UpdatePurchaseOrderCommand,
+    // },
     commands::Command,
     db::DbPool,
     errors::ServiceError,
@@ -195,7 +195,7 @@ impl ProcurementService {
             .await
             .map_err(|e| ServiceError::DatabaseError(e))?;
 
-        let total_value = pos.iter().filter_map(|po| Some(po.total_amount)).sum();
+        let total_value: f64 = pos.iter().filter_map(|po| Some(po.total_amount.to_string().parse::<f64>().unwrap_or(0.0))).sum();
 
         Ok(total_value)
     }

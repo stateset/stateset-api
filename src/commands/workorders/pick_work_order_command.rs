@@ -8,7 +8,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -29,16 +29,18 @@ impl Command for PickWorkOrderCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
-        let updated_work_order = db
-            .transaction(|txn| Box::pin(async move { self.pick_work_order(txn).await }))
+        let updated_work_order = match db
+            .transaction::<_, ServiceError, _>(|txn| {
+                Box::pin(async move {
+                    let model = self.pick_work_order(&txn).await?;
+                    Ok::<_, ServiceError>(model)
+                })
+            })
             .await
-            .map_err(|e| {
-                error!(
-                    "Transaction failed for picking Work Order ID {}: {}",
-                    self.work_order_id, e
-                );
-                ServiceError::DatabaseError(format!("Transaction failed: {}", e))
-            })?;
+        {
+            Ok(model) => model,
+            Err(e) => return Err(ServiceError::DatabaseError(e.to_string())),
+        };
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
         Ok(updated_work_order)
@@ -48,29 +50,17 @@ impl Command for PickWorkOrderCommand {
 impl PickWorkOrderCommand {
     async fn pick_work_order(
         &self,
-        txn: &DatabaseConnection,
+        txn: &DatabaseTransaction,
     ) -> Result<work_order_entity::Model, ServiceError> {
-        let mut work_order: work_order_entity::ActiveModel =
-            work_order_entity::Entity::find_by_id(self.work_order_id)
-                .one(txn)
-                .await
-                .map_err(|e| {
-                    error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
-                    ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
-                })?
-                .ok_or_else(|| {
-                    ServiceError::NotFound(format!(
-                        "Work Order ID {} not found",
-                        self.work_order_id
-                    ))
-                })?
-                .into();
-        work_order.status = Set(WorkOrderStatus::Picked);
-        work_order.picked_at = Set(Some(Utc::now()));
-        work_order.update(txn).await.map_err(|e| {
-            error!("Failed to pick Work Order ID {}: {}", self.work_order_id, e);
-            ServiceError::DatabaseError(format!("Failed to pick Work Order: {}", e))
-        })
+        let mut work_order = work_order_entity::Entity::find_by_id(self.work_order_id)
+            .one(txn)
+            .await
+            .map_err(ServiceError::DatabaseError)?
+            .ok_or_else(|| ServiceError::NotFound(format!("Work Order ID {} not found", self.work_order_id)))?;
+        let mut active = work_order.into_active_model();
+        active.status = Set(WorkOrderStatus::Picked);
+        let saved = active.update(txn).await.map_err(ServiceError::DatabaseError)?;
+        Ok(saved)
     }
 
     async fn log_and_trigger_event(

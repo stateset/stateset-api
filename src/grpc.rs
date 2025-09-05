@@ -420,7 +420,7 @@ impl ReturnService for ReturnGrpcService {
 
         let order_id = Uuid::parse_str(&ret.order_id)
             .map_err(|_| Status::invalid_argument("invalid order_id"))?;
-        let cmd = crate::commands::returns::create_return_command::InitiateReturnCommand {
+        // let cmd = crate::commands::returns::create_return_command::InitiateReturnCommand {
             order_id,
             reason: ret.reason.clone(),
         };
@@ -479,7 +479,7 @@ impl ReturnService for ReturnGrpcService {
         match ReturnStatus::try_from(req.new_status) {
             Ok(ReturnStatus::Approved) => {
                 let cmd =
-                    crate::commands::returns::approve_return_command::ApproveReturnCommand { return_id };
+                    // crate::commands::returns::approve_return_command::ApproveReturnCommand { return_id };
                 self.svc
                     .approve_return(cmd)
                     .await
@@ -487,7 +487,7 @@ impl ReturnService for ReturnGrpcService {
             }
             Ok(ReturnStatus::Rejected) => {
                 let cmd =
-                    crate::commands::returns::reject_return_command::RejectReturnCommand { return_id }; // reason is missing
+                    // crate::commands::returns::reject_return_command::RejectReturnCommand { return_id }; // reason is missing
                 self.svc
                     .reject_return(cmd)
                     .await
@@ -495,7 +495,7 @@ impl ReturnService for ReturnGrpcService {
             }
             Ok(ReturnStatus::Received) => {
                 let cmd =
-                    crate::commands::returns::complete_return_command::CompleteReturnCommand { return_id }; //  missing `completed_by`, `metadata` and `notes`
+                    // crate::commands::returns::complete_return_command::CompleteReturnCommand { return_id }; //  missing `completed_by`, `metadata` and `notes`
                 self.svc
                     .complete_return(cmd)
                     .await
@@ -543,7 +543,7 @@ impl ShipmentService for ShipmentGrpcService {
 
         let order_id = Uuid::parse_str(&shipment.order_id)
             .map_err(|_| Status::invalid_argument("invalid order_id"))?;
-        let cmd = crate::commands::shipments::create_shipment_command::CreateShipmentCommand {
+        // let cmd = crate::commands::shipments::create_shipment_command::CreateShipmentCommand {
             order_id,
             recipient_name: "Recipient".to_string(),
             shipping_address: shipment
@@ -628,7 +628,7 @@ impl ShipmentService for ShipmentGrpcService {
             "Cancelled" => crate::models::shipment::ShipmentStatus::Cancelled,
             _ => crate::models::shipment::ShipmentStatus::Processing,
         };
-        let cmd = crate::commands::shipments::update_shipment_command::UpdateShipmentStatusCommand {
+        // let cmd = crate::commands::shipments::update_shipment_command::UpdateShipmentStatusCommand {
             shipment_id,
             new_status: status,
         };

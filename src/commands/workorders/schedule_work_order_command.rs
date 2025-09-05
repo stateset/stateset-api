@@ -13,10 +13,9 @@ use std::sync::Arc;
 use tracing::{error, info, instrument};
 use validator::Validate;
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ScheduleWorkOrderCommand {
     pub work_order_id: Uuid,
-    #[validate]
     pub start_date: chrono::NaiveDateTime, // Scheduled start date and time
 }
 
@@ -31,13 +30,7 @@ impl Command for ScheduleWorkOrderCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
-        let updated_work_order = self.schedule_work_order(&db).await.map_err(|e| {
-            error!(
-                "Transaction failed for scheduling Work Order ID {}: {}",
-                self.work_order_id, e
-            );
-            ServiceError::DatabaseError(format!("Failed to schedule Work Order: {}", e))
-        })?;
+        let updated_work_order = self.schedule_work_order(&db).await?;
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
         Ok(updated_work_order)
@@ -52,10 +45,7 @@ impl ScheduleWorkOrderCommand {
         let target = work_order_entity::Entity::find_by_id(self.work_order_id)
             .one(db)
             .await
-            .map_err(|e| {
-                error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
-                ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
-            })?
+            .map_err(|e| ServiceError::DatabaseError(format!("Database error: {}", e)))?
             .ok_or_else(|| {
                 error!("Work Order ID {} not found", self.work_order_id);
                 ServiceError::NotFound(format!("Work Order ID {} not found", self.work_order_id))

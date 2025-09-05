@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
 use validator::Validate;
+use sea_orm::EntityTrait;
 
 use crate::{
     commands::Command,

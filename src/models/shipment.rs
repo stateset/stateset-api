@@ -82,10 +82,22 @@ impl fmt::Display for ShippingMethod {
 pub enum ShipmentStatus {
     #[sea_orm(string_value = "Pending")]
     Pending,
+    #[sea_orm(string_value = "Processing")]
+    Processing,
+    #[sea_orm(string_value = "ReadyToShip")]
+    ReadyToShip,
+    #[sea_orm(string_value = "Shipped")]
+    Shipped,
     #[sea_orm(string_value = "InTransit")]
     InTransit,
+    #[sea_orm(string_value = "OutForDelivery")]
+    OutForDelivery,
     #[sea_orm(string_value = "Delivered")]
     Delivered,
+    #[sea_orm(string_value = "Failed")]
+    Failed,
+    #[sea_orm(string_value = "Returned")]
+    Returned,
     #[sea_orm(string_value = "Cancelled")]
     Cancelled,
     #[sea_orm(string_value = "OnHold")]
@@ -410,7 +422,7 @@ impl Model {
 
         let model: ActiveModel = self.clone().into();
         let result = match self.id {
-            Uuid::nil() => model.insert(db).await?,
+            id if id == Uuid::nil() => model.insert(db).await?,
             _ => model.update(db).await?,
         };
 

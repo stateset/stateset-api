@@ -7,7 +7,7 @@ pub mod api;
 pub mod auth;
 pub mod cache;
 pub mod circuit_breaker;
-// pub mod commands;
+pub mod commands;
 pub mod config;
 pub mod db;
 pub mod entities;
@@ -18,7 +18,7 @@ pub mod health;
 pub mod message_queue;
 pub mod metrics;
 pub mod middleware_helpers;
-// pub mod models;
+pub mod models;
 pub mod openapi;
 pub mod proto;
 pub mod rate_limiter;
@@ -162,43 +162,43 @@ pub fn api_v1_routes() -> Router<AppState> {
 
     // Returns routes with permission gating
     let returns_read = Router::new()
-        .route("/returns", get(handlers::returns::list_returns::<AppState>))
-        .route("/returns/{id}", get(handlers::returns::get_return::<AppState>))
+        // .route("/returns", get(handlers::returns::list_returns::<AppState>))
+        // .route("/returns/{id}", get(handlers::returns::get_return::<AppState>))
         .with_permission("returns:read");
 
     let returns_write = Router::new()
-        .route("/returns", axum::routing::post(handlers::returns::create_return::<AppState>))
-        .route("/returns/{id}", axum::routing::put(handlers::returns::update_return::<AppState>))
-        .route("/returns/{id}/status", axum::routing::put(handlers::returns::update_return_status::<AppState>))
-        .route("/returns/{id}/process", axum::routing::post(handlers::returns::process_return::<AppState>))
-        .route("/returns/{id}/approve", axum::routing::post(handlers::returns::approve_return::<AppState>))
-        .route("/returns/{id}/reject", axum::routing::post(handlers::returns::reject_return::<AppState>))
-        .route("/returns/{id}/restock", axum::routing::post(handlers::returns::restock_return::<AppState>))
-        .route("/returns/{id}/refund", axum::routing::post(handlers::returns::issue_refund::<AppState>))
+        // .route("/returns", axum::routing::post(handlers::returns::create_return::<AppState>))
+        // .route("/returns/{id}", axum::routing::put(handlers::returns::update_return::<AppState>))
+        // .route("/returns/{id}/status", axum::routing::put(handlers::returns::update_return_status::<AppState>))
+        // .route("/returns/{id}/process", axum::routing::post(handlers::returns::process_return::<AppState>))
+        // .route("/returns/{id}/approve", axum::routing::post(handlers::returns::approve_return::<AppState>))
+        // .route("/returns/{id}/reject", axum::routing::post(handlers::returns::reject_return::<AppState>))
+        // .route("/returns/{id}/restock", axum::routing::post(handlers::returns::restock_return::<AppState>))
+        // .route("/returns/{id}/refund", axum::routing::post(handlers::returns::issue_refund::<AppState>))
         .with_permission("returns:write");
 
     let returns_delete = Router::new()
-        .route("/returns/{id}", axum::routing::delete(handlers::returns::delete_return::<AppState>))
+        // .route("/returns/{id}", axum::routing::delete(handlers::returns::delete_return::<AppState>))
         .with_permission("returns:delete");
 
     // Shipments routes with permission gating
     let shipments_read = Router::new()
-        .route("/shipments", get(handlers::shipments::list_shipments::<AppState>))
-        .route("/shipments/{id}", get(handlers::shipments::get_shipment::<AppState>))
-        .route("/shipments/{id}/track", get(handlers::shipments::track_shipment::<AppState>))
+        // .route("/shipments", get(handlers::shipments::list_shipments::<AppState>))
+        // .route("/shipments/{id}", get(handlers::shipments::get_shipment::<AppState>))
+        // .route("/shipments/{id}/track", get(handlers::shipments::track_shipment::<AppState>))
         .with_permission("shipments:read");
 
     let shipments_write = Router::new()
-        .route("/shipments", axum::routing::post(handlers::shipments::create_shipment::<AppState>))
-        .route("/shipments/{id}", axum::routing::put(handlers::shipments::update_shipment::<AppState>))
-        .route("/shipments/{id}/status", axum::routing::put(handlers::shipments::update_shipment_status::<AppState>))
-        .route("/shipments/{id}/ship", axum::routing::post(handlers::shipments::mark_shipped::<AppState>))
-        .route("/shipments/{id}/deliver", axum::routing::post(handlers::shipments::mark_delivered::<AppState>))
-        .route("/shipments/{id}/tracking", axum::routing::post(handlers::shipments::add_tracking_event::<AppState>))
+        // .route("/shipments", axum::routing::post(handlers::shipments::create_shipment::<AppState>))
+        // .route("/shipments/{id}", axum::routing::put(handlers::shipments::update_shipment::<AppState>))
+        // .route("/shipments/{id}/status", axum::routing::put(handlers::shipments::update_shipment_status::<AppState>))
+        // .route("/shipments/{id}/ship", axum::routing::post(handlers::shipments::mark_shipped::<AppState>))
+        // .route("/shipments/{id}/deliver", axum::routing::post(handlers::shipments::mark_delivered::<AppState>))
+        // .route("/shipments/{id}/tracking", axum::routing::post(handlers::shipments::add_tracking_event::<AppState>))
         .with_permission("shipments:write");
 
     let shipments_delete = Router::new()
-        .route("/shipments/{id}", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
+        // .route("/shipments/{id}", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
         .with_permission("shipments:delete");
 
     // Warranties routes with permission gating

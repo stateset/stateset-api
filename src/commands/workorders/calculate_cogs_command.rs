@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use sea_orm::DatabaseTransaction;
 use crate::commands::Command;
 use crate::events::{Event, EventSender};
 use crate::{
@@ -8,9 +9,12 @@ use crate::{
 };
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
+use rust_decimal::Decimal as RustDecimal;
 use futures::stream::{self, StreamExt};
+use futures::TryStreamExt;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
+use sea_orm::QueryOrder;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -56,8 +60,8 @@ impl Command for CalculateCOGSCommand {
         
         // Fetch the work order
         let work_order = work_order_entity::Entity::find()
-            .filter(work_order_entity::Column::Number.eq(&self.work_order_number))
-            .one(&db)
+            .filter(work_order_entity::Column::Id.eq(self.work_order_number.parse::<Uuid>().map_err(|_| ServiceError::ValidationError("Invalid work order number format".to_string()))?))
+            .one(&*db)
             .await
             .map_err(|e| {
                 COGS_CALCULATION_FAILURES.inc();
@@ -65,7 +69,7 @@ impl Command for CalculateCOGSCommand {
                     "Failed to fetch work order {}: {}",
                     self.work_order_number, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch work order: {}", e))
+                ServiceError::DatabaseError(e)
             })?
             .ok_or_else(|| {
                 ServiceError::NotFound(format!("Work order {} not found", self.work_order_number))
@@ -77,25 +81,13 @@ impl Command for CalculateCOGSCommand {
                 bill_of_materials_entity::Column::Number
                     .eq(work_order.bill_of_materials_number.clone()),
             )
-            .one(&db)
+            .one(&*db)
             .await
-            .map_err(|e| {
-                COGS_CALCULATION_FAILURES.inc();
-                error!(
-                    "Failed to fetch BOM for work order {}: {}",
-                    self.work_order_number, e
-                );
-                ServiceError::DatabaseError(format!("Failed to fetch BOM: {}", e))
-            })?
-            .ok_or_else(|| {
-                ServiceError::NotFound(format!(
-                    "BOM for work order {} not found",
-                    self.work_order_number
-                ))
-            })?;
+            .map_err(ServiceError::DatabaseError)?
+            .ok_or_else(|| ServiceError::NotFound(format!("Bill of materials not found for work order {}", self.work_order_number)))?;
         
         // Calculate total cost
-        let total_cost = self.calculate_total_cost(&db, &bom).await?;
+        let total_cost = self.calculate_total_cost(&*db, &bom).await?;
         
         // Calculate quantity produced - simplified version
         let quantity_produced = work_order.quantity_produced.unwrap_or(0);
@@ -108,10 +100,10 @@ impl Command for CalculateCOGSCommand {
         
         // Trigger an event indicating that COGS was calculated
         if let Err(e) = event_sender
-            .send(Event::COGSCalculated(
-                self.work_order_number.clone(),
-                result.total_cost.clone(),
-            ))
+            .send(Event::COGSCalculated {
+                work_order_id: self.work_order_number.parse::<Uuid>().unwrap_or_default(),
+                total_cogs: RustDecimal::from_str(&result.total_cost.to_string()).unwrap_or(RustDecimal::ZERO),
+            })
             .await
         {
             COGS_CALCULATION_FAILURES.inc();
@@ -136,7 +128,7 @@ impl Command for CalculateCOGSCommand {
 impl CalculateCOGSCommand {
     async fn calculate_total_cost(
         &self,
-        db: &DatabaseConnection,
+        db: &DatabaseTransaction,
         bom: &bill_of_materials_entity::Model,
     ) -> Result<BigDecimal, ServiceError> {
         let bom_items = bom_item_entity::Entity::find()
@@ -145,13 +137,13 @@ impl CalculateCOGSCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch BOM items for BOM {}: {}", bom.number, e);
-                ServiceError::DatabaseError(format!("Failed to fetch BOM items: {}", e))
+                ServiceError::DatabaseError(e)
             })?;
         
         let total_cost = stream::iter(bom_items)
             .map(|item| async move {
                 let component_cost = self.get_component_cost(db, &item.part_number).await?;
-                Ok::<BigDecimal, ServiceError>(component_cost * BigDecimal::from(item.quantity))
+                Ok::<BigDecimal, ServiceError>(component_cost * BigDecimal::from_f64(item.quantity).unwrap_or(BigDecimal::from(0)))
             })
             .buffer_unordered(10) // Process up to 10 items concurrently
             .try_fold(
@@ -164,11 +156,11 @@ impl CalculateCOGSCommand {
 
     async fn get_component_cost(
         &self,
-        db: &DatabaseConnection,
+        db: &DatabaseTransaction,
         part_number: &str,
     ) -> Result<BigDecimal, ServiceError> {
         let latest_inventory = inventory_item_entity::Entity::find()
-            .filter(inventory_item_entity::Column::PartNumber.eq(part_number))
+            .filter(inventory_item_entity::Column::LotNumber.eq(part_number))
             .order_by_desc(inventory_item_entity::Column::UpdatedAt)
             .one(db)
             .await
@@ -177,14 +169,14 @@ impl CalculateCOGSCommand {
                     "Failed to fetch latest inventory for part {}: {}",
                     part_number, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch latest inventory: {}", e))
+                ServiceError::DatabaseError(e)
             })?;
         
         match latest_inventory {
             Some(inventory) => Ok(inventory.unit_cost),
             None => {
                 error!("No inventory found for part number: {}", part_number);
-                Err(ServiceError::BusinessLogicError(format!(
+                Err(ServiceError::InvalidOperation(format!(
                     "No inventory found for part number: {}",
                     part_number
                 )))

@@ -37,7 +37,7 @@ impl Command for YieldWorkOrderCommand {
                     "Transaction failed for yielding Work Order ID {}: {}",
                     self.work_order_id, e
                 );
-                ServiceError::DatabaseError(format!("Transaction failed: {}", e))
+                ServiceError::DatabaseError(format!("Transaction failed: {}", e.to_string()))
             })?;
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
@@ -48,7 +48,7 @@ impl Command for YieldWorkOrderCommand {
 impl YieldWorkOrderCommand {
     async fn yield_work_order(
         &self,
-        txn: &DatabaseConnection,
+        txn: &DatabaseTransaction,
     ) -> Result<work_order_entity::Model, ServiceError> {
         let mut work_order: work_order_entity::ActiveModel =
             work_order_entity::Entity::find_by_id(self.work_order_id)

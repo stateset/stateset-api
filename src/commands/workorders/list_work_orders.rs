@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
+use sea_orm::EntityTrait;
+use futures::TryFutureExt;
 
 use crate::{
     commands::Command,
@@ -30,6 +32,7 @@ impl Command for ListWorkOrdersCommand {
         info!("Listed {} work orders", orders.len());
         event_sender
             .send(Event::with_data("work_orders_listed".to_string()))
+            .await
             .map_err(ServiceError::EventError)?;
         Ok(orders)
     }

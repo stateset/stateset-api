@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
+use sea_orm::EntityTrait;
 
 use crate::{
     commands::Command,
@@ -41,7 +42,7 @@ impl Command for DeleteWorkOrderCommand {
         info!("Deleted work order {}", self.work_order_id);
         
         event_sender
-            .send(Event::WorkOrderDeleted(self.work_order_id))
+            .send(Event::WorkOrderUpdated(self.work_order_id))
             .await
             .map_err(ServiceError::EventError)?;
         

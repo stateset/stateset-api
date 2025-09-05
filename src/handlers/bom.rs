@@ -42,7 +42,7 @@ pub fn bom_routes() -> Router<Arc<AppState>> {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateBOMRequest {
-    #[validate(length(min = 1, message = "Name cannot be empty"))]
+    
     pub name: String,
     pub description: String,
     pub product_id: Uuid,
@@ -53,7 +53,7 @@ pub struct CreateBOMRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct BOMComponentRequest {
     pub component_id: Uuid,
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    
     pub quantity: i32,
     pub unit_of_measure: String,
     pub position: Option<String>,
@@ -70,7 +70,7 @@ pub struct UpdateBOMRequest {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct AuditBOMRequest {
-    #[validate(length(min = 1, message = "Auditor name cannot be empty"))]
+    
     pub auditor: String,
     pub notes: Option<String>,
 }
@@ -78,7 +78,7 @@ pub struct AuditBOMRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct AddComponentRequest {
     pub component_id: Uuid,
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    
     pub quantity: i32,
     pub unit_of_measure: String,
     pub position: Option<String>,

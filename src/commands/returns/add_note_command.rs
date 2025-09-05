@@ -45,9 +45,12 @@ impl Command for AddReturnNoteCommand {
         let db = db_pool.as_ref();
         let new_note = return_note_entity::ActiveModel {
             return_id: Set(self.return_id),
+            note_type: Set(return_note_entity::ReturnNoteType::System),
             content: Set(self.note.clone()),
-            created_by: Set(self.created_by.as_ref().map(|s| Uuid::parse_str(s).ok()).flatten()),
+            created_by: Set(self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok())),
+            is_visible_to_customer: Set(false),
             created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
             ..Default::default()
         };
 
@@ -75,9 +78,12 @@ impl AddReturnNoteCommand {
         let note = return_note_entity::ActiveModel {
             id: Set(note_id),
             return_id: Set(self.return_id),
+            note_type: Set(return_note_entity::ReturnNoteType::System),
             content: Set(self.note.clone()),
-            created_by: Set(self.created_by.clone()),
-            created_at: Set(Utc::now().naive_utc()),
+            created_by: Set(self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok())),
+            is_visible_to_customer: Set(false),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
             ..Default::default()
         };
 
@@ -93,9 +99,12 @@ impl AddReturnNoteCommand {
         Ok(return_note_entity::Model {
             id: note_id,
             return_id: self.return_id,
+            note_type: return_note_entity::ReturnNoteType::System,
             content: self.note.clone(),
-            created_by: self.created_by.clone(),
+            created_by: self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok()),
+            is_visible_to_customer: false,
             created_at: Utc::now(),
+            updated_at: Utc::now(),
         })
     }
 }

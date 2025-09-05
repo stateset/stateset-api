@@ -50,7 +50,9 @@ impl Command for CancelReturnCommand {
 
         Ok(CancelReturnResult {
             id: Uuid::parse_str(&cancelled_return.id).unwrap_or_else(|_| Uuid::new_v4()),
-            status: cancelled_return.status,
+            object: "return".to_string(),
+            cancelled: true,
+            reason: self.reason.clone(),
         })
     }
 }
@@ -71,7 +73,7 @@ impl CancelReturnCommand {
             })?;
 
         let mut return_request: return_entity::ActiveModel = return_request.into();
-        return_request.status = Set(ReturnStatus::Cancelled);
+        return_request.status = Set(ReturnStatus::Cancelled.as_str().to_string());
         return_request.reason = Set(self.reason.clone());
 
         let updated_return = return_request.update(db).await.map_err(|e| {
@@ -93,7 +95,7 @@ impl CancelReturnCommand {
             self.return_id, self.reason
         );
         event_sender
-            .send(Event::ReturnCancelled(self.return_id))
+            .send(Event::ReturnUpdated(self.return_id))
             .await
             .map_err(|e| {
                 let msg = format!("Failed to send event for cancelled return: {}", e);

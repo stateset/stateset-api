@@ -3,10 +3,10 @@
 // pub mod fulfillment_orders;
 pub mod inventory;
 pub mod orders;
-// pub mod returns;
-// pub mod shipments;
-// pub mod warranties;
-// pub mod work_orders;
+pub mod returns;
+pub mod shipments;
+pub mod warranties;
+pub mod work_orders;
 
 // Simple status helpers that work directly with entities
 pub mod order_status;
@@ -24,7 +24,8 @@ pub mod sales_fulfillment;
 
 // Manufacturing and Supply Chain
 // pub mod billofmaterials;
-// pub mod procurement;
+pub mod asn;
+pub mod procurement;
 // pub mod suppliers;
 
 // Customer Management
@@ -38,7 +39,7 @@ pub mod notifications;
 // pub mod cash_sale;
 // pub mod invoicing;
 // pub mod item_receipts;
-// pub mod payments;
+pub mod payments;
 
 // Analytics and Reporting
 pub mod business_intelligence;

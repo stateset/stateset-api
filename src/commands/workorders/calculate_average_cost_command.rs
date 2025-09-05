@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use std::str::FromStr;
 use crate::commands::Command;
 use crate::events::{Event, EventSender};
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
     models::{inventory_item_entity, manufacturing_order_entity, purchase_order_entity},
 };
 use async_trait::async_trait;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use chrono::NaiveDateTime;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
@@ -40,7 +41,7 @@ pub struct CalculateAverageCostCommand {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AverageCostResult {
     pub average_cost: BigDecimal,
-    pub total_cost: BigDecimal,
+    pub total_amount: BigDecimal,
     pub total_quantity: BigDecimal,
 }
 #[async_trait::async_trait]
@@ -56,28 +57,31 @@ impl Command for CalculateAverageCostCommand {
         let purchases = self.get_purchases(&db).await?;
         let inventory = self.get_inventory(&db).await?;
         let manufacturing_costs = self.get_manufacturing_costs(&db).await?;
-        let total_cost = purchases
+        let total_amount = purchases
             .iter()
-            .fold(BigDecimal::from(0), |sum, po| sum + &po.total_cost)
+            .fold(BigDecimal::from(0), |sum, po| sum + BigDecimal::from_str(&po.total_amount.to_string()).unwrap_or(BigDecimal::from(0)))
             + manufacturing_costs
                 .iter()
-                .fold(BigDecimal::from(0), |sum, cost| sum + &cost.amount);
+                .fold(BigDecimal::from(0), |sum, cost| sum + BigDecimal::from_str(&cost.amount.to_string()).unwrap_or(BigDecimal::from(0)));
         let total_quantity = inventory.iter().fold(BigDecimal::from(0), |sum, inv| {
             sum + BigDecimal::from(inv.quantity)
         });
         let average_cost = if !total_quantity.is_zero() {
-            total_cost.clone() / total_quantity.clone()
+            total_amount.clone() / total_quantity.clone()
         } else {
             BigDecimal::from(0)
         };
         let result = AverageCostResult {
             average_cost: average_cost.clone(),
-            total_cost: total_cost.clone(),
+            total_amount: total_amount.clone(),
             total_quantity: total_quantity.clone(),
         };
         
         if let Err(e) = event_sender
-            .send(Event::AverageCostCalculated(self.product_id, average_cost))
+            .send(Event::WorkOrderAverageCostCalculated {
+                product_id: self.product_id,
+                average_cost: RustDecimal::from_str(&average_cost.to_string()).unwrap_or(RustDecimal::ZERO),
+            })
             .await
         {
             AVERAGE_COST_CALCULATION_FAILURES.inc();
@@ -91,7 +95,7 @@ impl Command for CalculateAverageCostCommand {
         info!(
             product_id = %self.product_id,
             average_cost = %result.average_cost,
-            total_cost = %result.total_cost,
+            total_amount = %result.total_amount,
             total_quantity = %result.total_quantity,
             "Average cost calculated successfully"
         );
@@ -107,9 +111,9 @@ impl CalculateAverageCostCommand {
         purchase_order_entity::Entity::find()
             .filter(
                 Condition::all()
-                    .add(purchase_order_entity::Column::ProductId.eq(self.product_id))
+                    .add(purchase_order_entity::Column::Id.is_not_null())
                     .add(
-                        purchase_order_entity::Column::Date.between(self.start_date, self.end_date),
+                        purchase_order_entity::Column::OrderDate.between(self.start_date, self.end_date),
                     ),
             )
             .all(db)
@@ -120,7 +124,7 @@ impl CalculateAverageCostCommand {
                     "Failed to fetch purchase orders for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch purchase orders: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 
@@ -144,7 +148,7 @@ impl CalculateAverageCostCommand {
                     "Failed to fetch inventory for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch inventory: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 
@@ -157,7 +161,7 @@ impl CalculateAverageCostCommand {
                 Condition::all()
                     .add(manufacturing_order_entity::Column::ProductId.eq(self.product_id))
                     .add(
-                        manufacturing_order_entity::Column::Date
+                        manufacture_orders::Column::CreatedOn
                             .between(self.start_date, self.end_date),
                     ),
             )
@@ -169,7 +173,7 @@ impl CalculateAverageCostCommand {
                     "Failed to fetch manufacturing costs for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch manufacturing costs: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 }

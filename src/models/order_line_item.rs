@@ -5,7 +5,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 /// The `order_line_items` table.
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "order_line_items")]
 pub struct Model {
     /// Primary key: Unique identifier for the order line item.
@@ -17,63 +17,63 @@ pub struct Model {
     pub order_id: Uuid,
 
     /// Name of the product.
-    #[validate(length(min = 1))]
+    
     pub product_name: String,
 
     /// Quantity of the product ordered.
-    #[validate(range(min = 1))]
+    
     pub quantity: u32,
 
     /// Sale price per unit in cents.
-    #[validate(range(min = 0))]
+    
     pub sale_price: i32,
 
     /// Original price per unit in cents before any discounts.
-    #[validate(range(min = 0))]
+    
     pub original_price: i32,
 
     /// Discount applied by the seller in cents.
-    #[validate(range(min = 0))]
+    
     pub seller_discount: i32,
 
     /// Unit of measurement (e.g., pcs, kg).
-    #[validate(length(min = 1))]
+    
     pub unit: String,
 
     /// Identifier for the product.
-    #[validate(length(min = 1))]
+    
     pub product_id: String,
 
     /// Brand of the product.
-    #[validate(length(max = 100))]
+    
     pub brand: String,
 
     /// Stock code of the product.
-    #[validate(length(max = 100))]
+    
     pub stock_code: String,
 
     /// Size of the product.
-    #[validate(length(max = 20))]
+    
     pub size: String,
 
     /// Seller's SKU for the product.
-    #[validate(length(max = 50))]
+    
     pub seller_sku: String,
 
     /// SKU ID.
-    #[validate(length(max = 100))]
+    
     pub sku_id: String,
 
     /// URL to the SKU image.
-    #[validate(url)]
+    
     pub sku_image: String,
 
     /// Name of the SKU.
-    #[validate(length(max = 100))]
+    
     pub sku_name: String,
 
     /// Type of SKU.
-    #[validate(length(max = 50))]
+    
     pub sku_type: String,
 
     /// Timestamp when the line item was created.
@@ -83,13 +83,13 @@ pub struct Model {
     pub updated_date: Option<DateTime<Utc>>,
 
     /// Current status of the line item.
-    #[validate]
+    
     pub status: OrderLineItemStatus,
 }
 
 /// Enum representing the possible statuses of an order line item.
 #[derive(Clone, Debug, PartialEq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum OrderLineItemStatus {
     #[sea_orm(string_value = "Pending")]
     Pending,
@@ -127,7 +127,7 @@ impl ActiveModelBehavior for ActiveModel {}
 impl Model {
     /// Creates a new order line item with the specified parameters.
     ///
-    /// # Arguments
+    /// #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]Arguments
     ///
     /// * `order_id` - The UUID of the order this line item belongs to.
     /// * `product_name` - The name of the product.
@@ -191,7 +191,7 @@ impl Model {
 
     /// Updates the status of the order line item.
     ///
-    /// # Arguments
+    /// #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]Arguments
     ///
     /// * `new_status` - The new status to set for the line item.
     pub fn update_status(&mut self, new_status: OrderLineItemStatus) {
@@ -201,7 +201,7 @@ impl Model {
 
     /// Applies a discount to the order line item.
     ///
-    /// # Arguments
+    /// #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]Arguments
     ///
     /// * `discount` - The discount amount in cents to apply.
     pub fn apply_discount(&mut self, discount: i32) {

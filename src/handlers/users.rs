@@ -25,11 +25,11 @@ use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateUserRequest {
-    #[validate(length(min = 2, message = "Name must be at least 2 characters long"))]
+    
     pub name: String,
-    #[validate(email)]
+    
     pub email: String,
-    #[validate(length(min = 6, message = "Password must be at least 6 characters long"))]
+    
     pub password: String,
     pub role: Option<String>,
     pub department: Option<String>,
@@ -39,7 +39,7 @@ pub struct CreateUserRequest {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateUserRequest {
     pub name: Option<String>,
-    #[validate(email)]
+    
     pub email: Option<String>,
     pub role: Option<String>,
     pub department: Option<String>,
@@ -54,9 +54,9 @@ pub struct ChangePasswordRequest {
         message = "Current password must be at least 6 characters long"
     ))]
     pub current_password: String,
-    #[validate(length(min = 6, message = "New password must be at least 6 characters long"))]
+    
     pub new_password: String,
-    #[validate(must_match(other = "new_password", message = "Passwords do not match"))]
+    
     pub confirm_password: String,
 }
 

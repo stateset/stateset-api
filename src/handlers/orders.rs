@@ -84,10 +84,10 @@ pub struct OrderResponse {
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateOrderRequest {
-    #[validate(length(min = 1, message = "Customer ID is required"))]
+    
     pub customer_id: String,
     
-    #[validate(length(min = 1, message = "At least one item is required"))]
+    
     pub items: Vec<CreateOrderItem>,
     
     pub shipping_address: Option<Address>,
@@ -106,10 +106,10 @@ pub struct UpdateOrderRequest {
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateOrderItem {
-    #[validate(length(min = 1, message = "Product ID is required"))]
+    
     pub product_id: String,
     
-    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    
     pub quantity: i32,
     
     pub unit_price: Option<rust_decimal::Decimal>,

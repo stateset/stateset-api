@@ -48,14 +48,14 @@ impl Command for ArchiveOrderCommand {
         db_pool: Arc<DbPool>,
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
-        let db = &**db_pool;
+        let db = db_pool.as_ref();
 
         let updated_order =
             archive_order_in_db(&db, self.order_id, &self.reason, self.version).await
             .map_err(|e| ServiceError::OrderError(format!("Archive failed: {}", e)))?;
 
         event_sender
-            .send(Event::OrderArchived(self.order_id))
+            .send(Event::OrderUpdated(self.order_id))
             .await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 
@@ -95,9 +95,9 @@ async fn archive_order_in_db(
                 }
 
                 let mut order: order_entity::ActiveModel = order.into();
-                order.status = Set(OrderStatus::Cancelled); // Using Cancelled as archived equivalent
+                order.status = Set(OrderStatus::Cancelled);
                 order.updated_at = Set(Utc::now());
-                order.version = Set(order.version + 1);
+                order.version = Set(order.version.unwrap_or_default() + 1);
 
                 let updated_order = order.update(txn).await.map_err(|e| {
                     error!("Failed to archive order {}: {}", order_id, e);

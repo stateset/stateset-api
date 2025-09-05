@@ -17,14 +17,14 @@ use crate::{
         ActiveModel as WorkOrderActiveModel, WorkOrderStatus, WorkOrderPriority
     },
     commands::workorders::{
-        create_work_order_command::CreateWorkOrderCommand,
-        update_work_order_command::UpdateWorkOrderCommand,
-        cancel_work_order_command::CancelWorkOrderCommand,
-        start_work_order_command::StartWorkOrderCommand,
-        complete_work_order_command::CompleteWorkOrderCommand,
+        // create_work_order_command::CreateWorkOrderCommand,
+        // update_work_order_command::UpdateWorkOrderCommand,
+        // cancel_work_order_command::CancelWorkOrderCommand,
+        // start_work_order_command::StartWorkOrderCommand,
+        // complete_work_order_command::CompleteWorkOrderCommand,
         assign_work_order_command::AssignWorkOrderCommand,
-        unassign_work_order_command::UnassignWorkOrderCommand,
-        schedule_work_order_command::ScheduleWorkOrderCommand,
+        // unassign_work_order_command::UnassignWorkOrderCommand,
+        // schedule_work_order_command::ScheduleWorkOrderCommand,
         add_note_to_work_order_command::AddNoteToWorkOrderCommand,
     },
 };
@@ -41,11 +41,11 @@ impl WorkOrderService {
         Self { db_pool, event_sender }
     }
 
-    #[instrument(skip(self), err)]
-    pub async fn create_work_order(&self, command: CreateWorkOrderCommand) -> Result<Uuid, ServiceError> {
-        let result = command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(result.id)
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn create_work_order(&self, command: CreateWorkOrderCommand) -> Result<Uuid, ServiceError> {
+    //     let result = command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(result.id)
+    // }
 
     #[instrument(skip(self), err)]
     pub async fn get_work_order(&self, id: &Uuid) -> Result<Option<WorkOrderModel>, ServiceError> {
@@ -62,29 +62,29 @@ impl WorkOrderService {
         Ok(work_order)
     }
 
-    #[instrument(skip(self), err)]
-    pub async fn update_work_order(&self, command: UpdateWorkOrderCommand) -> Result<(), ServiceError> {
-        command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(())
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn update_work_order(&self, command: UpdateWorkOrderCommand) -> Result<(), ServiceError> {
+    //     command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(())
+    // }
 
-    #[instrument(skip(self), err)]
-    pub async fn cancel_work_order(&self, command: CancelWorkOrderCommand) -> Result<(), ServiceError> {
-        command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(())
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn cancel_work_order(&self, command: CancelWorkOrderCommand) -> Result<(), ServiceError> {
+    //     command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(())
+    // }
 
-    #[instrument(skip(self), err)]
-    pub async fn start_work_order(&self, command: StartWorkOrderCommand) -> Result<(), ServiceError> {
-        command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(())
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn start_work_order(&self, command: StartWorkOrderCommand) -> Result<(), ServiceError> {
+    //     command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(())
+    // }
 
-    #[instrument(skip(self), err)]
-    pub async fn complete_work_order(&self, command: CompleteWorkOrderCommand) -> Result<(), ServiceError> {
-        command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(())
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn complete_work_order(&self, command: CompleteWorkOrderCommand) -> Result<(), ServiceError> {
+    //     command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(())
+    // }
 
     #[instrument(skip(self), err)]
     pub async fn assign_work_order(&self, command: AssignWorkOrderCommand) -> Result<(), ServiceError> {
@@ -92,17 +92,17 @@ impl WorkOrderService {
         Ok(())
     }
 
-    #[instrument(skip(self), err)]
-    pub async fn unassign_work_order(&self, command: UnassignWorkOrderCommand) -> Result<(), ServiceError> {
-        command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(())
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn unassign_work_order(&self, command: UnassignWorkOrderCommand) -> Result<(), ServiceError> {
+    //     command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(())
+    // }
 
-    #[instrument(skip(self), err)]
-    pub async fn schedule_work_order(&self, command: ScheduleWorkOrderCommand) -> Result<(), ServiceError> {
-        command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
-        Ok(())
-    }
+    // #[instrument(skip(self), err)]
+    // pub async fn schedule_work_order(&self, command: ScheduleWorkOrderCommand) -> Result<(), ServiceError> {
+    //     command.execute(self.db_pool.clone(), self.event_sender.clone()).await?;
+    //     Ok(())
+    // }
 
     #[instrument(skip(self), err)]
     pub async fn add_note_to_work_order(&self, command: AddNoteToWorkOrderCommand) -> Result<i32, ServiceError> {

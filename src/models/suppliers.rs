@@ -211,11 +211,12 @@ pub enum Relation {
     // Contacts,
 }
 
-impl Related<super::product::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Products.def()
-    }
-}
+// Remove invalid impls that rely on commented variants
+// impl Related<super::product::Entity> for Entity {
+//     fn to() -> RelationDef {
+//         Relation::Products.def()
+//     }
+// }
 
 // TODO: Uncomment when purchase_order entity is implemented
 // impl Related<super::purchase_order::Entity> for Entity {
@@ -224,11 +225,11 @@ impl Related<super::product::Entity> for Entity {
 //     }
 // }
 
-impl Related<super::supplier_contact::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Contacts.def()
-    }
-}
+// impl Related<super::supplier_contact::Entity> for Entity {
+//     fn to() -> RelationDef {
+//         Relation::Contacts.def()
+//     }
+// }
 
 /// Custom validation for birthdates
 fn validate_birthdate(date: &NaiveDate) -> Result<(), ValidationError> {
@@ -295,7 +296,8 @@ impl ActiveModelBehavior for ActiveModel {
 impl ActiveModel {
     fn set_id_if_needed(&mut self) {
         if self.id.is_not_set() {
-            self.id = Set(Uuid::new_v4());
+            // For i32 id, let DB set it via auto-increment; do nothing here
+            // self.id will be assigned after insert
         }
     }
 }

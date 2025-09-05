@@ -1,4 +1,5 @@
 use uuid::Uuid;
+use std::str::FromStr;
 use super::calculate_cogs_command::CalculateCOGSCommand;
 use crate::commands::Command;
 use crate::events::{Event, EventSender};
@@ -9,6 +10,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
+use rust_decimal::Decimal as RustDecimal;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use futures::stream::{self, StreamExt};
 use lazy_static::lazy_static;
@@ -40,7 +42,7 @@ pub struct CalculateMonthlyCOGSCommand {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MonthlyCOGSResult {
     pub period: String,
-    pub total_cogs: BigDecimal,
+    pub cogs: BigDecimal,
     pub average_cogs: BigDecimal,
     pub quantity_produced: i32,
     pub cogs_trend: BigDecimal,
@@ -77,11 +79,11 @@ impl Command for CalculateMonthlyCOGSCommand {
         let work_orders = self
             .get_work_orders_for_period(&db, start_date, end_date)
             .await?;
-        let (total_cogs, total_quantity_produced) = self
-            .calculate_total_cogs_and_quantity(work_orders, &db_pool)
+        let (cogs, total_quantity_produced) = self
+            .calculate_cogs_and_quantity(work_orders, &db_pool)
             .await?;
         let average_cogs = if total_quantity_produced > 0 {
-            total_cogs.clone() / BigDecimal::from(total_quantity_produced)
+            cogs.clone() / BigDecimal::from(total_quantity_produced)
         } else {
             BigDecimal::from(0)
         };
@@ -103,14 +105,14 @@ impl Command for CalculateMonthlyCOGSCommand {
         let previous_cogs_data = self.get_previous_cogs_data(&db, &previous_period).await?;
         let cogs_trend = previous_cogs_data
             .map(|data| {
-                ((total_cogs.clone() - data.total_cogs) / data.total_cogs) * BigDecimal::from(100)
+                ((cogs.clone() - BigDecimal::from_str(&data.cogs.to_string()).unwrap_or(BigDecimal::from(0))) / BigDecimal::from_str(&data.cogs.to_string()).unwrap_or(BigDecimal::from(1))) * BigDecimal::from(100)
             })
             .unwrap_or_else(|| BigDecimal::from(0));
         
         let current_period = format!("{}-{:02}", now.year(), now.month());
         let result = MonthlyCOGSResult {
             period: current_period.clone(),
-            total_cogs: total_cogs.clone(),
+            cogs: cogs.clone(),
             average_cogs: average_cogs.clone(),
             quantity_produced: total_quantity_produced,
             cogs_trend: cogs_trend.clone(),
@@ -120,7 +122,7 @@ impl Command for CalculateMonthlyCOGSCommand {
         
         // Trigger an event indicating that monthly COGS was calculated
         if let Err(e) = event_sender
-            .send(Event::MonthlyCOGSCalculated(current_period, total_cogs))
+            .send(Event::MonthlyCOGSCalculated(current_period, RustDecimal::from_str(&cogs.to_string()).unwrap_or(RustDecimal::ZERO)))
             .await
         {
             MONTHLY_COGS_CALCULATION_FAILURES.inc();
@@ -131,7 +133,7 @@ impl Command for CalculateMonthlyCOGSCommand {
         MONTHLY_COGS_CALCULATIONS.inc();
         info!(
             period = %result.period,
-            total_cogs = %result.total_cogs,
+            cogs = %result.cogs,
             average_cogs = %result.average_cogs,
             quantity_produced = %result.quantity_produced,
             cogs_trend = %result.cogs_trend,
@@ -155,11 +157,11 @@ impl CalculateMonthlyCOGSCommand {
             .map_err(|e| {
                 MONTHLY_COGS_CALCULATION_FAILURES.inc();
                 error!("Failed to fetch work orders: {}", e);
-                ServiceError::DatabaseError(format!("Failed to fetch work orders: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 
-    async fn calculate_total_cogs_and_quantity(
+    async fn calculate_cogs_and_quantity(
         &self,
         work_orders: Vec<work_order_entity::Model>,
         db_pool: &Arc<DbPool>,
@@ -167,7 +169,7 @@ impl CalculateMonthlyCOGSCommand {
         let results = stream::iter(work_orders)
             .map(|work_order| async {
                 let command = CalculateCOGSCommand {
-                    work_order_number: work_order.number.clone(),
+                    work_order.id: work_order.number.clone(),
                 };
                 command
                     .execute(db_pool.clone(), Arc::new(EventSender::new()))
@@ -177,13 +179,13 @@ impl CalculateMonthlyCOGSCommand {
             .collect::<Vec<_>>()
             .await;
         
-        let mut total_cogs = BigDecimal::from(0);
+        let mut cogs = BigDecimal::from(0);
         let mut total_quantity_produced = 0;
         
         for result in results {
             match result {
                 Ok(cogs_result) => {
-                    total_cogs += cogs_result.total_cost;
+                    cogs += cogs_result.total_cost;
                     total_quantity_produced += cogs_result.quantity_produced;
                 }
                 Err(e) => {
@@ -193,7 +195,7 @@ impl CalculateMonthlyCOGSCommand {
             }
         }
         
-        Ok((total_cogs, total_quantity_produced))
+        Ok((cogs, total_quantity_produced))
     }
 
     async fn get_previous_cogs_data(
@@ -207,7 +209,7 @@ impl CalculateMonthlyCOGSCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch previous COGS data: {}", e);
-                ServiceError::DatabaseError(format!("Failed to fetch previous COGS data: {}", e))
+                ServiceError::DatabaseError(e)
             })
     }
 
@@ -218,16 +220,16 @@ impl CalculateMonthlyCOGSCommand {
     ) -> Result<(), ServiceError> {
         let new_cogs_data = cogs_data_entity::ActiveModel {
             period: sea_orm::ActiveValue::Set(result.period.clone()),
-            total_cogs: sea_orm::ActiveValue::Set(result.total_cogs.clone()),
-            average_cogs: sea_orm::ActiveValue::Set(result.average_cogs.clone()),
+            cogs: sea_orm::ActiveValue::Set(RustDecimal::from_str(&result.cogs.to_string()).unwrap_or(RustDecimal::ZERO)),
+            average_cogs: sea_orm::ActiveValue::Set(RustDecimal::from_str(&result.average_cogs.to_string()).unwrap_or(RustDecimal::ZERO)),
             quantity_produced: sea_orm::ActiveValue::Set(result.quantity_produced),
-            cogs_trend: sea_orm::ActiveValue::Set(result.cogs_trend.clone()),
+            cogs_trend: sea_orm::ActiveValue::Set(RustDecimal::from_str(&result.cogs_trend.to_string()).unwrap_or(RustDecimal::ZERO)),
             ..Default::default()
         };
         
-        new_cogs_data.insert(db).await.map_err(|e| {
+        cog_entries::Entity::insert(new_cogs_data).exec(db).await.map_err(|e| {
             error!("Failed to store COGS data: {}", e);
-            ServiceError::DatabaseError(format!("Failed to store COGS data: {}", e))
+            ServiceError::DatabaseError(e)
         })?;
         
         Ok(())

@@ -65,7 +65,7 @@ impl Command for UpdateOrderStatusCommand {
 
         Ok(UpdateOrderStatusResult {
             id: updated_order.id,
-            status: updated_order.status,
+            status: updated_order.status.to_string(),
             updated_at: updated_order.updated_at,
         })
     }

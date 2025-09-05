@@ -3,13 +3,13 @@ use crate::message_queue::MessageQueue;
 use crate::{
     commands::workorders::{
         assign_work_order_command::AssignWorkOrderCommand,
-        cancel_work_order_command::CancelWorkOrderCommand,
-        complete_work_order_command::CompleteWorkOrderCommand,
-        create_work_order_command::CreateWorkOrderCommand,
-        schedule_work_order_command::ScheduleWorkOrderCommand,
-        start_work_order_command::StartWorkOrderCommand,
-        unassign_work_order_command::UnassignWorkOrderCommand,
-        update_work_order_command::UpdateWorkOrderCommand,
+        // cancel_work_order_command::CancelWorkOrderCommand,
+        // complete_work_order_command::CompleteWorkOrderCommand,
+        // create_work_order_command::CreateWorkOrderCommand,
+        // schedule_work_order_command::ScheduleWorkOrderCommand,
+        // start_work_order_command::StartWorkOrderCommand,
+        // unassign_work_order_command::UnassignWorkOrderCommand,
+        // update_work_order_command::UpdateWorkOrderCommand,
     },
     commands::Command,
     db::DbPool,
@@ -23,7 +23,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use redis::Client as RedisClient;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use slog::Logger;
 use std::sync::Arc;
@@ -63,63 +63,30 @@ impl WorkOrderService {
 
     /// Creates a new work order
     #[instrument(skip(self))]
-    pub async fn create_work_order(
-        &self,
-        command: CreateWorkOrderCommand,
-    ) -> Result<Uuid, ServiceError> {
-        let result = command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(result.id)
-    }
 
-    /// Updates a work order
-    #[instrument(skip(self))]
-    pub async fn update_work_order(
-        &self,
-        command: UpdateWorkOrderCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
+    // /// Starts a work order
+    // #[instrument(skip(self))]
+    // // pub async fn start_work_order(
+    //     &self,
+    //     command: StartWorkOrderCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
 
-    /// Cancels a work order
-    #[instrument(skip(self))]
-    pub async fn cancel_work_order(
-        &self,
-        command: CancelWorkOrderCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
-
-    /// Starts a work order
-    #[instrument(skip(self))]
-    pub async fn start_work_order(
-        &self,
-        command: StartWorkOrderCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
-
-    /// Completes a work order
-    #[instrument(skip(self))]
-    pub async fn complete_work_order(
-        &self,
-        command: CompleteWorkOrderCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
+    // /// Completes a work order
+    // #[instrument(skip(self))]
+    // // pub async fn complete_work_order(
+    //     &self,
+    //     command: CompleteWorkOrderCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
 
     /// Assigns a work order to a user
     #[instrument(skip(self))]
@@ -133,29 +100,29 @@ impl WorkOrderService {
         Ok(())
     }
 
-    /// Unassigns a work order from a user
-    #[instrument(skip(self))]
-    pub async fn unassign_work_order(
-        &self,
-        command: UnassignWorkOrderCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
+    // /// Unassigns a work order from a user
+    // #[instrument(skip(self))]
+    // // pub async fn unassign_work_order(
+    //     &self,
+    //     command: UnassignWorkOrderCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
 
-    /// Schedules a work order
-    #[instrument(skip(self))]
-    pub async fn schedule_work_order(
-        &self,
-        command: ScheduleWorkOrderCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
+    // /// Schedules a work order
+    // #[instrument(skip(self))]
+    // // pub async fn schedule_work_order(
+    //     &self,
+    //     command: ScheduleWorkOrderCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
 
     /// Gets a work order by ID
     #[instrument(skip(self))]
@@ -180,7 +147,7 @@ impl WorkOrderService {
     ) -> Result<Vec<work_order::Model>, ServiceError> {
         let db = &*self.db_pool;
         let work_orders = work_order::Entity::find()
-            .filter(work_order::Column::CreatedBy.eq(user_id.to_string())) // Assuming string
+            .filter(work_order::Column::AssignedTo.eq(*user_id))
             .all(db)
             .await
             .map_err(|e| ServiceError::DatabaseError(e))?;
@@ -226,8 +193,8 @@ impl WorkOrderService {
     ) -> Result<Vec<work_order::Model>, ServiceError> {
         let db = &*self.db_pool;
         let work_orders = work_order::Entity::find()
-            .filter(work_order::Column::StartDate.gte(start_date))
-            .filter(work_order::Column::EndDate.lte(end_date))
+            .filter(work_order::Column::CreatedAt.gte(start_date))
+            .filter(work_order::Column::DueDate.lte(end_date))
             .all(db)
             .await
             .map_err(|e| ServiceError::DatabaseError(e))?;

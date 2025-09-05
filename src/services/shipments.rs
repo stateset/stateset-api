@@ -1,15 +1,15 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry};
 use crate::message_queue::MessageQueue;
 use crate::{
-    commands::shipments::{
-        assign_shipment_carrier_command::AssignShipmentCarrierCommand,
+    // commands::shipments::{
+        // assign_shipment_carrier_command::AssignShipmentCarrierCommand,
         cancel_shipment_command::CancelShipmentCommand,
-        confirm_shipment_delivery_command::ConfirmShipmentDeliveryCommand,
+        // confirm_shipment_delivery_command::ConfirmShipmentDeliveryCommand,
         create_shipment_command::CreateShipmentCommand, ship_command::ShipOrderCommand,
-        track_shipment_command::TrackShipmentCommand,
-        update_shipment_command::UpdateShipmentStatusCommand,
+        // track_shipment_command::TrackShipmentCommand,
+        // update_shipment_command::UpdateShipmentStatusCommand,
         update_shipment_general_command::UpdateShipmentCommand,
-    },
+    // },
     commands::Command,
     db::DbPool,
     errors::ServiceError,
@@ -139,14 +139,17 @@ impl ShipmentService {
         Ok(())
     }
 
-    /// Processes the shipping of a shipment
-    #[instrument(skip(self))]
-    pub async fn ship(&self, command: ShipOrderCommand) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
-    }
+    // /// Processes the shipping of a shipment
+    // #[instrument(skip(self))]
+    // // pub async fn ship(
+    //     &self,
+    //     command: ShipOrderCommand,
+    // ) -> Result<(), ServiceError> {
+    //     command
+    //         .execute(self.db_pool.clone(), self.event_sender.clone())
+    //         .await?;
+    //     Ok(())
+    // }
 
     /// Gets a shipment by ID
     #[instrument(skip(self))]

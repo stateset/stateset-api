@@ -16,14 +16,14 @@ use validator::Validate;
 use sea_orm::{EntityTrait, QueryFilter, Set, ActiveModelTrait};
 use uuid::Uuid;
 
-use crate::commands::advancedshippingnotice::{
+// use crate::commands::advancedshippingnotice::{
     CancelASNCommand, CreateASNCommand, DeliveredASNCommand, InTransitASNCommand,
     MarkASNDeliveredCommand, MarkASNInTransitCommand, UpdateAsnDetailsCommand,
 };
 use crate::commands::Command;
 
 async fn create_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
     Json(command): Json<CreateASNCommand>,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -34,7 +34,7 @@ async fn create_asn(
 }
 
 async fn list_asns(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     _user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
     let asns = fetch_all_asns(&pool).await?;
@@ -42,7 +42,7 @@ async fn list_asns(
 }
 
 async fn get_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     _user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -123,26 +123,26 @@ async fn delete_asn_from_db(pool: &DbPool, id: Uuid) -> Result<(), ServiceError>
 }
 
 async fn update_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     _user: AuthenticatedUser,
     Json(asn_info): Json<ASN>,
 ) -> Result<impl IntoResponse, ServiceError> {
-    let updated_asn = update_asn_in_db(&pool, id, asn_info).await?;
+    let updated_asn = update_asn_in_db(&state.db_pool, id, asn_info).await?;
     Ok(Json(updated_asn))
 }
 
 async fn delete_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     _user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
-    delete_asn_from_db(&pool, id).await?;
+    delete_asn_from_db(&state.db_pool, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn in_transit_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -157,7 +157,7 @@ async fn in_transit_asn(
 }
 
 async fn delivered_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -172,7 +172,7 @@ async fn delivered_asn(
 }
 
 async fn cancel_asn(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
     user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -187,6 +187,8 @@ async fn cancel_asn(
 }
 
 pub fn asn_routes() -> Router<Arc<AppState>> {
+    use std::sync::Arc;
+    use crate::handlers::AppState;
     Router::new()
         .route("/", post(create_asn))
         .route("/", get(list_asns))

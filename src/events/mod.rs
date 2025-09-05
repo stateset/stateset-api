@@ -127,6 +127,12 @@ pub enum Event {
     ShipmentDelivered(Uuid),
     ShipmentCancelled(Uuid),
     
+    // ASN events
+    ASNDeleted {
+        asn_id: Uuid,
+        asn_number: String,
+    },
+    
     // Warranty events
     WarrantyCreated(Uuid),
     WarrantyClaimed(Uuid),
@@ -137,6 +143,17 @@ pub enum Event {
     WorkOrderUpdated(Uuid),
     WorkOrderCompletedLegacy(Uuid),
     WorkOrderCancelled(Uuid),
+    WorkOrderAverageCostCalculated {
+        product_id: Uuid,
+        average_cost: rust_decimal::Decimal,
+    },
+    
+    // COGS events
+    MonthlyCOGSCalculated(String, rust_decimal::Decimal),
+    COGSCalculated {
+        work_order_id: Uuid,
+        total_cogs: rust_decimal::Decimal,
+    },
     
     // BOM events
     BOMCreated(i32),

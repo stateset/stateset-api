@@ -46,7 +46,8 @@ impl Command for ApproveReturnCommand {
 
         Ok(ApproveReturnResult {
             id: Uuid::parse_str(&approved_return.id).unwrap_or_else(|_| Uuid::new_v4()),
-            status: approved_return.status,
+            object: "return".to_string(),
+            approved: true,
         })
     }
 }
@@ -67,7 +68,7 @@ impl ApproveReturnCommand {
             })?;
 
         let mut return_request: return_entity::ActiveModel = return_request.into();
-        return_request.status = Set(ReturnStatus::Approved);
+        return_request.status = Set(ReturnStatus::Approved.as_str().to_string());
 
         let updated_return = return_request.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return request {}: {}", self.return_id, e);
