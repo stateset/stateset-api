@@ -99,8 +99,8 @@ use status_helpers::{map_status_str_to_proto, map_proto_status_to_str};
 
 fn map_service_order_to_proto(o: &crate::services::orders::OrderResponse) -> Order {
     let created_at_ts = prost_types::Timestamp {
-        seconds: o.created_at.timestamp(),
-        nanos: o.created_at.timestamp_subsec_nanos() as i32,
+        seconds: o.created_at.and_utc().timestamp(),
+        nanos: o.created_at.and_utc().timestamp_subsec_nanos() as i32,
     };
     // Convert Decimal dollars to smallest currency unit (e.g., cents)
     let amount_i64 = (o.total_amount * Decimal::new(100, 0))
@@ -171,8 +171,8 @@ impl order_service_server::OrderService for StateSetApi {
             order_id: created.id.to_string(),
             status: map_status_str_to_proto(&created.status) as i32,
             created_at: Some(prost_types::Timestamp {
-                seconds: created.created_at.timestamp(),
-                nanos: created.created_at.timestamp_subsec_nanos() as i32,
+                seconds: created.created_at.and_utc().timestamp(),
+                nanos: created.created_at.and_utc().timestamp_subsec_nanos() as i32,
             }),
         };
         Ok(Response::new(resp))
@@ -240,12 +240,12 @@ impl order_service_server::OrderService for StateSetApi {
         let start_date = req
             .start_date
             .as_ref()
-            .and_then(|ts| chrono::NaiveDateTime::from_timestamp_opt(ts.seconds, ts.nanos as u32))
+            .and_then(|ts| Some(chrono::NaiveDateTime::from_timestamp(ts.seconds, ts.nanos as u32)))
             .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
         let end_date = req
             .end_date
             .as_ref()
-            .and_then(|ts| chrono::NaiveDateTime::from_timestamp_opt(ts.seconds, ts.nanos as u32))
+            .and_then(|ts| Some(chrono::NaiveDateTime::from_timestamp(ts.seconds, ts.nanos as u32)))
             .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
 
         let (page, per_page) = match req.pagination {
@@ -310,8 +310,8 @@ impl inventory_service_server::InventoryService for StateSetApi {
             warehouse_id: inv.warehouse,
             location: String::new(),
             last_updated: Some(prost_types::Timestamp {
-                seconds: inv.updated_at.timestamp(),
-                nanos: inv.updated_at.timestamp_subsec_nanos() as i32,
+                seconds: inv.updated_at.and_utc().timestamp(),
+                nanos: inv.updated_at.and_utc().timestamp_subsec_nanos() as i32,
             }),
         });
         
@@ -393,8 +393,8 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 warehouse_id: inv.warehouse,
                 location: String::new(),
                 last_updated: Some(prost_types::Timestamp {
-                    seconds: inv.updated_at.timestamp(),
-                    nanos: inv.updated_at.timestamp_subsec_nanos() as i32,
+                    seconds: inv.updated_at.and_utc().timestamp(),
+                    nanos: inv.updated_at.and_utc().timestamp_subsec_nanos() as i32,
                 }),
             })
             .collect();
