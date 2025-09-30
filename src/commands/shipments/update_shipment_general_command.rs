@@ -38,6 +38,9 @@ impl Command for UpdateShipmentCommand {
         let db = db_pool.as_ref();
 
         let updated_shipment = self.update_shipment(&db).await?;
+        // Outbox enqueue (post-update)
+        let payload = serde_json::json!({"shipment_id": updated_shipment.id.to_string()});
+        let _ = crate::events::outbox::enqueue(db, "shipment", Some(updated_shipment.id), "ShipmentUpdated", &payload).await;
 
         self.log_and_trigger_event(event_sender, &updated_shipment)
             .await?;

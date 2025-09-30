@@ -95,6 +95,13 @@ impl crate::commands::Command for CompleteReturnCommand {
                     // Create history record
                     Self::create_history_record_static(return_id, completed_by.as_ref(), notes.as_ref(), txn, &return_request).await?;
 
+                    // Enqueue outbox within the same transaction
+                    let payload = serde_json::json!({
+                        "return_id": return_id.to_string(),
+                        "completed_by": completed_by,
+                    });
+                    let _ = crate::events::outbox::enqueue(txn, "return", Some(return_id), "ReturnCompleted", &payload).await;
+
                     Ok(CompleteReturnResult {
                         id: Uuid::parse_str(&updated_return.id).unwrap_or_else(|_| Uuid::new_v4()),
                         object: "return".to_string(),

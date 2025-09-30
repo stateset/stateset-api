@@ -41,6 +41,9 @@ impl Command for CancelShipmentCommand {
                 Box::pin(async move {
                     self.cancel_shipment(txn).await?;
                     self.log_cancellation_reason(txn).await?;
+                    // Enqueue outbox inside txn (no UUID id available)
+                    let payload = serde_json::json!({"shipment_id": self.shipment_id, "reason": self.reason});
+                    let _ = crate::events::outbox::enqueue(txn, "shipment", None, "ShipmentCancelled", &payload).await;
                     let updated_shipment = self.fetch_updated_shipment(txn).await?;
                     Ok(updated_shipment)
                 })

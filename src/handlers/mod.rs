@@ -12,6 +12,7 @@ pub mod work_orders;
 pub mod cash_sales;
 pub mod customers;
 pub mod payments;
+pub mod payment_webhooks;
 pub mod notifications;
 // pub mod purchase_orders; // Disabled due to missing service dependencies
 // pub mod reports; // Disabled due to missing service dependencies
@@ -19,6 +20,7 @@ pub mod notifications;
 pub mod users;
 pub mod commerce;
 pub mod agents;
+pub mod outbox_admin;
 
 use crate::events::EventSender;
 use crate::message_queue::{InMemoryMessageQueue, MessageQueue};
@@ -37,6 +39,7 @@ pub struct AppServices {
     pub product_catalog: Arc<crate::services::commerce::ProductCatalogService>,
     pub cart: Arc<crate::services::commerce::CartService>,
     pub checkout: Arc<crate::services::commerce::CheckoutService>,
+    pub agentic_checkout: Arc<crate::services::commerce::AgenticCheckoutService>,
     pub customer: Arc<crate::services::commerce::CustomerService>,
     pub order: Arc<crate::services::orders::OrderService>,
     // pub cash_sales: Arc<crate::services::cash_sale::CashSaleService>,
@@ -78,7 +81,21 @@ impl AppServices {
             auth_service,
         ));
 
-        Self { product_catalog, cart, checkout, customer, order: order_service }
+        let cache = Arc::new(crate::cache::InMemoryCache::new());
+        let agentic_checkout = Arc::new(crate::services::commerce::AgenticCheckoutService::new(
+            db_pool.clone(),
+            cache,
+            event_sender.clone(),
+        ));
+
+        Self { 
+            product_catalog, 
+            cart, 
+            checkout, 
+            agentic_checkout,
+            customer, 
+            order: order_service 
+        }
     }
 }
 

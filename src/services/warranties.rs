@@ -65,6 +65,9 @@ impl WarrantyService {
         let result = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
+        // Outbox: WarrantyCreated
+        let payload = serde_json::json!({"warranty_id": result.to_string()});
+        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(result), "WarrantyCreated", &payload).await;
         Ok(result)
     }
 
@@ -77,6 +80,9 @@ impl WarrantyService {
         let result = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
+        // Outbox: WarrantyClaimed
+        let payload = serde_json::json!({"warranty_id": result.to_string()});
+        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(result), "WarrantyClaimed", &payload).await;
         Ok(result)
     }
 
@@ -89,6 +95,9 @@ impl WarrantyService {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
+        // Outbox: WarrantyClaimApproved
+        let payload = serde_json::json!({"warranty_id": command.warranty_id.to_string(), "claim_id": command.claim_id.to_string()});
+        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(command.warranty_id), "WarrantyClaimApproved", &payload).await;
         Ok(())
     }
 
@@ -101,6 +110,9 @@ impl WarrantyService {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
+        // Outbox: WarrantyClaimRejected
+        let payload = serde_json::json!({"warranty_id": command.warranty_id.to_string(), "claim_id": command.claim_id.to_string()});
+        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(command.warranty_id), "WarrantyClaimRejected", &payload).await;
         Ok(())
     }
 

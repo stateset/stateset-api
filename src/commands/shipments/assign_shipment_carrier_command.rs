@@ -32,8 +32,10 @@ impl Command for AssignShipmentCarrierCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
-
         let updated_shipment = self.assign_carrier(&db).await?;
+        // Outbox enqueue (string id)
+        let payload = serde_json::json!({"shipment_id": self.shipment_id, "carrier": self.carrier_name});
+        let _ = crate::events::outbox::enqueue(&*db, "shipment", None, "CarrierAssignedToShipment", &payload).await;
 
         self.log_and_trigger_event(event_sender, &updated_shipment)
             .await?;

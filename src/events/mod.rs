@@ -9,6 +9,8 @@ use uuid::Uuid;
 use rust_decimal::Decimal;
 // use bigdecimal::BigDecimal;
 
+pub mod outbox;
+
 /// Event data payload for structured event information
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum EventData {

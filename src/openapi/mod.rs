@@ -83,8 +83,10 @@ List endpoints support pagination with the following query parameters:
         (name = "Returns", description = "Return processing endpoints"),
         (name = "Warranties", description = "Warranty management endpoints"),
         (name = "Work Orders", description = "Work order management endpoints"),
+        (name = "Payments", description = "Payment processing endpoints"),
         (name = "Analytics", description = "Business intelligence endpoints"),
-        (name = "Health", description = "Health check endpoints")
+        (name = "Health", description = "Health check endpoints"),
+        (name = "Admin", description = "Administrative endpoints")
     ),
     paths(
         // Orders
@@ -102,6 +104,21 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::inventory::update_inventory,
         crate::handlers::inventory::delete_inventory,
         crate::handlers::inventory::get_low_stock_items,
+
+        // Payments
+        crate::handlers::payments::process_payment,
+        crate::handlers::payments::get_payment,
+        crate::handlers::payments::get_order_payments,
+        crate::handlers::payments::list_payments,
+        crate::handlers::payments::refund_payment,
+        crate::handlers::payments::get_order_payment_total,
+
+        // Admin Outbox
+        crate::handlers::outbox_admin::list_outbox,
+        crate::handlers::outbox_admin::retry_outbox,
+
+        // Webhooks
+        crate::handlers::payment_webhooks::payment_webhook,
 
         // Analytics & Health intentionally omitted from OpenAPI paths for now
     ),
@@ -124,6 +141,12 @@ List endpoints support pagination with the following query parameters:
             crate::handlers::inventory::InventoryItem,
             crate::handlers::inventory::CreateInventoryRequest,
             crate::handlers::inventory::UpdateInventoryRequest,
+
+            // Payments types
+            crate::handlers::payments::CreatePaymentRequest,
+            crate::handlers::payments::RefundPaymentHandlerRequest,
+            crate::services::payments::PaymentResponse,
+            crate::handlers::payments::PaymentStatusFilter,
 
             // Analytics types
             crate::services::analytics::DashboardMetrics,

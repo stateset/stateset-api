@@ -259,6 +259,17 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route("/work-orders/{id}", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
         .with_permission(perm::WORKORDERS_DELETE);
 
+    // Admin outbox routes
+    let outbox_admin = handlers::outbox_admin::router()
+        .with_permission("admin:outbox");
+
+    // Payments routes
+    let payments = handlers::payments::payment_routes()
+        .with_permission("payments:access");
+    // Payment webhook (does not require auth, but signature-verified)
+    let payment_webhook = Router::new()
+        .route("/payments/webhook", axum::routing::post(handlers::payment_webhooks::payment_webhook));
+
     Router::new()
         // Status and health endpoints
         .route("/status", get(api_status))
@@ -310,6 +321,22 @@ pub fn api_v1_routes() -> Router<AppState> {
          .merge(work_orders_create)
          .merge(work_orders_update)
          .merge(work_orders_delete)
+
+         // Payments API
+         .nest("/payments", payments)
+         .merge(payment_webhook)
+
+         // Commerce API (products, carts, checkout)
+         .nest("/products", handlers::commerce::products_routes())
+         .nest("/carts", handlers::commerce::carts_routes())
+         .nest("/checkout", handlers::commerce::checkout_routes())
+         .nest("/customers", handlers::commerce::customers_routes())
+         
+         // Agentic Checkout API (for ChatGPT integration)
+         .merge(handlers::commerce::agentic_checkout_routes())
+
+         // Admin
+         .nest("/admin/outbox", outbox_admin)
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {

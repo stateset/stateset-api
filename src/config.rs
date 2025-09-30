@@ -5,6 +5,7 @@ use std::path::Path;
 use thiserror::Error;
 use tracing::{error, info};
 use validator::{Validate, ValidationError};
+use std::env as std_env;
 
 /// Default values for configuration
 const DEFAULT_LOG_LEVEL: &str = "info";
@@ -159,6 +160,18 @@ pub struct AppConfig {
     /// Example: "/api/v1/orders:60:60,/api/v1/inventory:120:60"
     #[serde(default)]
     pub rate_limit_path_policies: Option<String>,
+
+    /// Payment provider identifier (e.g., "stripe")
+    #[serde(default)]
+    pub payment_provider: Option<String>,
+
+    /// Webhook secret for verifying payment gateway callbacks
+    #[serde(default)]
+    pub payment_webhook_secret: Option<String>,
+
+    /// Webhook timestamp tolerance (seconds)
+    #[serde(default)]
+    pub payment_webhook_tolerance_secs: Option<u64>,
 }
 
 impl AppConfig {
@@ -302,17 +315,46 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
 
 /// Initializes tracing using the provided log level as the default filter
 pub fn init_tracing(level: &str, json: bool) {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
     let default_directive = format!("stateset_api={},tower_http=debug", level);
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
 
-    let _ = if json {
-        fmt().with_env_filter(filter).json().try_init()
+    // Optional OpenTelemetry initialization via env (APP__OTEL_ENABLED or OTEL_EXPORTER_OTLP_ENDPOINT)
+    let otel_enabled = std_env::var("APP__OTEL_ENABLED").map(|v| v == "1" || v.to_lowercase() == "true").unwrap_or(false)
+        || std_env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok();
+
+    if otel_enabled {
+        #[allow(unused_imports)]
+        use opentelemetry::{global, KeyValue};
+        use opentelemetry_sdk::{trace as sdktrace, Resource};
+        use opentelemetry_otlp::WithExportConfig;
+        use tracing_opentelemetry::OpenTelemetryLayer;
+
+        let endpoint = std_env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_else(|_| "http://localhost:4317".to_string());
+        let service_name = std_env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "stateset-api".to_string());
+
+        let resource = Resource::new(vec![KeyValue::new("service.name", service_name.clone())]);
+        let tracer = opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(opentelemetry_otlp::new_exporter().tonic().with_endpoint(endpoint))
+            .with_trace_config(sdktrace::config().with_resource(resource))
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .expect("failed to install OTLP pipeline");
+
+        let otel_layer = OpenTelemetryLayer::new(tracer);
+        let subscriber = tracing_subscriber::registry()
+            .with(filter)
+            .with(if json { fmt::layer().json() } else { fmt::layer() })
+            .with(otel_layer);
+        let _ = subscriber.try_init();
     } else {
-        fmt().with_env_filter(filter).try_init()
-    };
+        let _ = if json {
+            fmt().with_env_filter(filter).json().try_init()
+        } else {
+            fmt().with_env_filter(filter).try_init()
+        };
+    }
 }
 
 /// Loads application configuration

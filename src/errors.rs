@@ -42,6 +42,9 @@ pub enum ServiceError {
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
 
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
     #[error("Event error: {0}")]
     EventError(String),
 
@@ -138,6 +141,7 @@ impl IntoResponse for ServiceError {
             ServiceError::ValidationError(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
             ServiceError::AuthError(ref e) => (StatusCode::UNAUTHORIZED, e.to_string()),
             ServiceError::InvalidOperation(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
+            ServiceError::InvalidInput(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
             ServiceError::EventError(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             ServiceError::InternalError(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             ServiceError::NotFoundError(ref e) => (StatusCode::NOT_FOUND, e.to_string()),
@@ -198,6 +202,17 @@ pub enum ApiError {
 
     #[error("Internal server error")]
     InternalServerError,
+
+    #[error("Bad request: {message}")]
+    BadRequest {
+        message: String,
+        error_code: Option<String>,
+    },
+
+    #[error("Method not allowed: {message}")]
+    MethodNotAllowed {
+        message: String,
+    },
 }
 
 impl IntoResponse for ApiError {
@@ -208,7 +223,7 @@ impl IntoResponse for ApiError {
                     ServiceError::NotFound(e) | ServiceError::NotFoundError(e) => (StatusCode::NOT_FOUND, e.clone()),
                     ServiceError::ValidationError(e) | ServiceError::InvalidStatus(e) => (StatusCode::BAD_REQUEST, e.clone()),
                     ServiceError::AuthError(e) | ServiceError::JwtError(e) | ServiceError::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e.clone()),
-                    ServiceError::InvalidOperation(e) | ServiceError::BadRequest(e) => (StatusCode::BAD_REQUEST, e.clone()),
+                    ServiceError::InvalidOperation(e) | ServiceError::BadRequest(e) | ServiceError::InvalidInput(e) => (StatusCode::BAD_REQUEST, e.clone()),
                     ServiceError::EventError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
                     ServiceError::InternalError(e) | ServiceError::HashError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
                     ServiceError::OrderError(e) | ServiceError::InventoryError(e) => (StatusCode::BAD_REQUEST, e.clone()),
@@ -230,6 +245,8 @@ impl IntoResponse for ApiError {
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
             ApiError::InternalServerError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string()),
+            ApiError::BadRequest { message, .. } => (StatusCode::BAD_REQUEST, message.clone()),
+            ApiError::MethodNotAllowed { message } => (StatusCode::METHOD_NOT_ALLOWED, message.clone()),
         };
 
         let error_response = ErrorResponse {
