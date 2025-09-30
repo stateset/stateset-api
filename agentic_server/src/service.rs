@@ -14,16 +14,22 @@ use uuid::Uuid;
 pub struct AgenticCheckoutService {
     cache: Arc<InMemoryCache>,
     event_sender: Arc<EventSender>,
+    product_catalog: Arc<ProductCatalogService>,
+    tax_service: Arc<TaxService>,
 }
 
 impl AgenticCheckoutService {
     pub fn new(
         cache: Arc<InMemoryCache>,
         event_sender: Arc<EventSender>,
+        product_catalog: Arc<ProductCatalogService>,
+        tax_service: Arc<TaxService>,
     ) -> Self {
         Self {
             cache,
             event_sender,
+            product_catalog,
+            tax_service,
         }
     }
 
@@ -250,12 +256,23 @@ impl AgenticCheckoutService {
         let mut line_items = Vec::new();
 
         for item in items {
-            // In a real implementation, fetch product details from database
-            // For now, use mock data
-            let base_amount = 5000; // $50.00 in cents
-            let discount = 0;
-            let subtotal = base_amount * item.quantity as i64 - discount;
-            let tax = subtotal * 875 / 10000; // 8.75% tax
+            // Fetch real product details from catalog
+            let product = self.product_catalog.get_product(&item.id)?;
+            
+            // Check inventory
+            if !self.product_catalog.check_inventory(&item.id, item.quantity)? {
+                return Err(ServiceError::InsufficientStock(
+                    format!("Insufficient stock for product: {}", product.name)
+                ));
+            }
+            
+            // Calculate pricing
+            let base_amount = product.price * item.quantity as i64;
+            let discount = 0; // TODO: Apply discounts/promotions
+            let subtotal = base_amount - discount;
+            
+            // Tax will be calculated separately at checkout level
+            let tax = 0; // Placeholder, calculated in calculate_totals
             let total = subtotal + tax;
 
             line_items.push(LineItem {
@@ -275,7 +292,7 @@ impl AgenticCheckoutService {
     fn calculate_totals(
         &self,
         line_items: &[LineItem],
-        _address: Option<&Address>,
+        address: Option<&Address>,
         fulfillment_option_id: Option<&str>,
     ) -> Result<Vec<Total>, ServiceError> {
         let mut totals = Vec::new();
@@ -308,7 +325,7 @@ impl AgenticCheckoutService {
 
         // Fulfillment
         let fulfillment_cost = if fulfillment_option_id.is_some() {
-            1000 // $10.00 shipping
+            1000 // $10.00 shipping (TODO: Real-time rates)
         } else {
             0
         };
@@ -320,8 +337,20 @@ impl AgenticCheckoutService {
             });
         }
 
-        // Tax
-        let tax: i64 = line_items.iter().map(|item| item.tax).sum();
+        // Tax - Calculate using tax service if address available
+        let tax = if let Some(addr) = address {
+            let tax_calc = self.tax_service.calculate_tax(
+                subtotal,
+                addr,
+                true, // Include shipping in taxable amount
+                fulfillment_cost,
+            )?;
+            tax_calc.tax_amount
+        } else {
+            // No address, use simple calculation
+            subtotal * 875 / 10000 // 8.75% default
+        };
+        
         totals.push(Total {
             total_type: "tax".to_string(),
             display_text: "Tax".to_string(),
@@ -399,52 +428,104 @@ impl AgenticCheckoutService {
         }
     }
 
-    async fn process_payment(&self, payment_data: &PaymentData, session: &CheckoutSession) -> Result<(), ServiceError> {
+    async fn process_payment(&self, payment_data: &PaymentData, session: &CheckoutSession) -> Result<PaymentResult, ServiceError> {
         info!("Processing payment with provider: {} and token: {}", 
             payment_data.provider, payment_data.token);
         
-        // Check if this is a delegated payment token (starts with "vt_")
+        // Determine payment method type
         if payment_data.token.starts_with("vt_") {
-            info!("Detected delegated payment vault token");
-            
-            // Validate vault token with allowances
-            let cache_key = format!("vault_token:{}", payment_data.token);
-            let cached = self.cache.get(&cache_key).await
-                .map_err(|e| ServiceError::CacheError(e.to_string()))?;
-            
-            match cached {
-                Some(data) => {
-                    let token_data: serde_json::Value = serde_json::from_str(&data)
-                        .map_err(|e| ServiceError::ParseError(e.to_string()))?;
-                    
-                    // Validate checkout session ID
-                    if let Some(allowance) = token_data.get("allowance") {
-                        if allowance.get("checkout_session_id").and_then(|v| v.as_str()) != Some(&session.id) {
-                            return Err(ServiceError::InvalidOperation(
-                                "Vault token is not valid for this checkout session".to_string()
-                            ));
-                        }
-                    }
-                    
-                    // Consume the token (single-use enforcement)
-                    self.cache.delete(&cache_key).await
-                        .map_err(|e| ServiceError::CacheError(e.to_string()))?;
-                    
-                    info!("Vault token consumed (single-use enforcement)");
-                },
-                None => {
-                    return Err(ServiceError::InvalidOperation(
-                        "Vault token not found or already used".to_string()
-                    ));
-                }
-            }
+            // Our delegated payment vault token (mock PSP)
+            self.process_vault_token(payment_data, session).await
+        } else if payment_data.token.starts_with("spt_") {
+            // Stripe SharedPaymentToken
+            self.process_stripe_shared_token(payment_data, session).await
         } else {
-            // Regular payment token from Stripe or other PSP
-            info!("Processing regular payment token");
+            // Regular Stripe payment token or PaymentMethod ID
+            self.process_stripe_regular(payment_data, session).await
         }
+    }
+    
+    async fn process_vault_token(&self, payment_data: &PaymentData, session: &CheckoutSession) -> Result<PaymentResult, ServiceError> {
+        info!("Processing vault token (mock PSP)");
         
-        // Simulate successful payment processing
-        Ok(())
+        // Validate vault token with allowances
+        let cache_key = format!("vault_token:{}", payment_data.token);
+        let cached = self.cache.get(&cache_key).await
+            .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+        
+        match cached {
+            Some(data) => {
+                let token_data: serde_json::Value = serde_json::from_str(&data)
+                    .map_err(|e| ServiceError::ParseError(e.to_string()))?;
+                
+                // Validate checkout session ID
+                if let Some(allowance) = token_data.get("allowance") {
+                    if allowance.get("checkout_session_id").and_then(|v| v.as_str()) != Some(&session.id) {
+                        return Err(ServiceError::InvalidOperation(
+                            "Vault token is not valid for this checkout session".to_string()
+                        ));
+                    }
+                }
+                
+                // Consume the token (single-use enforcement)
+                self.cache.delete(&cache_key).await
+                    .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+                
+                info!("Vault token consumed (single-use enforcement)");
+                
+                Ok(PaymentResult {
+                    payment_id: format!("pay_mock_{}", uuid::Uuid::new_v4()),
+                    status: "succeeded".to_string(),
+                    amount: session.totals.iter()
+                        .find(|t| t.total_type == "total")
+                        .map(|t| t.amount)
+                        .unwrap_or(0),
+                })
+            },
+            None => {
+                Err(ServiceError::InvalidOperation(
+                    "Vault token not found or already used".to_string()
+                ))
+            }
+        }
+    }
+    
+    async fn process_stripe_shared_token(&self, payment_data: &PaymentData, session: &CheckoutSession) -> Result<PaymentResult, ServiceError> {
+        info!("Processing Stripe SharedPaymentToken");
+        
+        // In production, use real Stripe API
+        // For now, simulate since we don't have STRIPE_SECRET_KEY set
+        
+        let total_amount = session.totals.iter()
+            .find(|t| t.total_type == "total")
+            .map(|t| t.amount)
+            .unwrap_or(0);
+        
+        // Mock Stripe SharedPaymentToken processing
+        info!("Creating PaymentIntent with SharedPaymentToken: {} for amount: {}", 
+            payment_data.token, total_amount);
+        
+        Ok(PaymentResult {
+            payment_id: format!("pi_spt_{}", uuid::Uuid::new_v4()),
+            status: "succeeded".to_string(),
+            amount: total_amount,
+        })
+    }
+    
+    async fn process_stripe_regular(&self, payment_data: &PaymentData, session: &CheckoutSession) -> Result<PaymentResult, ServiceError> {
+        info!("Processing regular Stripe payment method");
+        
+        let total_amount = session.totals.iter()
+            .find(|t| t.total_type == "total")
+            .map(|t| t.amount)
+            .unwrap_or(0);
+        
+        // Mock regular Stripe payment
+        Ok(PaymentResult {
+            payment_id: format!("pi_{}", uuid::Uuid::new_v4()),
+            status: "succeeded".to_string(),
+            amount: total_amount,
+        })
     }
 
     async fn create_order_from_session(&self, session: &CheckoutSession) -> Result<Order, ServiceError> {
@@ -467,4 +548,11 @@ impl AgenticCheckoutService {
         
         Ok(())
     }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaymentResult {
+    pub payment_id: String,
+    pub status: String,
+    pub amount: i64,
 } 
