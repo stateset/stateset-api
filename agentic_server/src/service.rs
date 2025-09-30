@@ -201,7 +201,7 @@ impl AgenticCheckoutService {
         }
 
         // Process payment
-        self.process_payment(&request.payment_data).await?;
+        self.process_payment(&request.payment_data, &session).await?;
 
         // Create order
         let order = self.create_order_from_session(&session).await?;
@@ -345,7 +345,6 @@ impl AgenticCheckoutService {
         if address.is_some() {
             // Shipping options
             options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
-                option_type: "shipping".to_string(),
                 id: "standard_shipping".to_string(),
                 title: "Standard Shipping".to_string(),
                 subtitle: Some("5-7 business days".to_string()),
@@ -358,7 +357,6 @@ impl AgenticCheckoutService {
             }));
 
             options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
-                option_type: "shipping".to_string(),
                 id: "express_shipping".to_string(),
                 title: "Express Shipping".to_string(),
                 subtitle: Some("2-3 business days".to_string()),
@@ -401,17 +399,45 @@ impl AgenticCheckoutService {
         }
     }
 
-    async fn process_payment(&self, payment_data: &PaymentData) -> Result<(), ServiceError> {
+    async fn process_payment(&self, payment_data: &PaymentData, session: &CheckoutSession) -> Result<(), ServiceError> {
         info!("Processing payment with provider: {} and token: {}", 
             payment_data.provider, payment_data.token);
         
         // Check if this is a delegated payment token (starts with "vt_")
         if payment_data.token.starts_with("vt_") {
             info!("Detected delegated payment vault token");
-            // In real implementation, validate the vault token with the PSP
-            // For now, we'll just log it
-            // Note: The token validation would happen via the DelegatedPaymentService
-            // but that requires passing it in or fetching from cache
+            
+            // Validate vault token with allowances
+            let cache_key = format!("vault_token:{}", payment_data.token);
+            let cached = self.cache.get(&cache_key).await
+                .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+            
+            match cached {
+                Some(data) => {
+                    let token_data: serde_json::Value = serde_json::from_str(&data)
+                        .map_err(|e| ServiceError::ParseError(e.to_string()))?;
+                    
+                    // Validate checkout session ID
+                    if let Some(allowance) = token_data.get("allowance") {
+                        if allowance.get("checkout_session_id").and_then(|v| v.as_str()) != Some(&session.id) {
+                            return Err(ServiceError::InvalidOperation(
+                                "Vault token is not valid for this checkout session".to_string()
+                            ));
+                        }
+                    }
+                    
+                    // Consume the token (single-use enforcement)
+                    self.cache.delete(&cache_key).await
+                        .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+                    
+                    info!("Vault token consumed (single-use enforcement)");
+                },
+                None => {
+                    return Err(ServiceError::InvalidOperation(
+                        "Vault token not found or already used".to_string()
+                    ));
+                }
+            }
         } else {
             // Regular payment token from Stripe or other PSP
             info!("Processing regular payment token");

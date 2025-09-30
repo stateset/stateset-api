@@ -124,8 +124,6 @@ pub enum FulfillmentOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FulfillmentOptionShipping {
-    #[serde(rename = "type")]
-    pub option_type: String,
     pub id: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,8 +141,6 @@ pub struct FulfillmentOptionShipping {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FulfillmentOptionDigital {
-    #[serde(rename = "type")]
-    pub option_type: String,
     pub id: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
