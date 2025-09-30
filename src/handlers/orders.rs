@@ -16,6 +16,7 @@ use crate::{
     AppState, ApiResponse, ListQuery, PaginatedResponse,
     auth::AuthUser,
 };
+use crate::auth::consts as perm;
 // Commands are not directly used by handlers at this time
 use std::str::FromStr;
 use crate::services::orders as svc_orders;
@@ -83,13 +84,14 @@ pub struct OrderResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateOrderRequest {
-    
+    #[validate(length(min = 1))]
     pub customer_id: String,
-    
-    
+
+    #[validate(length(min = 1))]
     pub items: Vec<CreateOrderItem>,
-    
+
     pub shipping_address: Option<Address>,
     pub billing_address: Option<Address>,
     pub payment_method_id: Option<String>,
@@ -97,6 +99,7 @@ pub struct CreateOrderRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateOrderRequest {
     pub shipping_address: Option<Address>,
     pub billing_address: Option<Address>,
@@ -105,18 +108,20 @@ pub struct UpdateOrderRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateOrderItem {
-    
+    #[validate(length(min = 1))]
     pub product_id: String,
-    
-    
+
+    #[validate(range(min = 1))]
     pub quantity: i32,
-    
+
     pub unit_price: Option<rust_decimal::Decimal>,
     pub tax_rate: Option<rust_decimal::Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct OrderItem {
     pub id: String,
     pub product_id: String,
@@ -128,6 +133,7 @@ pub struct OrderItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Address {
     pub street: String,
     pub city: String,
@@ -149,6 +155,7 @@ pub enum OrderStatus {
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateOrderStatusRequest {
     pub status: OrderStatus,
     pub reason: Option<String>,
@@ -193,7 +200,7 @@ pub async fn list_orders(
     auth_user: AuthUser,
 ) -> Result<Json<ApiResponse<PaginatedResponse<OrderResponse>>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:read") {
+    if !auth_user.has_permission(perm::ORDERS_READ) {
         return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
     }
 
@@ -238,9 +245,9 @@ pub async fn create_order(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Json(request): Json<CreateOrderRequest>,
-) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
+) -> Result<(StatusCode, Json<ApiResponse<OrderResponse>>), ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:write") {
+    if !auth_user.has_permission(perm::ORDERS_CREATE) {
         return Err(ServiceError::Forbidden("Insufficient permissions to create orders".to_string()));
     }
 
@@ -327,7 +334,37 @@ pub async fn create_order(
             tax_amount: Some(m.tax_amount),
         })
         .collect();
-    Ok(Json(ApiResponse::success(api)))
+    Ok((StatusCode::CREATED, Json(ApiResponse::success(api))))
+}
+
+/// Get order by its public order number (explicit route)
+#[utoipa::path(
+    get,
+    path = "/api/v1/orders/by-number/{order_number}",
+    summary = "Get order by number",
+    description = "Retrieve an order by its public order number (e.g., ORD-ABC123)",
+    params(("order_number" = String, Path, description = "Public order number")),
+    responses(
+        (status = 200, description = "Order retrieved successfully", body = ApiResponse<OrderResponse>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = []))
+)]
+pub async fn get_order_by_number(
+    State(state): State<AppState>,
+    Path(order_number): Path<String>,
+    auth_user: AuthUser,
+) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
+    if !auth_user.has_permission(perm::ORDERS_READ) {
+        return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
+    }
+    let svc = state.services.order.clone();
+    match svc.get_order_by_order_number(&order_number).await? {
+        Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))) ,
+        None => Err(ServiceError::NotFound(format!("Order with number {} not found", order_number))),
+    }
 }
 
 /// Get order by ID
@@ -356,27 +393,17 @@ pub async fn create_order(
 )]
 pub async fn get_order(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(id): Path<Uuid>,
     auth_user: AuthUser,
 ) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:read") {
+    if !auth_user.has_permission(perm::ORDERS_READ) {
         return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
     }
-
-    // Accept UUIDs or order_number (e.g., "order_123")
-    if let Ok(uuid) = Uuid::parse_str(&id) {
-        let svc = state.services.order.clone();
-        match svc.get_order(uuid).await? {
-            Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))) ,
-            None => Err(ServiceError::NotFound(format!("Order with ID {} not found", id))),
-        }
-    } else {
-        let svc = state.services.order.clone();
-        match svc.get_order_by_order_number(&id).await? {
-            Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))) ,
-            None => Err(ServiceError::NotFound(format!("Order with ID {} not found", id))),
-        }
+    let svc = state.services.order.clone();
+    match svc.get_order(*id).await? {
+        Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))) ,
+        None => Err(ServiceError::NotFound(format!("Order with ID {} not found", id))),
     }
 }
 
@@ -413,7 +440,7 @@ pub async fn update_order(
     Json(request): Json<UpdateOrderRequest>,
 ) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:write") {
+    if !auth_user.has_permission(perm::ORDERS_UPDATE) {
         return Err(ServiceError::Forbidden("Insufficient permissions to update orders".to_string()));
     }
 
@@ -460,9 +487,7 @@ pub async fn update_order(
         ("id" = String, Path, description = "Order ID"),
     ),
     responses(
-        (status = 200, description = "Order deleted successfully",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
+        (status = 204, description = "Order deleted successfully"),
         (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
         (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
@@ -478,20 +503,16 @@ pub async fn delete_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
     auth_user: AuthUser,
-) -> Result<Json<ApiResponse<serde_json::Value>>, ServiceError> {
+) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:delete") {
+    if !auth_user.has_permission(perm::ORDERS_DELETE) {
         return Err(ServiceError::Forbidden("Insufficient permissions to delete orders".to_string()));
     }
 
     let order_id = resolve_order_id(&state, &id).await?;
     state.services.order.delete_order(order_id).await?;
 
-    let response = serde_json::json!({
-        "message": format!("Order {} deleted successfully", id)
-    });
-
-    Ok(Json(ApiResponse::success(response)))
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update order status
@@ -527,7 +548,7 @@ pub async fn update_order_status(
     Json(request): Json<UpdateOrderStatusRequest>,
 ) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:write") {
+    if !auth_user.has_permission(perm::ORDERS_UPDATE) {
         return Err(ServiceError::Forbidden("Insufficient permissions to update orders".to_string()));
     }
 
@@ -594,7 +615,7 @@ pub async fn get_order_items(
     auth_user: AuthUser,
 ) -> Result<Json<ApiResponse<Vec<OrderItem>>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:read") {
+    if !auth_user.has_permission(perm::ORDERS_READ) {
         return Err(ServiceError::Forbidden("Insufficient permissions to read orders".to_string()));
     }
 
@@ -646,7 +667,7 @@ pub async fn add_order_item(
     Json(request): Json<CreateOrderItem>,
 ) -> Result<Json<ApiResponse<OrderItem>>, ServiceError> {
     // Check permissions
-    if !auth_user.has_permission("orders:write") {
+    if !auth_user.has_permission(perm::ORDERS_UPDATE) {
         return Err(ServiceError::Forbidden("Insufficient permissions to update orders".to_string()));
     }
 
@@ -785,8 +806,12 @@ fn create_mock_orders() -> Vec<OrderResponse> {
 pub async fn cancel_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    auth_user: AuthUser,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, ServiceError> {
+    if !auth_user.has_permission(perm::ORDERS_CANCEL) {
+        return Err(ServiceError::Forbidden("Insufficient permissions to cancel orders".to_string()));
+    }
     let order_id = resolve_order_id(&state, &id).await?;
     let reason = payload
         .get("reason")
@@ -811,7 +836,11 @@ pub async fn cancel_order(
 pub async fn archive_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    auth_user: AuthUser,
 ) -> Result<impl IntoResponse, ServiceError> {
+    if !auth_user.has_permission(perm::ORDERS_UPDATE) {
+        return Err(ServiceError::Forbidden("Insufficient permissions to archive orders".to_string()));
+    }
     let order_id = resolve_order_id(&state, &id).await?;
     let _ = state.services.order.archive_order(order_id).await?;
 

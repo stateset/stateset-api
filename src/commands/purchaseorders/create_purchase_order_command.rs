@@ -162,7 +162,7 @@ impl CreatePurchaseOrderCommand {
                     po_number: Set(po_number),
                     supplier_id: Set(self.supplier_id),
                     status: Set(PurchaseOrderStatus::Draft),
-                    order_date: Set(Utc::now().date_naive()),
+                    order_date: Set(Utc::now()),
                     expected_delivery_date: Set(Some(self.expected_delivery_date.date_naive())),
                     total_amount: Set(Decimal::from_f64_retain(total_amount).unwrap_or_default()),
                     currency: Set(self.currency.clone()),
@@ -224,12 +224,7 @@ impl CreatePurchaseOrderCommand {
         );
 
         event_sender
-            .send(Event::PurchaseOrderCreated(
-                saved_po.id,
-                saved_po.po_number.clone(),
-                saved_po.total_amount,
-                self.currency.clone(),
-            ))
+            .send(Event::PurchaseOrderCreated(saved_po.id))
             .await
             .map_err(|e| {
                 PO_CREATION_FAILURES.inc();

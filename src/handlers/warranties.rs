@@ -317,12 +317,8 @@ pub async fn delete_warranty<S>(
 where 
     S: WarrantiesAppState,
 {
-    let response = json!({
-        "message": format!("Warranty {} has been deleted", id),
-        "deleted_id": id
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    let _ = id; // placeholder until wired to DB
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Void a warranty

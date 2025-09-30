@@ -46,6 +46,12 @@ impl Command for RestockReturnedItemsCommand {
                     let items = self.fetch_returned_items(txn).await?;
                     let count = items.len();
                     self.restock_items(txn, items).await?;
+                    // Enqueue outbox inside txn
+                    let payload = serde_json::json!({
+                        "return_id": self.return_id.to_string(),
+                        "items_restocked": count,
+                    });
+                    let _ = crate::events::outbox::enqueue(txn, "return", Some(self.return_id), "ReturnRestocked", &payload).await;
                     Ok(count)
                 })
             })

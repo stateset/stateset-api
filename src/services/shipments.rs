@@ -1,15 +1,14 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry};
 use crate::message_queue::MessageQueue;
 use crate::{
-    // commands::shipments::{
-        // assign_shipment_carrier_command::AssignShipmentCarrierCommand,
+    commands::shipments::{
+        assign_shipment_carrier_command::AssignShipmentCarrierCommand,
         cancel_shipment_command::CancelShipmentCommand,
-        // confirm_shipment_delivery_command::ConfirmShipmentDeliveryCommand,
-        create_shipment_command::CreateShipmentCommand, ship_command::ShipOrderCommand,
-        // track_shipment_command::TrackShipmentCommand,
-        // update_shipment_command::UpdateShipmentStatusCommand,
+        confirm_shipment_delivery_command::ConfirmShipmentDeliveryCommand,
+        create_shipment_command::CreateShipmentCommand,
+        track_shipment_command::TrackShipmentCommand,
         update_shipment_general_command::UpdateShipmentCommand,
-    // },
+    },
     commands::Command,
     db::DbPool,
     errors::ServiceError,
@@ -73,6 +72,13 @@ impl ShipmentService {
         };
 
         let result = new_shipment.insert(&*self.db_pool).await?;
+        // Outbox: ShipmentCreated
+        let payload = serde_json::json!({
+            "shipment_id": result.id.to_string(),
+            "order_id": result.order_id.to_string(),
+            "tracking_number": result.tracking_number,
+        });
+        let _ = crate::events::outbox::enqueue(&*self.db_pool, "shipment", Some(result.id), "ShipmentCreated", &payload).await;
         Ok(result.id)
     }
 
@@ -121,7 +127,7 @@ impl ShipmentService {
         &self,
         command: ConfirmShipmentDeliveryCommand,
     ) -> Result<(), ServiceError> {
-        command
+        let _updated = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
         Ok(())

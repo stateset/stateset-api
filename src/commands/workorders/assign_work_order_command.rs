@@ -62,7 +62,6 @@ impl AssignWorkOrderCommand {
                     ))
                 })?
                 .into();
-                .into();
         work_order.assignee_id = Set(Some(self.assignee_id));
         work_order.update(txn).await.map_err(|e| {
             error!(

@@ -32,7 +32,7 @@ pub mod advancedshippingnotice;
 // pub mod billofmaterials;
 // pub mod inventory;
 pub mod purchaseorders;
-// pub mod returns;
+pub mod returns;
 pub mod shipments;
 pub mod warranties;
 pub mod workorders;

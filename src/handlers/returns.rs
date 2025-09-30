@@ -434,7 +434,7 @@ where
     delete,
     path = "/api/v1/returns/{id}",
     params(("id" = String, Path, description = "Return ID")),
-    responses((status = 200, description = "Return deleted")),
+    responses((status = 204, description = "Return deleted")),
     tag = "returns"
 )]
 pub async fn delete_return<S>(
@@ -444,12 +444,8 @@ pub async fn delete_return<S>(
 where 
     S: ReturnsAppState,
 {
-    let response = json!({
-        "message": format!("Return {} has been deleted", id),
-        "deleted_id": id
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    let _ = id; // placeholder until wired to DB
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Process a return (inspect and make approval decision)

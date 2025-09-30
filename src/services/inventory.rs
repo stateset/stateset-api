@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, 
-    PaginatorTrait, QueryFilter, Set,
+    PaginatorTrait, QueryFilter, Set, Statement, DbBackend, ConnectionTrait,
 };
 use tracing::{error, info, instrument};
 use uuid::Uuid;
@@ -113,6 +113,16 @@ impl InventoryService {
 		
 		self.event_sender.send(event).await
 			.map_err(|e| ServiceError::EventError(e.to_string()))?;
+
+		// Outbox event: InventoryAdjusted (best-effort)
+		let payload = serde_json::json!({
+			"product_id": product_id.to_string(),
+			"warehouse_id": location_id.to_string(),
+			"old_quantity": old_quantity,
+			"new_quantity": new_quantity,
+			"reason": "MANUAL_ADJUSTMENT",
+		});
+		let _ = crate::events::outbox::enqueue(db, "inventory", None, "InventoryAdjusted", &payload).await;
 		
 		info!("Inventory adjusted for product {} at location {}: {} -> {}", 
 			product_id, location_id, old_quantity, new_quantity);
@@ -122,43 +132,74 @@ impl InventoryService {
 
 	/// Simple reservation that increments reserved_quantity if available
 	#[instrument(skip(self))]
-	pub async fn reserve_inventory_simple(
-		&self,
-		product_id: &Uuid,
-		location_id: &Uuid,
-		quantity: i32,
-	) -> Result<String, ServiceError> {
+    pub async fn reserve_inventory_simple(
+        &self,
+        product_id: &Uuid,
+        location_id: &Uuid,
+        quantity: i32,
+    ) -> Result<String, ServiceError> {
 		if quantity <= 0 {
 			return Err(ServiceError::ValidationError(
 				"Reservation quantity must be positive".to_string()
 			));
 		}
 
-		let db = &*self.db_pool;
-		let inv = InventoryItemsEntity::find()
-			.filter(inventory_items::Column::Sku.eq(product_id.to_string()))
-			.filter(inventory_items::Column::Warehouse.eq(location_id.to_string()))
-			.one(db)
-			.await
-			.map_err(ServiceError::DatabaseError)?
-			.ok_or_else(|| ServiceError::NotFound(
-				format!("Inventory item not found for product {} at location {}", product_id, location_id)
-			))?;
+        let db = &*self.db_pool;
+        // Atomic update to avoid oversell: reserve only if available - reserved >= quantity
+        let backend = db.get_database_backend();
+        let now = Utc::now().naive_utc();
+        // Use backend-appropriate placeholders
+        let (sql, values) = match backend {
+            DbBackend::Postgres => (
+                r#"
+                UPDATE inventory_items
+                SET reserved_quantity = COALESCE(reserved_quantity, 0) + $3,
+                    updated_at = $4
+                WHERE sku = $1
+                  AND warehouse = $2
+                  AND (available - COALESCE(reserved_quantity, 0)) >= $3
+                "#,
+                vec![
+                    product_id.to_string().into(),
+                    location_id.to_string().into(),
+                    quantity.into(),
+                    now.into(),
+                ],
+            ),
+            _ => (
+                r#"
+                UPDATE inventory_items
+                SET reserved_quantity = COALESCE(reserved_quantity, 0) + ?,
+                    updated_at = ?
+                WHERE sku = ?
+                  AND warehouse = ?
+                  AND (available - COALESCE(reserved_quantity, 0)) >= ?
+                "#,
+                vec![
+                    quantity.into(),
+                    now.into(),
+                    product_id.to_string().into(),
+                    location_id.to_string().into(),
+                    quantity.into(),
+                ],
+            ),
+        };
+        let stmt = Statement::from_sql_and_values(backend, sql, values);
+        let res = db.execute(stmt).await.map_err(ServiceError::DatabaseError)?;
+        if res.rows_affected() == 0 {
+            return Err(ServiceError::ValidationError(format!(
+                "Insufficient inventory for reservation of {} units",
+                quantity
+            )));
+        }
 
-		let current_reserved = inv.reserved_quantity.unwrap_or(0);
-		let available_for_reservation = inv.available - current_reserved;
-		
-		if available_for_reservation < quantity {
-			return Err(ServiceError::ValidationError(
-				format!("Insufficient inventory: {} available, {} requested", 
-					available_for_reservation, quantity)
-			));
-		}
-
-		let mut active: inventory_items::ActiveModel = inv.into();
-		active.reserved_quantity = Set(Some(current_reserved + quantity));
-		active.updated_at = Set(Utc::now().naive_utc());
-		active.update(db).await.map_err(ServiceError::DatabaseError)?;
+        // Outbox event: InventoryReserved (best-effort)
+        let payload = serde_json::json!({
+            "product_id": product_id.to_string(),
+            "warehouse_id": location_id.to_string(),
+            "quantity": quantity,
+        });
+        let _ = crate::events::outbox::enqueue(db, "inventory", None, "InventoryReserved", &payload).await;
 
 		let reservation_id = Uuid::new_v4().to_string();
 		
@@ -195,30 +236,61 @@ impl InventoryService {
 			));
 		}
 
-		let db = &*self.db_pool;
-		let inv = InventoryItemsEntity::find()
-			.filter(inventory_items::Column::Sku.eq(product_id.to_string()))
-			.filter(inventory_items::Column::Warehouse.eq(location_id.to_string()))
-			.one(db)
-			.await
-			.map_err(ServiceError::DatabaseError)?
-			.ok_or_else(|| ServiceError::NotFound(
-				format!("Inventory item not found for product {} at location {}", product_id, location_id)
-			))?;
+        let db = &*self.db_pool;
+        let backend = db.get_database_backend();
+        let now = Utc::now().naive_utc();
+        // Atomic release: only release if reserved_quantity >= quantity
+        let (sql, values) = match backend {
+            DbBackend::Postgres => (
+                r#"
+                UPDATE inventory_items
+                SET reserved_quantity = COALESCE(reserved_quantity, 0) - $3,
+                    updated_at = $4
+                WHERE sku = $1
+                  AND warehouse = $2
+                  AND COALESCE(reserved_quantity, 0) >= $3
+                "#,
+                vec![
+                    product_id.to_string().into(),
+                    location_id.to_string().into(),
+                    quantity.into(),
+                    now.into(),
+                ],
+            ),
+            _ => (
+                r#"
+                UPDATE inventory_items
+                SET reserved_quantity = COALESCE(reserved_quantity, 0) - ?,
+                    updated_at = ?
+                WHERE sku = ?
+                  AND warehouse = ?
+                  AND COALESCE(reserved_quantity, 0) >= ?
+                "#,
+                vec![
+                    quantity.into(),
+                    now.into(),
+                    product_id.to_string().into(),
+                    location_id.to_string().into(),
+                    quantity.into(),
+                ],
+            ),
+        };
+        let stmt = Statement::from_sql_and_values(backend, sql, values);
+        let res = db.execute(stmt).await.map_err(ServiceError::DatabaseError)?;
+        if res.rows_affected() == 0 {
+            return Err(ServiceError::ValidationError(format!(
+                "Cannot release {} units; not enough reserved",
+                quantity
+            )));
+        }
 
-		let current_reserved = inv.reserved_quantity.unwrap_or(0);
-		
-		if current_reserved < quantity {
-			return Err(ServiceError::ValidationError(
-				format!("Cannot release {} units; only {} units are reserved", 
-					quantity, current_reserved)
-			));
-		}
-
-		let mut active: inventory_items::ActiveModel = inv.into();
-		active.reserved_quantity = Set(Some(current_reserved - quantity));
-		active.updated_at = Set(Utc::now().naive_utc());
-		active.update(db).await.map_err(ServiceError::DatabaseError)?;
+        // Outbox event: InventoryDeallocated
+        let payload = serde_json::json!({
+            "product_id": product_id.to_string(),
+            "warehouse_id": location_id.to_string(),
+            "quantity": quantity,
+        });
+        let _ = crate::events::outbox::enqueue(db, "inventory", None, "InventoryDeallocated", &payload).await;
 
 		// Send deallocated event (closest to release)
 		let event = Event::InventoryDeallocated {

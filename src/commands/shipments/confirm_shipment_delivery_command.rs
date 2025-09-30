@@ -30,8 +30,13 @@ impl Command for ConfirmShipmentDeliveryCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
-
         let updated_shipment = self.confirm_delivery(&db).await?;
+        // Enqueue outbox (outside txn but within same request)
+        let payload = serde_json::json!({
+            "shipment_id": updated_shipment.id.to_string(),
+            "delivered_at": updated_shipment.delivered_at.map(|t| t.to_rfc3339()),
+        });
+        let _ = crate::events::outbox::enqueue(&*db, "shipment", Some(updated_shipment.id), "ShipmentDelivered", &payload).await;
 
         self.log_and_trigger_event(event_sender, &updated_shipment)
             .await?;

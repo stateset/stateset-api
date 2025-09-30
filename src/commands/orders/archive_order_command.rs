@@ -97,7 +97,7 @@ async fn archive_order_in_db(
                 let mut order: order_entity::ActiveModel = order.into();
                 order.status = Set(OrderStatus::Cancelled);
                 order.updated_at = Set(Utc::now());
-                order.version = Set(order.version.unwrap_or_default() + 1);
+                order.version = Set(version + 1);
 
                 let updated_order = order.update(txn).await.map_err(|e| {
                     error!("Failed to archive order {}: {}", order_id, e);

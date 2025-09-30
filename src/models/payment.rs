@@ -11,10 +11,24 @@ pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
     pub order_id: Uuid,
-    #[sea_orm(column_type = "Decimal(Some((10, 2)))")]
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub amount: Decimal,
-    pub status: Option<String>,
+    #[sea_orm(column_type = "Text")] 
+    pub currency: String,
+    #[sea_orm(column_type = "Text")] 
+    pub payment_method: String,
+    pub payment_method_id: Option<String>,
+    pub status: String,
+    pub description: Option<String>,
+    pub transaction_id: Option<String>,
+    #[sea_orm(column_type = "Json")] 
+    pub gateway_response: Option<serde_json::Value>,
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
+    pub refunded_amount: Decimal,
+    pub refund_reason: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -22,14 +36,4 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
-impl Model {
-    pub fn new(order_id: Uuid, amount: Decimal) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            order_id,
-            amount,
-            status: Some("Processed".to_string()),
-            created_at: Utc::now(),
-        }
-    }
-}
+impl Model {}

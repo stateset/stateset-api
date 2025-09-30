@@ -2,10 +2,10 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 /// The `order_line_items` table.
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
 #[sea_orm(table_name = "order_line_items")]
 pub struct Model {
     /// Primary key: Unique identifier for the order line item.
@@ -17,63 +17,63 @@ pub struct Model {
     pub order_id: Uuid,
 
     /// Name of the product.
-    
+    #[validate(length(min = 1, max = 200, message = "Product name must be between 1 and 200 characters"))]
     pub product_name: String,
 
     /// Quantity of the product ordered.
-    
+    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
     pub quantity: u32,
 
     /// Sale price per unit in cents.
-    
+    #[validate(range(min = 0, message = "Sale price must be non-negative"))]
     pub sale_price: i32,
 
     /// Original price per unit in cents before any discounts.
-    
+    #[validate(range(min = 0, message = "Original price must be non-negative"))]
     pub original_price: i32,
 
     /// Discount applied by the seller in cents.
-    
+    #[validate(range(min = 0, message = "Seller discount must be non-negative"))]
     pub seller_discount: i32,
 
     /// Unit of measurement (e.g., pcs, kg).
-    
+    #[validate(length(min = 1, max = 20, message = "Unit must be between 1 and 20 characters"))]
     pub unit: String,
 
     /// Identifier for the product.
-    
+    #[validate(length(min = 1, max = 50, message = "Product ID must be between 1 and 50 characters"))]
     pub product_id: String,
 
     /// Brand of the product.
-    
+    #[validate(length(min = 1, max = 100, message = "Brand must be between 1 and 100 characters"))]
     pub brand: String,
 
     /// Stock code of the product.
-    
+    #[validate(length(min = 1, max = 50, message = "Stock code must be between 1 and 50 characters"))]
     pub stock_code: String,
 
     /// Size of the product.
-    
+    #[validate(length(min = 1, max = 20, message = "Size must be between 1 and 20 characters"))]
     pub size: String,
 
     /// Seller's SKU for the product.
-    
+    #[validate(length(min = 1, max = 50, message = "Seller SKU must be between 1 and 50 characters"))]
     pub seller_sku: String,
 
     /// SKU ID.
-    
+    #[validate(length(min = 1, max = 50, message = "SKU ID must be between 1 and 50 characters"))]
     pub sku_id: String,
 
     /// URL to the SKU image.
-    
+    #[validate(url(message = "SKU image must be a valid URL"))]
     pub sku_image: String,
 
     /// Name of the SKU.
-    
+    #[validate(length(min = 1, max = 100, message = "SKU name must be between 1 and 100 characters"))]
     pub sku_name: String,
 
     /// Type of SKU.
-    
+    #[validate(length(min = 1, max = 50, message = "SKU type must be between 1 and 50 characters"))]
     pub sku_type: String,
 
     /// Timestamp when the line item was created.
@@ -83,7 +83,6 @@ pub struct Model {
     pub updated_date: Option<DateTime<Utc>>,
 
     /// Current status of the line item.
-    
     pub status: OrderLineItemStatus,
 }
 
@@ -127,7 +126,7 @@ impl ActiveModelBehavior for ActiveModel {}
 impl Model {
     /// Creates a new order line item with the specified parameters.
     ///
-    /// #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]Arguments
+    /// # Arguments
     ///
     /// * `order_id` - The UUID of the order this line item belongs to.
     /// * `product_name` - The name of the product.
@@ -191,7 +190,7 @@ impl Model {
 
     /// Updates the status of the order line item.
     ///
-    /// #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]Arguments
+    /// # Arguments
     ///
     /// * `new_status` - The new status to set for the line item.
     pub fn update_status(&mut self, new_status: OrderLineItemStatus) {
@@ -201,7 +200,7 @@ impl Model {
 
     /// Applies a discount to the order line item.
     ///
-    /// #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]Arguments
+    /// # Arguments
     ///
     /// * `discount` - The discount amount in cents to apply.
     pub fn apply_discount(&mut self, discount: i32) {
@@ -209,5 +208,45 @@ impl Model {
         self.updated_date = Some(Utc::now());
     }
 
-    // Additional methods as needed...
+    /// Calculates the total price for this line item (quantity * sale_price - discount).
+    pub fn calculate_total(&self) -> i64 {
+        let base_total = self.quantity as i64 * self.sale_price as i64;
+        let discount_total = self.quantity as i64 * self.seller_discount as i64;
+        base_total - discount_total
+    }
+
+    /// Calculates the discount percentage.
+    pub fn calculate_discount_percentage(&self) -> f64 {
+        if self.original_price == 0 {
+            0.0
+        } else {
+            (self.seller_discount as f64 / self.original_price as f64) * 100.0
+        }
+    }
+
+    /// Validates the line item data.
+    pub fn validate_line_item(&self) -> Result<(), validator::ValidationErrors> {
+        self.validate().map_err(|_| validator::ValidationErrors::new())?;
+        
+        // Additional business logic validation
+        if self.sale_price > self.original_price {
+            return Err(validator::ValidationErrors::new());
+        }
+        
+        if self.seller_discount > self.original_price {
+            return Err(validator::ValidationErrors::new());
+        }
+        
+        Ok(())
+    }
+
+    /// Checks if the line item can be cancelled.
+    pub fn can_be_cancelled(&self) -> bool {
+        matches!(self.status, OrderLineItemStatus::Pending)
+    }
+
+    /// Checks if the line item can be shipped.
+    pub fn can_be_shipped(&self) -> bool {
+        matches!(self.status, OrderLineItemStatus::Pending)
+    }
 }

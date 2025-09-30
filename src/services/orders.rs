@@ -201,6 +201,12 @@ impl OrderService {
             ServiceError::DatabaseError(e.into())
         })?;
 
+        // Enqueue outbox event within the transaction for reliability
+        let payload = serde_json::json!({"order_id": order_id.to_string()});
+        if let Err(e) = crate::events::outbox::enqueue(&txn, "order", Some(order_id), "OrderCreated", &payload).await {
+            warn!(error = %e, order_id = %order_id, "Failed to enqueue outbox for OrderCreated");
+        }
+
         // Commit the transaction
         txn.commit().await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to commit order creation transaction");
@@ -422,6 +428,12 @@ impl OrderService {
             error!(error = %e, order_id = %order_id, "Failed to update order status");
             ServiceError::DatabaseError(e.into())
         })?;
+
+        // Enqueue status change outbox event
+        let payload = serde_json::json!({"order_id": order_id.to_string(), "old_status": old_status, "new_status": request.status});
+        if let Err(e) = crate::events::outbox::enqueue(&txn, "order", Some(order_id), "OrderStatusChanged", &payload).await {
+            warn!(error = %e, order_id = %order_id, "Failed to enqueue outbox for OrderStatusChanged");
+        }
 
         // Commit transaction
         txn.commit().await.map_err(|e| {

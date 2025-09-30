@@ -237,6 +237,18 @@ StateSet API uses a structured error system with detailed context. API errors ar
 - Async/await patterns are used throughout for non-blocking I/O
 - Entity caching is implemented for frequently accessed data
 
+## Idempotency and Rate Limiting
+
+- Idempotency: Mutating endpoints (POST/PUT/PATCH/DELETE) support `Idempotency-Key` headers. When provided, the API ensures each unique key is processed once per route+method and caches the response for 10 minutes (Redis-backed).
+- Rate Limiting: A global rate limiter is enforced with optional per-path, per‑API key, and per‑user policies. Standard headers (`X-RateLimit-*`, `RateLimit-*`) are included when enabled.
+
+Environment variables:
+- `APP__RATE_LIMIT_REQUESTS_PER_WINDOW` / `APP__RATE_LIMIT_WINDOW_SECONDS`
+- `APP__RATE_LIMIT_ENABLE_HEADERS=true|false`
+- `APP__RATE_LIMIT_PATH_POLICIES="/api/v1/orders:60:60,/api/v1/inventory:120:60"`
+- `APP__RATE_LIMIT_API_KEY_POLICIES="sk_live_abc:200:60"`
+- `APP__RATE_LIMIT_USER_POLICIES="user-123:500:60"`
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

@@ -13,7 +13,25 @@ use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
 use rust_decimal::Decimal;
-use validator::Validate;
+use validator::{Validate, ValidationError};
+
+fn validate_positive_decimal(value: &Decimal) -> Result<(), ValidationError> {
+    if *value > Decimal::ZERO {
+        Ok(())
+    } else {
+        let mut err = ValidationError::new("range");
+        err.message = Some("Amount must be greater than 0".into());
+        Err(err)
+    }
+}
+
+fn validate_optional_positive_decimal(value: &Option<Decimal>) -> Result<(), ValidationError> {
+    if let Some(v) = value {
+        validate_positive_decimal(v)
+    } else {
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaymentStatus {
@@ -51,7 +69,7 @@ pub enum PaymentMethod {
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ProcessPaymentRequest {
     pub order_id: Uuid,
-    #[validate(range(min = 0.01, message = "Amount must be greater than 0"))]
+    #[validate(custom = "validate_positive_decimal")]
     pub amount: Decimal,
     pub payment_method: PaymentMethod,
     pub payment_method_id: Option<String>,
@@ -76,7 +94,7 @@ pub struct PaymentResponse {
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RefundPaymentRequest {
     pub payment_id: Uuid,
-    #[validate(range(min = 0.01, message = "Refund amount must be greater than 0"))]
+    #[validate(custom = "validate_optional_positive_decimal")]
     pub amount: Option<Decimal>,
     pub reason: Option<String>,
 }
@@ -110,22 +128,60 @@ impl PaymentService {
         // Simulate payment processing (in real implementation, this would call payment gateway)
         let status = self.simulate_payment_processing(&request).await?;
 
-        // Create payment record
+        // Create payment record aligned with entity
+        let payment_id = Uuid::new_v4();
         let payment_model = payment::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(payment_id),
             order_id: Set(request.order_id),
             amount: Set(request.amount),
-            status: Set(Some(status.to_string())),
+            currency: Set(request.currency.clone()),
+            payment_method: Set(format!("{:?}", request.payment_method)),
+            payment_method_id: Set(request.payment_method_id.clone()),
+            status: Set(status.to_string()),
+            description: Set(request.description.clone()),
+            transaction_id: Set(None),
+            gateway_response: Set(None),
+            refunded_amount: Set(Decimal::ZERO),
+            refund_reason: Set(None),
             created_at: Set(Utc::now()),
+            updated_at: Set(Some(Utc::now())),
+            processed_at: Set(Some(Utc::now())),
         };
 
-        let payment = payment_model.insert(&*self.db).await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+        let payment = payment_model
+            .insert(&*self.db)
+            .await
+            .map_err(ServiceError::DatabaseError)?;
 
         // Send event
-        let event = Event::PaymentAuthorized(payment.id);
+        let event = if matches!(status, PaymentStatus::Succeeded) {
+            Event::PaymentCaptured(payment.id)
+        } else if matches!(status, PaymentStatus::Failed) {
+            Event::PaymentFailed(payment.id)
+        } else {
+            Event::PaymentAuthorized(payment.id)
+        };
         self.event_sender.send(event).await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
+
+        // Outbox enqueue (best-effort)
+        let _ = crate::events::outbox::enqueue(
+            &*self.db,
+            "payment",
+            Some(payment.id),
+            match status {
+                PaymentStatus::Succeeded => "PaymentSucceeded",
+                PaymentStatus::Failed => "PaymentFailed",
+                _ => "PaymentAuthorized",
+            },
+            &serde_json::json!({
+                "payment_id": payment.id.to_string(),
+                "order_id": payment.order_id.to_string(),
+                "amount": payment.amount,
+                "status": payment.status,
+            }),
+        )
+        .await;
 
         info!(
             payment_id = %payment.id,
@@ -138,13 +194,13 @@ impl PaymentService {
             id: payment.id,
             order_id: payment.order_id,
             amount: payment.amount,
-            currency: request.currency,
-            status: status.to_string(),
-            payment_method: format!("{:?}", request.payment_method),
-            payment_method_id: request.payment_method_id,
-            description: request.description,
+            currency: payment.currency,
+            status: payment.status,
+            payment_method: payment.payment_method,
+            payment_method_id: payment.payment_method_id,
+            description: payment.description,
             created_at: payment.created_at,
-            processed_at: Some(Utc::now()),
+            processed_at: payment.processed_at,
         })
     }
 
@@ -161,13 +217,13 @@ impl PaymentService {
             id: payment.id,
             order_id: payment.order_id,
             amount: payment.amount,
-            currency: "USD".to_string(), // Default currency
-            status: payment.status.unwrap_or_else(|| "unknown".to_string()),
-            payment_method: "unknown".to_string(), // Would be stored in separate table
-            payment_method_id: None,
-            description: None,
+            currency: payment.currency,
+            status: payment.status,
+            payment_method: payment.payment_method,
+            payment_method_id: payment.payment_method_id,
+            description: payment.description,
             created_at: payment.created_at,
-            processed_at: None,
+            processed_at: payment.processed_at,
         })
     }
 
@@ -181,18 +237,19 @@ impl PaymentService {
             .await
             .map_err(|e| ServiceError::DatabaseError(e))?;
 
-        let responses = payments.into_iter()
+        let responses = payments
+            .into_iter()
             .map(|payment| PaymentResponse {
                 id: payment.id,
                 order_id: payment.order_id,
                 amount: payment.amount,
-                currency: "USD".to_string(),
-                status: payment.status.unwrap_or_else(|| "unknown".to_string()),
-                payment_method: "unknown".to_string(),
-                payment_method_id: None,
-                description: None,
+                currency: payment.currency,
+                status: payment.status,
+                payment_method: payment.payment_method,
+                payment_method_id: payment.payment_method_id,
+                description: payment.description,
                 created_at: payment.created_at,
-                processed_at: None,
+                processed_at: payment.processed_at,
             })
             .collect();
 
@@ -280,13 +337,25 @@ impl PaymentService {
         let refund_payment = payment::ActiveModel {
             id: Set(Uuid::new_v4()),
             order_id: Set(original_payment.order_id),
-            amount: Set(-refund_amount), // Negative amount for refund
-            status: Set(Some(PaymentStatus::Refunded.to_string())),
+            amount: Set(-refund_amount),
+            currency: Set(original_payment.currency),
+            payment_method: Set(original_payment.payment_method),
+            payment_method_id: Set(original_payment.payment_method_id),
+            status: Set(PaymentStatus::Refunded.to_string()),
+            description: Set(request.reason.clone()),
+            transaction_id: Set(None),
+            gateway_response: Set(None),
+            refunded_amount: Set(-refund_amount),
+            refund_reason: Set(request.reason.clone()),
             created_at: Set(Utc::now()),
+            updated_at: Set(Some(Utc::now())),
+            processed_at: Set(Some(Utc::now())),
         };
 
-        let refund = refund_payment.insert(&*self.db).await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+        let refund = refund_payment
+            .insert(&*self.db)
+            .await
+            .map_err(ServiceError::DatabaseError)?;
 
         // Send refund event
         let event = Event::PaymentRefunded(refund.id);
@@ -300,17 +369,27 @@ impl PaymentService {
             "Refund processed successfully"
         );
 
+        // Outbox: PaymentRefunded
+        let _ = crate::events::outbox::enqueue(
+            &*self.db,
+            "payment",
+            Some(refund.id),
+            "PaymentRefunded",
+            &serde_json::json!({"payment_id": refund.id.to_string(), "order_id": refund.order_id.to_string(), "amount": refund.amount}),
+        )
+        .await;
+
         Ok(PaymentResponse {
             id: refund.id,
             order_id: refund.order_id,
             amount: refund.amount,
-            currency: "USD".to_string(),
-            status: PaymentStatus::Refunded.to_string(),
-            payment_method: "refund".to_string(),
-            payment_method_id: None,
-            description: request.reason,
+            currency: refund.currency,
+            status: refund.status,
+            payment_method: refund.payment_method,
+            payment_method_id: refund.payment_method_id,
+            description: refund.description,
             created_at: refund.created_at,
-            processed_at: Some(Utc::now()),
+            processed_at: refund.processed_at,
         })
     }
 
@@ -336,11 +415,10 @@ impl PaymentService {
             .await
             .map_err(|e| ServiceError::DatabaseError(e))?;
 
-        let total = payments.iter()
-            .map(|payment| payment.amount)
-            .sum()
-            .unwrap_or(Decimal::ZERO);
-
+        let mut total = Decimal::ZERO;
+        for p in payments {
+            total += p.amount;
+        }
         Ok(total)
     }
 }

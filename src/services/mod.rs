@@ -24,7 +24,7 @@ pub mod sales_fulfillment;
 
 // Manufacturing and Supply Chain
 // pub mod billofmaterials;
-pub mod asn;
+// pub mod asn; // Disabled due to missing handler dependencies
 pub mod procurement;
 // pub mod suppliers;
 
@@ -79,3 +79,4 @@ pub mod item_receipt_service {
 */
 // pub mod category_service;
 pub mod commerce;
+pub mod analytics;

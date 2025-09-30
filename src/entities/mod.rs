@@ -23,7 +23,7 @@ pub mod commerce;
 // order_entity consolidated into order.rs
 // order_item_entity consolidated into order_item.rs
 pub mod inventory_items;
-// pub mod shipment; // Re-export removed - imports from non-existent models module
+pub mod shipment; // Re-export removed - imports from non-existent models module
 // pub mod asn_entity; // Re-export removed - use proper entity definition
 // pub mod suppliers; // Re-export removed - imports from non-existent models module
 // pub mod work_order_task_entity; // Re-export removed - imports from non-existent models module

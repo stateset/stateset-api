@@ -492,9 +492,7 @@ where
     path = "/api/v1/work-orders/{id}",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
-        (status = 200, description = "Work order deleted",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
+        (status = 204, description = "Work order deleted"),
         (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
         (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
@@ -508,12 +506,8 @@ pub async fn delete_work_order<S>(
 where 
     S: WorkOrdersAppState,
 {
-    let response = json!({
-        "message": format!("Work order {} has been deleted", id),
-        "deleted_id": id
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    let _ = id; // placeholder until wired to DB
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Schedule a work order

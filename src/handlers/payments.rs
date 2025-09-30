@@ -43,8 +43,20 @@ pub struct PaymentStatusFilter {
 // Handler functions
 
 /// Process a payment for an order
+#[utoipa::path(
+    post,
+    path = "/api/v1/payments",
+    request_body = CreatePaymentRequest,
+    responses(
+        (status = 201, description = "Payment processed", body = crate::services::payments::PaymentResponse),
+        (status = 400, description = "Bad request", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Payments"
+)]
 async fn process_payment(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(request): Json<CreatePaymentRequest>,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -85,8 +97,21 @@ async fn process_payment(
 }
 
 /// Get payment by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/payments/{payment_id}",
+    params(
+        ("payment_id" = Uuid, Path, description = "Payment ID")
+    ),
+    responses(
+        (status = 200, description = "Payment details", body = crate::services::payments::PaymentResponse),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Payments"
+)]
 async fn get_payment(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(payment_id): Path<Uuid>,
     user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -105,8 +130,20 @@ async fn get_payment(
 }
 
 /// Get payments for an order
+#[utoipa::path(
+    get,
+    path = "/api/v1/payments/order/{order_id}",
+    params(
+        ("order_id" = Uuid, Path, description = "Order ID")
+    ),
+    responses(
+        (status = 200, description = "Payments for order", body = [crate::services::payments::PaymentResponse])
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Payments"
+)]
 async fn get_order_payments(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(order_id): Path<Uuid>,
     user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -125,8 +162,21 @@ async fn get_order_payments(
 }
 
 /// List payments with pagination and filtering
+#[utoipa::path(
+    get,
+    path = "/api/v1/payments",
+    params(
+        PaginationParams,
+        PaymentStatusFilter
+    ),
+    responses(
+        (status = 200, description = "List payments", body = crate::PaginatedResponse<crate::services::payments::PaymentResponse>)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Payments"
+)]
 async fn list_payments(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
     Query(filter): Query<PaymentStatusFilter>,
     user: AuthenticatedUser,
@@ -168,8 +218,19 @@ async fn list_payments(
 }
 
 /// Refund a payment
+#[utoipa::path(
+    post,
+    path = "/api/v1/payments/refund",
+    request_body = RefundPaymentHandlerRequest,
+    responses(
+        (status = 201, description = "Refund processed", body = crate::services::payments::PaymentResponse),
+        (status = 400, description = "Bad request", body = crate::errors::ErrorResponse)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Payments"
+)]
 async fn refund_payment(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(request): Json<RefundPaymentHandlerRequest>,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -196,8 +257,20 @@ async fn refund_payment(
 }
 
 /// Get total payments for an order
+#[utoipa::path(
+    get,
+    path = "/api/v1/payments/order/{order_id}/total",
+    params(
+        ("order_id" = Uuid, Path, description = "Order ID")
+    ),
+    responses(
+        (status = 200, description = "Order total paid", body = serde_json::Value)
+    ),
+    security(("bearer_auth" = [])),
+    tag = "Payments"
+)]
 async fn get_order_payment_total(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(order_id): Path<Uuid>,
     user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ServiceError> {
@@ -222,7 +295,7 @@ async fn get_order_payment_total(
 }
 
 /// Payment routes
-pub fn payment_routes() -> Router<Arc<AppState>> {
+pub fn payment_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(process_payment))
         .route("/", get(list_payments))

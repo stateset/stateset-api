@@ -96,25 +96,28 @@ impl CancelOrderCommand {
         &self,
         db: &DatabaseConnection,
     ) -> Result<order_entity::Model, OrderError> {
+        let order_id = self.order_id;
+        let version = self.version;
+        let reason = self.reason.clone();
         db.transaction::<_, order_entity::Model, OrderError>(|txn| {
             Box::pin(async move {
-                let order = Order::find_by_id(self.order_id)
+                let order = Order::find_by_id(order_id)
                     .one(txn)
                     .await
                     .map_err(|e| OrderError::DatabaseError(e))?
-                    .ok_or(ServiceError::NotFound(format!("Order {} not found", self.order_id)))?;
+                    .ok_or(ServiceError::NotFound(format!("Order {} not found", order_id)))?;
 
-                if order.version != self.version {
+                if order.version != version {
                     warn!(
                         "Concurrent modification detected for order {}",
-                        self.order_id
+                        order_id
                     );
-                    return Err(OrderError::ConcurrentModification(self.order_id));
+                    return Err(OrderError::ConcurrentModification(order_id));
                 }
 
                 let mut order: order_entity::ActiveModel = order.into();
                 order.status = Set(OrderStatus::Cancelled);
-                order.version = Set(self.version + 1);
+                order.version = Set(version + 1);
 
                 let updated_order = order
                     .update(txn)
@@ -122,8 +125,8 @@ impl CancelOrderCommand {
                     .map_err(|e| OrderError::DatabaseError(e))?;
 
                 let new_note = order_note_entity::ActiveModel {
-                    order_id: Set(self.order_id),
-                    note: Set(self.reason.clone()),
+                    order_id: Set(order_id),
+                    note: Set(reason.clone()),
                     created_at: Set(Utc::now().naive_utc()),
                     ..Default::default()
                 };

@@ -51,6 +51,45 @@ impl Resources {
     pub const SYSTEM: &'static str = "system";
 }
 
+/// Common permission string constants for compile-time safety
+pub mod consts {
+    // Orders
+    pub const ORDERS_READ: &str = "orders:read";
+    pub const ORDERS_CREATE: &str = "orders:create";
+    pub const ORDERS_UPDATE: &str = "orders:update";
+    pub const ORDERS_DELETE: &str = "orders:delete";
+    pub const ORDERS_CANCEL: &str = "orders:cancel";
+
+    // Inventory
+    pub const INVENTORY_READ: &str = "inventory:read";
+    pub const INVENTORY_ADJUST: &str = "inventory:adjust";
+    pub const INVENTORY_TRANSFER: &str = "inventory:transfer";
+
+    // Returns
+    pub const RETURNS_READ: &str = "returns:read";
+    pub const RETURNS_CREATE: &str = "returns:create";
+    pub const RETURNS_APPROVE: &str = "returns:approve";
+    pub const RETURNS_REJECT: &str = "returns:reject";
+
+    // Shipments
+    pub const SHIPMENTS_READ: &str = "shipments:read";
+    pub const SHIPMENTS_CREATE: &str = "shipments:create";
+    pub const SHIPMENTS_UPDATE: &str = "shipments:update";
+    pub const SHIPMENTS_DELETE: &str = "shipments:delete";
+
+    // Warranties
+    pub const WARRANTIES_READ: &str = "warranties:read";
+    pub const WARRANTIES_CREATE: &str = "warranties:create";
+    pub const WARRANTIES_UPDATE: &str = "warranties:update";
+    pub const WARRANTIES_DELETE: &str = "warranties:delete";
+
+    // Work orders (resource key is `workorders` in RBAC)
+    pub const WORKORDERS_READ: &str = "workorders:read";
+    pub const WORKORDERS_CREATE: &str = "workorders:create";
+    pub const WORKORDERS_UPDATE: &str = "workorders:update";
+    pub const WORKORDERS_DELETE: &str = "workorders:delete";
+}
+
 /// Format a permission string
 pub fn format_permission(resource: &str, action: &str) -> String {
     format!("{}:{}", resource, action)

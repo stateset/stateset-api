@@ -5,7 +5,11 @@ use axum::{
     Router,
 };
 use tokio::signal;
+use tower::timeout::TimeoutLayer;
+use tower_http::{compression::CompressionLayer, cors::{CorsLayer, Any}};
+use http::HeaderValue;
 use tracing::{error, info};
+use axum::http::StatusCode;
 
 use stateset_api as api;
 
@@ -29,6 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (event_tx, event_rx) = tokio::mpsc::channel(1024);
     let event_sender = api::events::EventSender::new(event_tx);
     tokio::spawn(api::events::process_events(event_rx));
+    // Start outbox worker (best-effort, no-op if table missing)
+    api::events::outbox::start_worker(db_arc.clone(), event_sender.clone()).await;
 
     // Build services
     let db_arc = Arc::new(db_pool);
@@ -66,11 +72,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redis: redis_client.clone(),
     };
 
+    // Build CORS layer from config
+    let cors_layer = if cfg.cors_allowed_origins.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
+        let origins: Vec<HeaderValue> = cfg
+            .cors_allowed_origins
+            .as_ref()
+            .unwrap()
+            .split(',')
+            .filter_map(|o| HeaderValue::from_str(o.trim()).ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
+            .allow_credentials(cfg.cors_allow_credentials)
+    } else {
+        // Permissive for local/dev
+        CorsLayer::permissive()
+    };
+
     // Build router: status/health + full v1 API + Swagger UI
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/", get(|| async { "stateset-api up" }))
+        .route(
+            "/metrics",
+            get(|| async move {
+                match api::metrics::metrics_handler().await {
+                    Ok(body) => (StatusCode::OK, body),
+                    Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, String::from("metrics error")),
+                }
+            }),
+        )
+        .route(
+            "/metrics/json",
+            get(|| async move {
+                match api::metrics::metrics_json_handler().await {
+                    Ok(json) => (StatusCode::OK, axum::Json(json)),
+                    Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"error":"metrics error"}))),
+                }
+            }),
+        )
         .merge(api::openapi::swagger_ui())
         .nest("/api/v1", api::api_v1_routes())
+        // HTTP tracing layer for consistent request/response telemetry
+        .layer(api::tracing::configure_http_tracing())
+        // Apply compression and timeouts
+        .layer(CompressionLayer::new())
+        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        // Apply CORS
+        .layer(cors_layer)
+        // Idempotency (Redis-backed)
+        .layer(axum::middleware::from_fn_with_state(
+            redis_client.clone(),
+            api::middleware_helpers::idempotency_redis::idempotency_redis_middleware,
+        ))
         // Inject AuthService into request extensions for auth middleware
         .layer(axum::middleware::from_fn_with_state(
             auth_service.clone(),
@@ -80,6 +135,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ))
         .with_state(app_state);
+
+    // Configure and apply global Rate Limiter layer (in-memory by default; Redis-backed planned)
+    // Pull base limits from config; allow overrides via path and key policies
+    let rl_cfg = api::rate_limiter::RateLimitConfig {
+        requests_per_window: cfg.rate_limit_requests_per_window,
+        window_duration: Duration::from_secs(cfg.rate_limit_window_seconds),
+        enable_headers: cfg.rate_limit_enable_headers,
+        ..Default::default()
+    };
+
+    let mut layer = api::rate_limiter::RateLimitLayer::new(rl_cfg);
+
+    // Optional: path policy overrides in config (format: "/api/v1/orders:60:60,/api/v1/inventory:120:60")
+    if let Some(policies) = &cfg.rate_limit_path_policies {
+        let mut parsed = Vec::new();
+        for spec in policies.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let parts: Vec<&str> = spec.split(':').collect();
+            if parts.len() == 3 {
+                if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
+                    parsed.push(api::rate_limiter::PathPolicy {
+                        prefix: parts[0].to_string(),
+                        requests_per_window: limit,
+                        window_duration: Duration::from_secs(win),
+                    });
+                }
+            }
+        }
+        if !parsed.is_empty() {
+            layer = layer.with_policies(parsed);
+        }
+    }
+
+    // Per API key policies: "key1:200:60,key2:1000:60"
+    if let Some(api_key_specs) = &cfg.rate_limit_api_key_policies {
+        let mut map = std::collections::HashMap::new();
+        for spec in api_key_specs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let parts: Vec<&str> = spec.split(':').collect();
+            if parts.len() == 3 {
+                if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
+                    map.insert(parts[0].to_string(), (limit, Duration::from_secs(win)));
+                }
+            }
+        }
+        if !map.is_empty() { layer = layer.with_api_key_policies(map); }
+    }
+
+    // Per user policies: "user123:500:60,user456:50:60"
+    if let Some(user_specs) = &cfg.rate_limit_user_policies {
+        let mut map = std::collections::HashMap::new();
+        for spec in user_specs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let parts: Vec<&str> = spec.split(':').collect();
+            if parts.len() == 3 {
+                if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
+                    map.insert(parts[0].to_string(), (limit, Duration::from_secs(win)));
+                }
+            }
+        }
+        if !map.is_empty() { layer = layer.with_user_policies(map); }
+    }
+
+    app = app.layer(layer);
 
     // Bind and serve
     let addr = SocketAddr::from(([0, 0, 0, 0], cfg.port));

@@ -51,7 +51,7 @@ pub enum DeliveryType {
 }
 
 /// The `orders` table.
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
 #[sea_orm(table_name = "orders")]
 pub struct Model {
     /// Primary key: Unique identifier for the order.
@@ -59,18 +59,23 @@ pub struct Model {
     pub id: Uuid,
 
     /// Unique order number.
+    #[validate(length(min = 1, max = 50, message = "Order number must be between 1 and 50 characters"))]
     pub order_number: String,
 
     /// Name of the customer who placed the order.
+    #[validate(length(min = 1, max = 100, message = "Customer name must be between 1 and 100 characters"))]
     pub customer_name: String,
 
     /// Email of the customer.
+    #[validate(email(message = "Invalid email format"))]
     pub customer_email: String,
 
     /// Delivery address for the order.
+    #[validate(length(min = 1, max = 500, message = "Delivery address must be between 1 and 500 characters"))]
     pub delivery_address: String,
 
     /// Optional notes associated with the order.
+    #[validate(length(max = 1000, message = "Notes must not exceed 1000 characters"))]
     pub notes: Option<String>,
 
     /// Foreign key referencing the warehouse handling the order.
@@ -93,12 +98,15 @@ pub struct Model {
     pub is_replacement_order: bool,
 
     /// Tracking number for the order shipment.
+    #[validate(length(max = 100, message = "Tracking number must not exceed 100 characters"))]
     pub tracking_number: Option<String>,
 
     /// Optional seller notes.
+    #[validate(length(max = 500, message = "Seller note must not exceed 500 characters"))]
     pub seller_note: Option<String>,
 
     /// Source from which the order was placed (e.g., website, mobile app).
+    #[validate(length(max = 50, message = "Source must not exceed 50 characters"))]
     pub source: Option<String>,
 
     /// Timestamp when the order was created.
@@ -114,9 +122,11 @@ pub struct Model {
     pub cancel_order_sla_time: Option<DateTime<Utc>>,
 
     /// Reason for order cancellation.
+    #[validate(length(max = 500, message = "Cancel reason must not exceed 500 characters"))]
     pub cancel_reason: Option<String>,
 
     /// Initiator of the order cancellation.
+    #[validate(length(max = 100, message = "Cancellation initiator must not exceed 100 characters"))]
     pub cancellation_initiator: Option<String>,
 }
 
@@ -237,7 +247,28 @@ impl Model {
         self.updated_date = Some(Utc::now());
     }
 
-    // Additional methods as needed...
+    /// Validates the order data.
+    pub fn validate_order(&self) -> Result<(), validator::ValidationErrors> {
+        self.validate()?;
+        Ok(())
+    }
+
+    /// Checks if the order can be cancelled based on its current status.
+    pub fn can_be_cancelled(&self) -> bool {
+        matches!(self.order_status, OrderStatus::Pending | OrderStatus::Processing)
+    }
+
+    /// Checks if the order can be shipped based on its current status.
+    pub fn can_be_shipped(&self) -> bool {
+        matches!(self.order_status, OrderStatus::Processing)
+    }
+
+    /// Calculates the total value of the order (placeholder - would need line items).
+    pub fn calculate_total(&self) -> rust_decimal::Decimal {
+        // This would normally sum up all line items
+        // For now, return zero
+        rust_decimal::Decimal::ZERO
+    }
 }
 
 // Order line items moved to separate file: order_line_item.rs
@@ -418,31 +449,4 @@ mod tests {
             assert!(e.field_errors().contains_key("sku_image"));
         }
     }
-
-    // NOTE: This test is disabled because MockDatabase and MockExecResult 
-    // are no longer available in SeaORM 1.0.0
-    // #[tokio::test]
-    // async fn test_order_uniqueness() {
-    //     // Mock database with existing order_number
-    //     let db = MockDatabase::new(DbBackend::Postgres)
-    //         .append_exec_results(vec![
-    //             MockExecResult::affected_rows(1), // Existing order
-    //         ])
-    //         .into_connection();
-
-    //     // Attempt to insert an order with a duplicate order_number
-    //     let order = create_valid_order();
-    //     let active_model: ActiveModel = order.clone().into();
-
-    //     // Simulate unique constraint violation on order_number
-    //     let db = db
-    //         .expect_exec(move |exec| exec.statement.contains("INSERT INTO orders"))
-    //         .returning(|_| Err(sea_orm::DbErr::Exec("Duplicate order_number".to_string())));
-
-    //     let result = Model::insert(active_model).exec(&db).await;
-    //     assert!(result.is_err());
-    //     if let Err(e) = result {
-    //         assert!(e.to_string().contains("Duplicate order_number"));
-    //     }
-    // }
 }
