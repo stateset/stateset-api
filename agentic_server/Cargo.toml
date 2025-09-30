@@ -29,12 +29,22 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Rate limiting
+governor = "0.6"
+
+# Metrics
+prometheus = "0.13"
+lazy_static = "1.4"
+
 # Configuration
 config = "0.14"
 dotenvy = "0.15"
 
-# Redis client (for cache)
-redis = { version = "0.26", features = ["tokio-comp", "connection-manager"] }
+# Redis client (for cache and sessions)
+redis = { version = "0.26", features = ["tokio-comp", "connection-manager", "aio"] }
 
 # Error handling
 thiserror = "1.0"
@@ -42,5 +52,15 @@ anyhow = "1.0"
 
 # HTTP
 http = "1.0"
+
+# Security
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+
+# Stripe integration
+stripe-rust = { version = "0.32", package = "async-stripe", features = ["runtime-tokio-hyper"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 [dev-dependencies] 
