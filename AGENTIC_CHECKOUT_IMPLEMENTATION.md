@@ -1,4 +1,4 @@
-# Agentic Checkout API Implementation
+# Agentic Checkout API Implementation 
 
 ## Overview
 Successfully implemented a ChatGPT-compatible checkout API matching the OpenAPI specification in `agentic-checkout.yaml`.
