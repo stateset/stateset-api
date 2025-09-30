@@ -224,7 +224,11 @@ async fn update_checkout_session(
     let session = state
         .checkout_service
         .update_session(&checkout_session_id, payload)
-        .await?;
+        .await
+        .map_err(|e| {
+            tracing::error!("Update session failed: {:?}", e);
+            ApiError::ServiceError(e)
+        })?;
 
     Ok(Json(session))
 }
@@ -238,7 +242,11 @@ async fn complete_checkout_session(
     let result = state
         .checkout_service
         .complete_session(&checkout_session_id, payload)
-        .await?;
+        .await
+        .map_err(|e| {
+            tracing::error!("Complete session failed: {:?}", e);
+            ApiError::ServiceError(e)
+        })?;
 
     Ok(Json(result))
 }
