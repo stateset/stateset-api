@@ -38,7 +38,14 @@ mod webhook_service;
 use auth::{ApiKeyStore, auth_middleware};
 use cache::InMemoryCache;
 use config::Config;
-use delegated_payment::{DelegatedPaymentService, DelegatePaymentRequest};
+use delegated_payment::{
+    DelegatedPaymentService,
+    DelegatePaymentRequest,
+    ValidateTokenApiRequest,
+    ValidateTokenApiResponse,
+    ConsumeTokenApiRequest,
+    ConsumeTokenApiResponse,
+};
 use errors::ApiError;
 use events::EventSender;
 use idempotency::IdempotencyService;
@@ -106,6 +113,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tax_service = Arc::new(TaxService::new());
     info!("Tax service initialized (5 jurisdictions)");
 
+    // Initialize rate limiter (100 requests per minute)
+    let rate_limiter = RateLimiter::new(100);
+    info!("Rate limiter initialized (100 req/min)");
+
+    // Initialize API key store
+    let api_key_store = ApiKeyStore::new();
+    info!("API key store initialized ({} keys)", 2);
+
+    // Initialize signature verifier (optional - set secret to enable)
+    let signature_verifier = std::env::var("WEBHOOK_SECRET")
+        .ok()
+        .map(|secret| {
+            info!("Signature verification enabled");
+            Arc::new(SignatureVerifier::new(secret))
+        });
+
     // Initialize webhook service
     let webhook_service = Arc::new(WebhookService::new(signature_verifier.clone()));
     info!("Webhook service initialized");
@@ -122,22 +145,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize delegated payment service
     let delegated_payment_service = Arc::new(DelegatedPaymentService::new(cache));
     info!("Delegated payment service initialized");
-
-    // Initialize rate limiter (100 requests per minute)
-    let rate_limiter = RateLimiter::new(100);
-    info!("Rate limiter initialized (100 req/min)");
-
-    // Initialize API key store
-    let api_key_store = ApiKeyStore::new();
-    info!("API key store initialized ({} keys)", 2);
-
-    // Initialize signature verifier (optional - set secret to enable)
-    let signature_verifier = std::env::var("WEBHOOK_SECRET")
-        .ok()
-        .map(|secret| {
-            info!("Signature verification enabled");
-            Arc::new(SignatureVerifier::new(secret))
-        });
 
     // Initialize Redis store (optional - falls back to in-memory)
     let redis_store = if let Ok(redis_url) = std::env::var("REDIS_URL") {
@@ -189,6 +196,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         // Delegated Payment endpoint (PSP mock)
         .route("/agentic_commerce/delegate_payment", post(delegate_payment))
+        .route("/agentic_commerce/validate_token", post(validate_vault_token))
+        .route("/agentic_commerce/consume_token", post(consume_vault_token))
         
         // Middleware layers (applied in reverse order: bottom to top)
         .layer(CompressionLayer::new())
@@ -432,6 +441,32 @@ async fn delegate_payment(
         .map_err(|e| ApiError::InternalServerError {
             message: format!("Response build error: {}", e),
         })?)
+}
+
+/// Validate a delegated payment vault token against allowance
+async fn validate_vault_token(
+    State(state): State<AppState>,
+    Json(payload): Json<ValidateTokenApiRequest>,
+) -> Result<Json<ValidateTokenApiResponse>, ApiError> {
+    let token_data = state
+        .delegated_payment_service
+        .validate_token(&payload.token, payload.amount, &payload.checkout_session_id)
+        .await?;
+
+    Ok(Json(ValidateTokenApiResponse { valid: true, token: token_data }))
+}
+
+/// Consume a delegated payment vault token (single-use)
+async fn consume_vault_token(
+    State(state): State<AppState>,
+    Json(payload): Json<ConsumeTokenApiRequest>,
+) -> Result<Json<ConsumeTokenApiResponse>, ApiError> {
+    state
+        .delegated_payment_service
+        .consume_token(&payload.token)
+        .await?;
+    metrics::VAULT_TOKENS_CONSUMED.inc();
+    Ok(Json(ConsumeTokenApiResponse { consumed: true }))
 }
 
 /// Graceful shutdown signal handler

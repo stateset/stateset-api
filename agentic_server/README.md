@@ -68,11 +68,13 @@ Run the comprehensive demo:
 | `POST` | `/checkout_sessions/:id/complete` | Complete and create order |
 | `POST` | `/checkout_sessions/:id/cancel` | Cancel checkout session |
 
-### Delegated Payment Endpoint
+### Delegated Payment Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/agentic_commerce/delegate_payment` | Delegate payment (PSP vault) |
+| `POST` | `/agentic_commerce/validate_token` | Validate a vault token against allowance |
+| `POST` | `/agentic_commerce/consume_token` | Consume a vault token (single-use) |
 
 ### Health & Monitoring
 
@@ -479,6 +481,83 @@ curl -X POST http://localhost:8080/agentic_commerce/delegate_payment \
   "created": "2025-09-30T07:12:19.106844732+00:00",
   "metadata": {}
 }
+```
+
+---
+
+## Validate Vault Token
+
+Validate a delegated payment vault token against its allowance constraints.
+
+### Request
+
+**HTTP Method:** `POST /agentic_commerce/validate_token`
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `token` | string | Yes | Vault token ID (e.g., `vt_...`) |
+| `amount` | integer | Yes | Amount to authorize (minor units) |
+| `checkout_session_id` | string | Yes | Associated checkout session ID |
+
+**Example Request:**
+
+```bash
+curl -X POST http://localhost:8080/agentic_commerce/validate_token \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer psp_api_key_456" \
+  -d '{
+    "token": "vt_a9cf0247-ebbd-4b85-8ae9-661d90ab46bc",
+    "amount": 2175,
+    "checkout_session_id": "340a3ac3-a373-40a1-bdf0-9b1be083c874"
+  }'
+```
+
+### Response
+
+**Status:** `200 OK`
+
+```json
+{
+  "valid": true,
+  "token": { "allowance": { "max_amount": 10000, "checkout_session_id": "340a3ac3-a373-40a1-bdf0-9b1be083c874" } }
+}
+```
+
+---
+
+## Consume Vault Token
+
+Consume a delegated payment vault token to enforce single-use semantics.
+
+### Request
+
+**HTTP Method:** `POST /agentic_commerce/consume_token`
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `token` | string | Yes | Vault token ID (e.g., `vt_...`) |
+
+**Example Request:**
+
+```bash
+curl -X POST http://localhost:8080/agentic_commerce/consume_token \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer psp_api_key_456" \
+  -d '{
+    "token": "vt_a9cf0247-ebbd-4b85-8ae9-661d90ab46bc"
+  }'
+```
+
+### Response
+
+**Status:** `200 OK`
+
+```json
+{ "consumed": true }
 ```
 
 ---
