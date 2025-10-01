@@ -32,6 +32,30 @@ pub struct DelegatedPaymentError {
     pub param: Option<String>,
 }
 
+// HTTP API request/response types for additional PSP endpoints
+#[derive(Debug, Deserialize)]
+pub struct ValidateTokenApiRequest {
+    pub token: String,
+    pub amount: i64,
+    pub checkout_session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ValidateTokenApiResponse {
+    pub valid: bool,
+    pub token: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConsumeTokenApiRequest {
+    pub token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConsumeTokenApiResponse {
+    pub consumed: bool,
+}
+
 // Data models
 
 #[derive(Debug, Deserialize)]
