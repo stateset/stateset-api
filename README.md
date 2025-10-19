@@ -1,5 +1,8 @@
 # StateSet API
 
+[![Rust CI](https://github.com/stateset/stateset-api/actions/workflows/rust.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/rust.yml)
+[![Build with Error Logging](https://github.com/stateset/stateset-api/actions/workflows/build-with-logging.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/build-with-logging.yml)
+
 StateSet API is a comprehensive, scalable, and robust backend system for order management, inventory control, returns processing, warranty management, shipment tracking, and work order handling. Built with Rust, it leverages modern web technologies and best practices to provide a high-performance, reliable solution for e-commerce and manufacturing businesses.
 
 ## Features
@@ -139,6 +142,24 @@ The API will be available at `http://localhost:8080`.
 Requests to unknown routes return a JSON 404 response.
 
 Docker: `docker-compose up -d` starts the API and Redis. Compose reads values from `.env` for container env, which is separate from the app’s `APP__*` variables used by the config system.
+
+## Continuous Integration & Quality Gates
+
+StateSet API ships with GitHub Actions workflows that enforce quality gates:
+
+- `Rust CI` enforces formatting (`cargo fmt --all -- --check`), linting (`cargo clippy -- -D warnings`), compilation, and tests for every push or pull request targeting `main` or `master`.
+- `Build with Error Logging` captures detailed logs while re-running the same checks, keeping artifacts for quick diagnosis and commenting on pull requests when failures occur.
+- `Dependency Audit` runs [`cargo deny`](https://github.com/EmbarkStudios/cargo-deny) on pushes, pull requests, and a weekly schedule to flag vulnerable, unlicensed, or banned dependencies.
+- Dependabot opens weekly update PRs for Cargo crates and GitHub Actions to keep the stack current and secure.
+
+Before pushing changes run the same commands locally:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy -- -D warnings
+cargo test
+# Optional: cargo deny check advisories licenses bans sources
+```
 
 ## API Endpoints
 
