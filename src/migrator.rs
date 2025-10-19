@@ -1,8 +1,8 @@
+use anyhow::Result;
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::prelude::*;
 use std::time::Duration;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
-use anyhow::Result;
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub struct Migrator;
 
@@ -27,8 +27,8 @@ impl MigratorTrait for Migrator {
 // Migration implementations
 
 mod m20230101_000001_create_orders_table {
-    use sea_orm_migration::prelude::*;
     use sea_orm::DbBackend;
+    use sea_orm_migration::prelude::*;
 
     #[derive(DeriveMigrationName)]
     pub struct Migration;
@@ -47,20 +47,39 @@ mod m20230101_000001_create_orders_table {
                         .col(ColumnDef::new(Orders::CustomerId).uuid().not_null())
                         .col(ColumnDef::new(Orders::Status).string().not_null())
                         .col(ColumnDef::new(Orders::OrderDate).timestamp().not_null())
-                        .col(ColumnDef::new(Orders::TotalAmount).decimal().not_null().default(0))
+                        .col(
+                            ColumnDef::new(Orders::TotalAmount)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
                         .col(ColumnDef::new(Orders::Currency).string().not_null())
                         .col(ColumnDef::new(Orders::PaymentStatus).string().not_null())
-                        .col(ColumnDef::new(Orders::FulfillmentStatus).string().not_null())
+                        .col(
+                            ColumnDef::new(Orders::FulfillmentStatus)
+                                .string()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(Orders::PaymentMethod).string().null())
                         .col(ColumnDef::new(Orders::ShippingMethod).string().null())
                         .col(ColumnDef::new(Orders::TrackingNumber).string().null())
                         .col(ColumnDef::new(Orders::Notes).string().null())
                         .col(ColumnDef::new(Orders::ShippingAddress).string().null())
                         .col(ColumnDef::new(Orders::BillingAddress).string().null())
-                        .col(ColumnDef::new(Orders::IsArchived).boolean().not_null().default(false))
+                        .col(
+                            ColumnDef::new(Orders::IsArchived)
+                                .boolean()
+                                .not_null()
+                                .default(false),
+                        )
                         .col(ColumnDef::new(Orders::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(Orders::UpdatedAt).timestamp().null())
-                        .col(ColumnDef::new(Orders::Version).integer().not_null().default(1))
+                        .col(
+                            ColumnDef::new(Orders::Version)
+                                .integer()
+                                .not_null()
+                                .default(1),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -145,8 +164,8 @@ mod m20230101_000001_create_orders_table {
 }
 
 mod m20230101_000002_create_order_items_table {
-    use sea_orm_migration::prelude::*;
     use sea_orm::DbBackend;
+    use sea_orm_migration::prelude::*;
 
     #[derive(DeriveMigrationName)]
     pub struct Migration;
@@ -160,7 +179,12 @@ mod m20230101_000002_create_order_items_table {
                     Table::create()
                         .table(OrderItems::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(OrderItems::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(OrderItems::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(OrderItems::OrderId).uuid().not_null())
                         .col(ColumnDef::new(OrderItems::ProductId).uuid().not_null())
                         .col(ColumnDef::new(OrderItems::Sku).string().not_null())
@@ -168,9 +192,24 @@ mod m20230101_000002_create_order_items_table {
                         .col(ColumnDef::new(OrderItems::Quantity).integer().not_null())
                         .col(ColumnDef::new(OrderItems::UnitPrice).decimal().not_null())
                         .col(ColumnDef::new(OrderItems::TotalPrice).decimal().not_null())
-                        .col(ColumnDef::new(OrderItems::Discount).decimal().not_null().default(0))
-                        .col(ColumnDef::new(OrderItems::TaxRate).decimal().not_null().default(0))
-                        .col(ColumnDef::new(OrderItems::TaxAmount).decimal().not_null().default(0))
+                        .col(
+                            ColumnDef::new(OrderItems::Discount)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(OrderItems::TaxRate)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(OrderItems::TaxAmount)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
                         .col(ColumnDef::new(OrderItems::Status).string().not_null())
                         .col(ColumnDef::new(OrderItems::Notes).string().null())
                         .col(ColumnDef::new(OrderItems::CreatedAt).timestamp().not_null())
@@ -249,7 +288,12 @@ mod m20230101_000003_create_customers_table {
                     Table::create()
                         .table(Customers::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(Customers::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(Customers::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(Customers::Name).string().not_null())
                         .col(ColumnDef::new(Customers::Email).string().not_null())
                         .col(ColumnDef::new(Customers::Phone).string().null())
@@ -343,11 +387,21 @@ mod m20230101_000005_create_inventory_table {
                     Table::create()
                         .table(Inventory::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(Inventory::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(Inventory::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(Inventory::ProductId).uuid().not_null())
                         .col(ColumnDef::new(Inventory::WarehouseId).uuid().not_null())
                         .col(ColumnDef::new(Inventory::Quantity).integer().not_null())
-                        .col(ColumnDef::new(Inventory::Reserved).integer().not_null().default(0))
+                        .col(
+                            ColumnDef::new(Inventory::Reserved)
+                                .integer()
+                                .not_null()
+                                .default(0),
+                        )
                         .col(ColumnDef::new(Inventory::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(Inventory::UpdatedAt).timestamp().null())
                         .to_owned(),
@@ -437,7 +491,12 @@ mod m20230101_000007_create_shipments_table {
                     Table::create()
                         .table(Shipments::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(Shipments::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(Shipments::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(Shipments::OrderId).uuid().not_null())
                         .col(ColumnDef::new(Shipments::Status).string().not_null())
                         .col(ColumnDef::new(Shipments::TrackingNumber).string().null())
@@ -489,14 +548,27 @@ mod m20230101_000008_create_bill_of_materials_table {
                     Table::create()
                         .table(BillOfMaterials::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(BillOfMaterials::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(BillOfMaterials::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(BillOfMaterials::ProductId).uuid().not_null())
                         .col(ColumnDef::new(BillOfMaterials::Name).string().not_null())
                         .col(ColumnDef::new(BillOfMaterials::Description).string().null())
                         .col(ColumnDef::new(BillOfMaterials::Version).string().not_null())
                         .col(ColumnDef::new(BillOfMaterials::Status).string().not_null())
-                        .col(ColumnDef::new(BillOfMaterials::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(BillOfMaterials::UpdatedAt).timestamp().null())
+                        .col(
+                            ColumnDef::new(BillOfMaterials::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(BillOfMaterials::UpdatedAt)
+                                .timestamp()
+                                .null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -507,7 +579,12 @@ mod m20230101_000008_create_bill_of_materials_table {
                     Table::create()
                         .table(BomComponents::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(BomComponents::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(BomComponents::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(BomComponents::BomId).uuid().not_null())
                         .col(ColumnDef::new(BomComponents::ComponentId).uuid().not_null())
                         .col(ColumnDef::new(BomComponents::Quantity).integer().not_null())
@@ -529,7 +606,7 @@ mod m20230101_000008_create_bill_of_materials_table {
             manager
                 .drop_table(Table::drop().table(BomComponents::Table).to_owned())
                 .await?;
-            
+
             // Drop bill_of_materials table
             manager
                 .drop_table(Table::drop().table(BillOfMaterials::Table).to_owned())
@@ -575,11 +652,25 @@ mod m20230101_000009_create_work_orders_table {
                     Table::create()
                         .table(WorkOrders::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(WorkOrders::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(WorkOrders::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(WorkOrders::BomId).uuid().not_null())
                         .col(ColumnDef::new(WorkOrders::Status).string().not_null())
-                        .col(ColumnDef::new(WorkOrders::QuantityPlanned).integer().not_null())
-                        .col(ColumnDef::new(WorkOrders::QuantityCompleted).integer().not_null().default(0))
+                        .col(
+                            ColumnDef::new(WorkOrders::QuantityPlanned)
+                                .integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(WorkOrders::QuantityCompleted)
+                                .integer()
+                                .not_null()
+                                .default(0),
+                        )
                         .col(ColumnDef::new(WorkOrders::StartDate).timestamp().null())
                         .col(ColumnDef::new(WorkOrders::EndDate).timestamp().null())
                         .col(ColumnDef::new(WorkOrders::AssignedTo).uuid().null())
@@ -638,7 +729,12 @@ mod m20230101_000010_create_users_table {
                         .table(Users::Table)
                         .if_not_exists()
                         .col(ColumnDef::new(Users::Id).uuid().primary_key().not_null())
-                        .col(ColumnDef::new(Users::Email).string().not_null().unique_key())
+                        .col(
+                            ColumnDef::new(Users::Email)
+                                .string()
+                                .not_null()
+                                .unique_key(),
+                        )
                         .col(ColumnDef::new(Users::Name).string().not_null())
                         .col(ColumnDef::new(Users::PasswordHash).string().not_null())
                         .col(ColumnDef::new(Users::Role).string().not_null())
@@ -673,27 +769,27 @@ mod m20230101_000010_create_users_table {
 // Database migration CLI runner
 pub async fn run_migration(db_url: &str) -> Result<()> {
     info!("Setting up database connection for migrations");
-    
+
     let mut opt = ConnectOptions::new(db_url);
     opt.max_connections(10)
-       .min_connections(1)
-       .connect_timeout(Duration::from_secs(30))
-       .acquire_timeout(Duration::from_secs(30))
-       .idle_timeout(Duration::from_secs(300))
-       .max_lifetime(Duration::from_secs(1800))
-       .sqlx_logging(true);
+        .min_connections(1)
+        .connect_timeout(Duration::from_secs(30))
+        .acquire_timeout(Duration::from_secs(30))
+        .idle_timeout(Duration::from_secs(300))
+        .max_lifetime(Duration::from_secs(1800))
+        .sqlx_logging(true);
 
     let db = Database::connect(opt).await?;
-    
+
     info!("Running database migrations");
-    
+
     let result = Migrator::up(&db, None).await;
-    
+
     match result {
         Ok(_) => {
             info!("Migrations completed successfully");
             Ok(())
-        },
+        }
         Err(e) => {
             error!("Migration failed: {}", e);
             Err(e.into())

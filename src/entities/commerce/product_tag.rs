@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     pub name: String,
     pub slug: String,
     pub description: Option<String>,

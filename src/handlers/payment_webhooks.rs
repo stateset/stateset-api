@@ -1,11 +1,10 @@
-use axum::{extract::{State, RawBody}, http::HeaderMap, response::IntoResponse};
-use bytes::Bytes;
+use crate::{errors::ServiceError, AppState};
+use axum::{body::Bytes, extract::State, http::HeaderMap, response::IntoResponse};
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
-use crate::{AppState, errors::ServiceError};
 use serde_json::Value;
+use sha2::Sha256;
 use std::sync::Arc;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -24,30 +23,44 @@ type HmacSha256 = Hmac<Sha256>;
 pub async fn payment_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    body: RawBody,
+    body: Bytes,
 ) -> Result<impl IntoResponse, ServiceError> {
-    // Read raw body
-    let bytes = hyper::body::to_bytes(body.0).await.map_err(|e| ServiceError::BadRequest(format!("invalid body: {}", e)))?;
-    let payload = bytes.clone();
+    let payload = body.clone();
 
     // Verify signature if configured
     if let Some(secret) = state.config.payment_webhook_secret.clone() {
-        let ok = verify_signature(&headers, &payload, &secret, state.config.payment_webhook_tolerance_secs.unwrap_or(300));
+        let ok = verify_signature(
+            &headers,
+            &payload,
+            &secret,
+            state.config.payment_webhook_tolerance_secs.unwrap_or(300),
+        );
         if !ok {
             warn!("Payment webhook signature verification failed");
-            return Err(ServiceError::Unauthorized("invalid webhook signature".to_string()));
+            return Err(ServiceError::Unauthorized(
+                "invalid webhook signature".to_string(),
+            ));
         }
     }
 
     // Parse JSON
-    let json: Value = serde_json::from_slice(&payload).map_err(|e| ServiceError::BadRequest(format!("invalid json: {}", e)))?;
+    let json: Value = serde_json::from_slice(&payload)
+        .map_err(|e| ServiceError::BadRequest(format!("invalid json: {}", e)))?;
 
     // Idempotency for webhooks using event id (if available)
     if let Some(event_id) = json.get("id").and_then(|v| v.as_str()) {
         let key = format!("wh:{}", event_id);
         if let Ok(mut conn) = state.redis.get_async_connection().await {
-            let exists: Result<bool, _> = redis::cmd("SET").arg(&key).arg("1").arg("NX").arg("EX").arg(24 * 3600).query_async(&mut conn).await;
-            if let Ok(false) = exists { // already processed
+            let exists: Result<bool, _> = redis::cmd("SET")
+                .arg(&key)
+                .arg("1")
+                .arg("NX")
+                .arg("EX")
+                .arg(24 * 3600)
+                .query_async(&mut conn)
+                .await;
+            if let Ok(false) = exists {
+                // already processed
                 info!("Webhook event {} already processed", event_id);
                 return Ok((axum::http::StatusCode::OK, "ok"));
             }
@@ -58,13 +71,29 @@ pub async fn payment_webhook(
     let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match event_type {
         "payment.succeeded" | "charge.succeeded" => {
-            let _ = crate::events::outbox::enqueue(&*state.db, "payment", None, "PaymentSucceeded", &json).await;
+            let _ = crate::events::outbox::enqueue(
+                &*state.db,
+                "payment",
+                None,
+                "PaymentSucceeded",
+                &json,
+            )
+            .await;
         }
         "payment.failed" | "charge.failed" => {
-            let _ = crate::events::outbox::enqueue(&*state.db, "payment", None, "PaymentFailed", &json).await;
+            let _ =
+                crate::events::outbox::enqueue(&*state.db, "payment", None, "PaymentFailed", &json)
+                    .await;
         }
         "payment.refunded" | "charge.refunded" => {
-            let _ = crate::events::outbox::enqueue(&*state.db, "payment", None, "PaymentRefunded", &json).await;
+            let _ = crate::events::outbox::enqueue(
+                &*state.db,
+                "payment",
+                None,
+                "PaymentRefunded",
+                &json,
+            )
+            .await;
         }
         _ => {
             info!("Unhandled payment webhook type: {}", event_type);
@@ -74,7 +103,12 @@ pub async fn payment_webhook(
     Ok((axum::http::StatusCode::OK, "ok"))
 }
 
-fn verify_signature(headers: &HeaderMap, payload: &Bytes, secret: &str, tolerance_secs: u64) -> bool {
+fn verify_signature(
+    headers: &HeaderMap,
+    payload: &Bytes,
+    secret: &str,
+    tolerance_secs: u64,
+) -> bool {
     // Generic HMAC: x-timestamp and x-signature headers
     if let (Some(ts), Some(sig)) = (headers.get("x-timestamp"), headers.get("x-signature")) {
         if let (Ok(ts), Ok(sig)) = (ts.to_str(), sig.to_str()) {
@@ -93,8 +127,12 @@ fn verify_signature(headers: &HeaderMap, payload: &Bytes, secret: &str, toleranc
         }
     }
     // Stripe-like support: Stripe-Signature with t=, v1=
-    if let Some(sig) = headers.get("Stripe-Signature").and_then(|h| h.to_str().ok()) {
-        let mut ts = ""; let mut v1 = "";
+    if let Some(sig) = headers
+        .get("Stripe-Signature")
+        .and_then(|h| h.to_str().ok())
+    {
+        let mut ts = "";
+        let mut v1 = "";
         for part in sig.split(',') {
             let mut it = part.split('=');
             match (it.next(), it.next()) {
@@ -115,8 +153,12 @@ fn verify_signature(headers: &HeaderMap, payload: &Bytes, secret: &str, toleranc
 }
 
 fn constant_time_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() { return false; }
+    if a.len() != b.len() {
+        return false;
+    }
     let mut res = 0u8;
-    for (x, y) in a.as_bytes().iter().zip(b.as_bytes()) { res |= x ^ y; }
+    for (x, y) in a.as_bytes().iter().zip(b.as_bytes()) {
+        res |= x ^ y;
+    }
     res == 0
 }

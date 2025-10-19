@@ -22,16 +22,6 @@ pub struct DelegatePaymentResponse {
     pub metadata: serde_json::Value,
 }
 
-#[derive(Debug, Serialize)]
-pub struct DelegatedPaymentError {
-    #[serde(rename = "type")]
-    pub error_type: String,
-    pub code: String,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub param: Option<String>,
-}
-
 // Data models
 
 #[derive(Debug, Deserialize)]
@@ -101,6 +91,7 @@ pub struct RiskSignal {
 
 use crate::cache::InMemoryCache;
 use crate::errors::ServiceError;
+use crate::metrics::{VAULT_TOKENS_CONSUMED, VAULT_TOKENS_CREATED};
 use chrono::Datelike;
 use std::sync::Arc;
 use std::time::Duration;
@@ -125,31 +116,33 @@ impl DelegatedPaymentService {
         // Validate payment method
         if request.payment_method.payment_type != "card" {
             return Err(ServiceError::InvalidInput(
-                "Only card payment methods are supported".to_string()
+                "Only card payment methods are supported".to_string(),
             ));
         }
 
         // Validate card number type
-        if request.payment_method.card_number_type != "fpan" 
-            && request.payment_method.card_number_type != "network_token" {
+        if request.payment_method.card_number_type != "fpan"
+            && request.payment_method.card_number_type != "network_token"
+        {
             return Err(ServiceError::InvalidInput(
-                "card_number_type must be 'fpan' or 'network_token'".to_string()
+                "card_number_type must be 'fpan' or 'network_token'".to_string(),
             ));
         }
 
         // Validate allowance reason
         if request.allowance.reason != "one_time" {
             return Err(ServiceError::InvalidInput(
-                "Only 'one_time' allowance reason is supported".to_string()
+                "Only 'one_time' allowance reason is supported".to_string(),
             ));
         }
 
         // Check risk signals for blocks
         for signal in &request.risk_signals {
             if signal.action == "blocked" {
-                return Err(ServiceError::InvalidOperation(
-                    format!("Payment blocked due to risk signal: {}", signal.signal_type)
-                ));
+                return Err(ServiceError::InvalidOperation(format!(
+                    "Payment blocked due to risk signal: {}",
+                    signal.signal_type
+                )));
             }
         }
 
@@ -177,13 +170,14 @@ impl DelegatedPaymentService {
         });
 
         let ttl = self.calculate_ttl(&request.allowance.expires_at)?;
-        
+
         self.cache
             .set(&cache_key, &token_data.to_string(), Some(ttl))
             .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
         info!("Created vault token: {}", vault_token_id);
+        VAULT_TOKENS_CREATED.inc();
 
         Ok(DelegatePaymentResponse {
             id: vault_token_id,
@@ -200,8 +194,11 @@ impl DelegatedPaymentService {
         checkout_session_id: &str,
     ) -> Result<serde_json::Value, ServiceError> {
         let cache_key = format!("vault_token:{}", token);
-        
-        let cached = self.cache.get(&cache_key).await
+
+        let cached = self
+            .cache
+            .get(&cache_key)
+            .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
         match cached {
@@ -212,19 +209,23 @@ impl DelegatedPaymentService {
                 // Validate allowance
                 if let Some(allowance) = token_data.get("allowance") {
                     // Check checkout session ID
-                    if allowance.get("checkout_session_id").and_then(|v| v.as_str()) 
-                        != Some(checkout_session_id) {
+                    if allowance
+                        .get("checkout_session_id")
+                        .and_then(|v| v.as_str())
+                        != Some(checkout_session_id)
+                    {
                         return Err(ServiceError::InvalidOperation(
-                            "Token is not valid for this checkout session".to_string()
+                            "Token is not valid for this checkout session".to_string(),
                         ));
                     }
 
                     // Check max amount
                     if let Some(max_amount) = allowance.get("max_amount").and_then(|v| v.as_i64()) {
                         if amount > max_amount {
-                            return Err(ServiceError::InvalidOperation(
-                                format!("Amount {} exceeds max allowance {}", amount, max_amount)
-                            ));
+                            return Err(ServiceError::InvalidOperation(format!(
+                                "Amount {} exceeds max allowance {}",
+                                amount, max_amount
+                            )));
                         }
                     }
 
@@ -232,21 +233,25 @@ impl DelegatedPaymentService {
                 }
 
                 Ok(token_data)
-            },
-            None => Err(ServiceError::NotFound(
-                format!("Vault token {} not found or expired", token)
-            )),
+            }
+            None => Err(ServiceError::NotFound(format!(
+                "Vault token {} not found or expired",
+                token
+            ))),
         }
     }
 
     /// Mark a token as used (single-use enforcement)
     pub async fn consume_token(&self, token: &str) -> Result<(), ServiceError> {
         let cache_key = format!("vault_token:{}", token);
-        
-        self.cache.delete(&cache_key).await
+
+        self.cache
+            .delete(&cache_key)
+            .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
         info!("Consumed vault token: {}", token);
+        VAULT_TOKENS_CONSUMED.inc();
         Ok(())
     }
 
@@ -255,10 +260,10 @@ impl DelegatedPaymentService {
     fn validate_card(&self, payment_method: &PaymentMethod) -> Result<(), ServiceError> {
         // Basic card number validation (length check)
         let number = payment_method.number.replace(&[' ', '-'][..], "");
-        
+
         if number.len() < 13 || number.len() > 19 {
             return Err(ServiceError::InvalidInput(
-                "Invalid card number length".to_string()
+                "Invalid card number length".to_string(),
             ));
         }
 
@@ -267,18 +272,16 @@ impl DelegatedPaymentService {
             if let (Ok(m), Ok(y)) = (month.parse::<u32>(), year.parse::<u32>()) {
                 if m < 1 || m > 12 {
                     return Err(ServiceError::InvalidInput(
-                        "Invalid expiry month".to_string()
+                        "Invalid expiry month".to_string(),
                     ));
                 }
-                
+
                 let now = chrono::Utc::now();
                 let current_year = now.year() as u32;
                 let current_month = now.month();
-                
+
                 if y < current_year || (y == current_year && m < current_month) {
-                    return Err(ServiceError::InvalidInput(
-                        "Card is expired".to_string()
-                    ));
+                    return Err(ServiceError::InvalidInput("Card is expired".to_string()));
                 }
             }
         }
@@ -289,16 +292,16 @@ impl DelegatedPaymentService {
     fn calculate_ttl(&self, expires_at: &str) -> Result<Duration, ServiceError> {
         let expiry = chrono::DateTime::parse_from_rfc3339(expires_at)
             .map_err(|e| ServiceError::ParseError(format!("Invalid expires_at format: {}", e)))?;
-        
+
         let now = chrono::Utc::now();
         let duration = expiry.signed_duration_since(now);
-        
+
         if duration.num_seconds() <= 0 {
             return Err(ServiceError::InvalidInput(
-                "expires_at must be in the future".to_string()
+                "expires_at must be in the future".to_string(),
             ));
         }
 
         Ok(Duration::from_secs(duration.num_seconds() as u64))
     }
-} 
+}

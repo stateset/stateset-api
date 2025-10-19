@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
-use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
 #[sea_orm(table_name = "waste_and_scrap")]
@@ -109,13 +109,18 @@ impl Model {
         db: &DatabaseConnection,
     ) -> Result<Option<crate::models::work_order::Model>, DbErr> {
         if let Some(work_order_id) = self.work_order_id {
-            self.find_related(crate::models::work_order::Entity).one(db).await
+            self.find_related(crate::models::work_order::Entity)
+                .one(db)
+                .await
         } else {
             Ok(None)
         }
     }
 
-    pub async fn get_part(&self, db: &DatabaseConnection) -> Result<Option<crate::models::part::Model>, DbErr> {
+    pub async fn get_part(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<Option<crate::models::part::Model>, DbErr> {
         if let Some(part_number) = self.part_number {
             self.find_related(crate::models::part::Entity).one(db).await
         } else {

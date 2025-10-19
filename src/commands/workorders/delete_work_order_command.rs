@@ -1,9 +1,9 @@
-use uuid::Uuid;
 use async_trait::async_trait;
+use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
-use sea_orm::EntityTrait;
+use uuid::Uuid;
 
 use crate::{
     commands::Command,
@@ -26,7 +26,7 @@ pub struct DeleteWorkOrderResult {
 #[async_trait]
 impl Command for DeleteWorkOrderCommand {
     type Result = DeleteWorkOrderResult;
-    
+
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
         &self,
@@ -37,15 +37,15 @@ impl Command for DeleteWorkOrderCommand {
         work_order_entity::Entity::delete_by_id(self.work_order_id)
             .exec(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
-        
+            .map_err(|e| ServiceError::db_error(e))?;
+
         info!("Deleted work order {}", self.work_order_id);
-        
+
         event_sender
             .send(Event::WorkOrderUpdated(self.work_order_id))
             .await
             .map_err(ServiceError::EventError)?;
-        
+
         Ok(DeleteWorkOrderResult { deleted: true })
     }
 }

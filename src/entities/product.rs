@@ -1,11 +1,11 @@
-use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveValue::Set, ActiveValue, ActiveModelBehavior, ConnectionTrait};
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
-use rust_decimal::Decimal;
-use validator::Validate;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
+use sea_orm::entity::prelude::*;
+use sea_orm::{ActiveModelBehavior, ActiveValue, ActiveValue::Set, ConnectionTrait};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use validator::Validate;
 
 /// Product entity
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -16,7 +16,11 @@ pub struct Model {
     pub id: Uuid,
 
     /// Product name
-    #[validate(length(min = 1, max = 255, message = "Product name must be between 1 and 255 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 255,
+        message = "Product name must be between 1 and 255 characters"
+    ))]
     pub name: String,
 
     /// Product description
@@ -24,7 +28,11 @@ pub struct Model {
     pub description: Option<String>,
 
     /// SKU (Stock Keeping Unit)
-    #[validate(length(min = 1, max = 100, message = "SKU must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "SKU must be between 1 and 100 characters"
+    ))]
     pub sku: String,
 
     /// Product base price
@@ -126,7 +134,9 @@ impl ActiveModelBehavior for ActiveModel {
 
         active_model.updated_at = Set(Some(Utc::now()));
 
-        let model: Model = active_model.clone().try_into().map_err(|_| DbErr::Custom("Failed to convert ActiveModel to Model for validation".to_string()))?;
+        let model: Model = active_model.clone().try_into().map_err(|_| {
+            DbErr::Custom("Failed to convert ActiveModel to Model for validation".to_string())
+        })?;
 
         if let Err(err) = model.validate() {
             return Err(DbErr::Custom(format!("Validation error: {}", err)));

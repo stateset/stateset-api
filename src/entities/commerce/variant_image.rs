@@ -7,10 +7,10 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     #[sea_orm(column_type = "Uuid")]
     pub variant_id: Uuid,
-    
+
     pub url: String,
     pub alt_text: Option<String>,
     pub sort_order: i32,

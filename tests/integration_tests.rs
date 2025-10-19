@@ -6,13 +6,12 @@ use axum::{
 use chrono::Utc;
 use serde_json::{json, Value};
 use stateset_api::{
-    config,
-    db,
+    api::StateSetApi,
+    config, db,
     events::{process_events, EventSender},
     handlers::AppServices,
     health,
     proto::*,
-    api::StateSetApi,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -27,17 +26,21 @@ async fn create_test_app_state() -> stateset_api::AppState {
         auto_migrate: false,
         env: "test".to_string(),
     };
-    
-    let db_arc = Arc::new(db::establish_connection(&config.database_url).await.unwrap());
+
+    let db_arc = Arc::new(
+        db::establish_connection(&config.database_url)
+            .await
+            .unwrap(),
+    );
     let (tx, _rx) = mpsc::channel(1000);
     let event_sender = EventSender::new(tx);
-    
+
     // Create inventory service for tests
     let inventory_service = stateset_api::services::inventory::InventoryService::new(
         db_arc.clone(),
         event_sender.clone(),
     );
-    
+
     stateset_api::AppState {
         db: db_arc,
         config,
@@ -49,17 +52,20 @@ async fn create_test_app_state() -> stateset_api::AppState {
 // Helper function to create test HTTP client
 async fn create_test_app() -> axum::Router {
     let state = create_test_app_state().await;
-    
+
     axum::Router::new()
         .nest("/health", health::health_routes())
-        .nest("/api/v1", stateset_api::api_v1_routes().with_state(state.clone()))
+        .nest(
+            "/api/v1",
+            stateset_api::api_v1_routes().with_state(state.clone()),
+        )
         .with_state(state)
 }
 
 #[tokio::test]
 async fn test_health_endpoint() {
     let app = create_test_app().await;
-    
+
     let response = app
         .oneshot(
             Request::builder()
@@ -76,7 +82,7 @@ async fn test_health_endpoint() {
 #[tokio::test]
 async fn test_api_status() {
     let app = create_test_app().await;
-    
+
     let response = app
         .oneshot(
             Request::builder()
@@ -88,10 +94,12 @@ async fn test_api_status() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: Value = serde_json::from_slice(&body).unwrap();
-    
+
     assert_eq!(json["status"], "ok");
     assert_eq!(json["service"], "stateset-api");
 }
@@ -99,7 +107,7 @@ async fn test_api_status() {
 #[tokio::test]
 async fn test_orders_crud() {
     let app = create_test_app().await;
-    
+
     // Test listing orders
     let response = app
         .clone()
@@ -113,7 +121,7 @@ async fn test_orders_crud() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test creating an order
     let create_payload = json!({
         "customer_id": "cust_123",
@@ -126,7 +134,7 @@ async fn test_orders_crud() {
         ],
         "notes": "Test order"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -141,7 +149,7 @@ async fn test_orders_crud() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test getting a specific order
     let response = app
         .clone()
@@ -155,12 +163,12 @@ async fn test_orders_crud() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test updating an order
     let update_payload = json!({
         "status": "processing"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -175,7 +183,7 @@ async fn test_orders_crud() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test order actions
     let response = app
         .clone()
@@ -195,7 +203,7 @@ async fn test_orders_crud() {
 #[tokio::test]
 async fn test_inventory_management() {
     let app = create_test_app().await;
-    
+
     // Test listing inventory
     let response = app
         .clone()
@@ -209,7 +217,7 @@ async fn test_inventory_management() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test creating inventory item
     let create_payload = json!({
         "product_id": "prod_abc",
@@ -217,7 +225,7 @@ async fn test_inventory_management() {
         "quantity": 100,
         "unit_cost": 25.99
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -232,14 +240,14 @@ async fn test_inventory_management() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test inventory adjustment
     let adjust_payload = json!({
         "adjustment_type": "increase",
         "quantity": 50,
         "reason": "Stock replenishment"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -254,7 +262,7 @@ async fn test_inventory_management() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test inventory allocation
     let allocate_payload = json!({
         "product_id": "prod_abc",
@@ -262,7 +270,7 @@ async fn test_inventory_management() {
         "quantity": 10,
         "order_id": "order_123"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -282,7 +290,7 @@ async fn test_inventory_management() {
 #[tokio::test]
 async fn test_returns_workflow() {
     let app = create_test_app().await;
-    
+
     // Test creating a return
     let create_payload = json!({
         "order_id": "order_123",
@@ -297,7 +305,7 @@ async fn test_returns_workflow() {
             }
         ]
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -312,7 +320,7 @@ async fn test_returns_workflow() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test return approval
     let response = app
         .clone()
@@ -327,7 +335,7 @@ async fn test_returns_workflow() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test return restocking
     let restock_payload = json!({
         "return_id": "return_123",
@@ -340,7 +348,7 @@ async fn test_returns_workflow() {
             }
         ]
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -360,7 +368,7 @@ async fn test_returns_workflow() {
 #[tokio::test]
 async fn test_shipments_tracking() {
     let app = create_test_app().await;
-    
+
     // Test creating a shipment
     let create_payload = json!({
         "order_id": "order_123",
@@ -387,7 +395,7 @@ async fn test_shipments_tracking() {
             "unit": "in"
         }
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -402,7 +410,7 @@ async fn test_shipments_tracking() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test shipment tracking
     let response = app
         .clone()
@@ -416,7 +424,7 @@ async fn test_shipments_tracking() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test tracking by number
     let response = app
         .clone()
@@ -430,7 +438,7 @@ async fn test_shipments_tracking() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test marking as shipped
     let response = app
         .clone()
@@ -450,7 +458,7 @@ async fn test_shipments_tracking() {
 #[tokio::test]
 async fn test_warranties_management() {
     let app = create_test_app().await;
-    
+
     // Test creating a warranty
     let create_payload = json!({
         "product_id": "prod_abc",
@@ -463,7 +471,7 @@ async fn test_warranties_management() {
         "coverage": ["manufacturing_defects", "parts"],
         "exclusions": ["accidental_damage", "wear_and_tear"]
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -478,14 +486,14 @@ async fn test_warranties_management() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test creating a warranty claim
     let claim_payload = json!({
         "warranty_id": "warranty_123",
         "claim_type": "repair",
         "issue_description": "Device stopped working after 3 months of use"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -500,7 +508,7 @@ async fn test_warranties_management() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test approving a claim
     let response = app
         .clone()
@@ -515,12 +523,12 @@ async fn test_warranties_management() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test extending warranty
     let extend_payload = json!({
         "additional_months": 6
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -540,7 +548,7 @@ async fn test_warranties_management() {
 #[tokio::test]
 async fn test_work_orders_manufacturing() {
     let app = create_test_app().await;
-    
+
     // Test creating a work order
     let create_payload = json!({
         "order_id": "order_123",
@@ -552,7 +560,7 @@ async fn test_work_orders_manufacturing() {
         "estimated_hours": 8.0,
         "notes": "High priority customer order"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -567,7 +575,7 @@ async fn test_work_orders_manufacturing() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     // Test scheduling work order
     let schedule_payload = json!({
         "work_center_id": "wc_assembly",
@@ -575,7 +583,7 @@ async fn test_work_orders_manufacturing() {
         "scheduled_end": Utc::now() + chrono::Duration::hours(8),
         "assigned_to": "worker_001"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -590,7 +598,7 @@ async fn test_work_orders_manufacturing() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test starting work order
     let response = app
         .clone()
@@ -605,14 +613,14 @@ async fn test_work_orders_manufacturing() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test material consumption
     let consume_payload = json!({
         "material_id": "mat_123",
         "quantity_consumed": 25.0,
         "notes": "Used for production"
     });
-    
+
     let response = app
         .clone()
         .oneshot(
@@ -627,7 +635,7 @@ async fn test_work_orders_manufacturing() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test completing work order
     let response = app
         .clone()
@@ -647,7 +655,7 @@ async fn test_work_orders_manufacturing() {
 #[tokio::test]
 async fn test_filtering_and_pagination() {
     let app = create_test_app().await;
-    
+
     // Test orders with filtering
     let response = app
         .clone()
@@ -661,7 +669,7 @@ async fn test_filtering_and_pagination() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test inventory with filtering
     let response = app
         .clone()
@@ -675,7 +683,7 @@ async fn test_filtering_and_pagination() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     // Test work orders with filtering
     let response = app
         .clone()
@@ -694,7 +702,7 @@ async fn test_filtering_and_pagination() {
 #[tokio::test]
 async fn test_error_handling() {
     let app = create_test_app().await;
-    
+
     // Test invalid JSON
     let response = app
         .clone()
@@ -710,7 +718,7 @@ async fn test_error_handling() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    
+
     // Test non-existent endpoint
     let response = app
         .clone()

@@ -112,7 +112,7 @@ impl CreatePromotionCommand {
     ) -> Result<promotion_entity::Model, ServiceError> {
         promotion.insert(db).await.map_err(|e| {
             error!("Failed to save promotion: {:?}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

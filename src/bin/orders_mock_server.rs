@@ -4,8 +4,8 @@ use tracing::info;
 
 use stateset_api::proto::order::{
     order_service_server::{OrderService, OrderServiceServer},
-    CreateOrderRequest, CreateOrderResponse, GetOrderRequest, GetOrderResponse,
-    ListOrdersRequest, ListOrdersResponse, Order, OrderItem, OrderStatus, UpdateOrderStatusRequest,
+    CreateOrderRequest, CreateOrderResponse, GetOrderRequest, GetOrderResponse, ListOrdersRequest,
+    ListOrdersResponse, Order, OrderItem, OrderStatus, UpdateOrderStatusRequest,
     UpdateOrderStatusResponse,
 };
 
@@ -38,10 +38,17 @@ impl OrderService for MockOrderApi {
         let order = Order {
             id: order_id,
             customer_id: "customer_123".to_string(),
-            items: vec![OrderItem { product_id: "prod_1".to_string(), quantity: 1, unit_price: None }],
+            items: vec![OrderItem {
+                product_id: "prod_1".to_string(),
+                quantity: 1,
+                unit_price: None,
+            }],
             total_amount: None,
             status: OrderStatus::Processing as i32,
-            created_at: Some(prost_types::Timestamp { seconds: chrono::Utc::now().timestamp(), nanos: 0 }),
+            created_at: Some(prost_types::Timestamp {
+                seconds: chrono::Utc::now().timestamp(),
+                nanos: 0,
+            }),
             shipping_address: None,
             billing_address: None,
             payment_method_id: String::new(),
@@ -55,7 +62,10 @@ impl OrderService for MockOrderApi {
         request: Request<UpdateOrderStatusRequest>,
     ) -> Result<Response<UpdateOrderStatusResponse>, Status> {
         let req = request.into_inner();
-        let resp = UpdateOrderStatusResponse { order_id: req.order_id, status: req.new_status };
+        let resp = UpdateOrderStatusResponse {
+            order_id: req.order_id,
+            status: req.new_status,
+        };
         Ok(Response::new(resp))
     }
 
@@ -63,7 +73,10 @@ impl OrderService for MockOrderApi {
         &self,
         _request: Request<ListOrdersRequest>,
     ) -> Result<Response<ListOrdersResponse>, Status> {
-        Ok(Response::new(ListOrdersResponse { orders: vec![], pagination: None }))
+        Ok(Response::new(ListOrdersResponse {
+            orders: vec![],
+            pagination: None,
+        }))
     }
 }
 
@@ -72,7 +85,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let host = std::env::var("GRPC_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port: u16 = std::env::var("GRPC_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(8081);
+    let port: u16 = std::env::var("GRPC_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8081);
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
 
     info!("Starting Orders Mock gRPC server on {}", addr);

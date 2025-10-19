@@ -1,16 +1,16 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
-    events::{Event, EventSender},
     db::DbPool,
     errors::ServiceError,
-    models::{shipment, Shipment, ShipmentStatus},
+    events::{Event, EventSender},
+    models::shipment::{self, ShipmentStatus},
 };
 use async_trait::async_trait;
 use sea_orm::{entity::*, query::*, ActiveValue, ColumnTrait, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -22,7 +22,7 @@ pub struct UpdateShipmentStatusCommand {
 
 #[async_trait::async_trait]
 impl Command for UpdateShipmentStatusCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
@@ -45,7 +45,7 @@ impl UpdateShipmentStatusCommand {
     async fn update_shipment_status(
         &self,
         db: &sea_orm::DatabaseConnection,
-    ) -> Result<Shipment, ServiceError> {
+    ) -> Result<shipment::Model, ServiceError> {
         let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
             .one(db)
             .await
@@ -54,11 +54,11 @@ impl UpdateShipmentStatusCommand {
                     "Failed to fetch shipment with ID {}: {}",
                     self.shipment_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch shipment: {}", e))
+                ServiceError::db_error(format!("Failed to fetch shipment: {}", e))
             })?
             .ok_or_else(|| {
                 error!("Shipment with ID {} not found", self.shipment_id);
-                ServiceError::NotFound
+                ServiceError::NotFound(format!("Shipment with ID {} not found", self.shipment_id))
             })?
             .into();
 
@@ -69,14 +69,14 @@ impl UpdateShipmentStatusCommand {
                 "Failed to update shipment status for shipment ID {}: {}",
                 self.shipment_id, e
             );
-            ServiceError::DatabaseError(format!("Failed to update shipment status: {}", e))
+            ServiceError::db_error(format!("Failed to update shipment status: {}", e))
         })
     }
 
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        updated_shipment: &Shipment,
+        updated_shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment status updated for shipment ID: {}",

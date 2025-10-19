@@ -1,13 +1,15 @@
-use chrono::{DateTime, NaiveDate, Utc, Datelike};
 use async_trait::async_trait;
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 // use phonelib::PhoneValidator; // Commented out - dependency not available
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelBehavior, ActiveValue, Set, Condition, DatabaseConnection, QueryOrder, QuerySelect};
+use sea_orm::{
+    ActiveModelBehavior, ActiveValue, Condition, DatabaseConnection, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
-use validator::{Validate, ValidationError};
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
 /// Custom error type for supplier operations
 #[derive(Error, Debug)]
@@ -245,12 +247,9 @@ fn validate_birthdate(date: &NaiveDate) -> Result<(), ValidationError> {
     }
 
     // Must not be more than 100 years old
-    let max_age_date = NaiveDate::from_ymd_opt(
-        now.year() - 100,
-        now.month(),
-        now.day().min(date.day()),
-    )
-    .unwrap_or(now);
+    let max_age_date =
+        NaiveDate::from_ymd_opt(now.year() - 100, now.month(), now.day().min(date.day()))
+            .unwrap_or(now);
 
     if *date < max_age_date {
         return Err(ValidationError::new("invalid_birthdate"));
@@ -280,11 +279,7 @@ fn validate_optional_phone(phone: &String) -> Result<(), ValidationError> {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -349,7 +344,9 @@ impl Model {
             average_fulfillment_days: None,
         };
 
-        supplier.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        supplier
+            .validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(supplier)
     }
 
@@ -371,7 +368,8 @@ impl Model {
         self.status = new_status;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -380,7 +378,8 @@ impl Model {
         self.rating = new_rating;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -389,7 +388,8 @@ impl Model {
         self.loyalty_points += points;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -415,7 +415,8 @@ impl Model {
         self.secondary_phone = secondary_phone;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -440,7 +441,8 @@ impl Model {
 
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -454,7 +456,8 @@ impl Model {
         self.tax_id = tax_id;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -470,7 +473,8 @@ impl Model {
         self.credit_limit = credit_limit;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -492,7 +496,8 @@ impl Model {
         self.tags = Some(updated_tags.join(", "));
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -516,7 +521,8 @@ impl Model {
             self.updated_at = Utc::now();
         }
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
@@ -535,14 +541,16 @@ impl Model {
 
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
         Ok(())
     }
 
     /// Save the supplier to database
     pub async fn save(&self, db: &DatabaseConnection) -> Result<Model, SupplierError> {
         // Validate before saving
-        self.validate().map_err(|_| ValidationError::new("Supplier validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Supplier validation failed"))?;
 
         let model: ActiveModel = self.clone().into();
         let result = match self.id {

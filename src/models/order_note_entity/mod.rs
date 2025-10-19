@@ -47,11 +47,7 @@ impl Related<crate::models::order_entity::Entity> for Entity {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -86,7 +82,9 @@ impl Model {
         };
 
         // Validate the new order note
-        order_note.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        order_note
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
 
         Ok(order_note)
     }

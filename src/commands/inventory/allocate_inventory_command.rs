@@ -155,7 +155,7 @@ impl AllocateInventoryCommand {
             )
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         if existing_allocation.is_some() {
             error!(
@@ -188,7 +188,7 @@ impl AllocateInventoryCommand {
             )
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .iter()
             .map(|r| r.quantity_reserved)
             .sum();
@@ -229,7 +229,7 @@ impl AllocateInventoryCommand {
                         )
                         .one(txn)
                         .await
-                        .map_err(|e| ServiceError::DatabaseError(e))?
+                        .map_err(|e| ServiceError::db_error(e))?
                         .ok_or_else(|| {
                             ServiceError::NotFound(format!(
                                 "Inventory level not found for product {} in warehouse {}",
@@ -249,7 +249,7 @@ impl AllocateInventoryCommand {
                         )
                         .all(txn)
                         .await
-                        .map_err(|e| ServiceError::DatabaseError(e))?
+                        .map_err(|e| ServiceError::db_error(e))?
                         .iter()
                         .map(|r| r.quantity_reserved)
                         .sum();
@@ -280,7 +280,7 @@ impl AllocateInventoryCommand {
                         let saved_allocation = allocation
                             .insert(txn)
                             .await
-                            .map_err(|e| ServiceError::DatabaseError(e))?;
+                            .map_err(|e| ServiceError::db_error(e))?;
 
                         // Update inventory allocated quantity
                         let mut inv: inventory_level_entity::ActiveModel = inventory.clone().into();
@@ -289,7 +289,7 @@ impl AllocateInventoryCommand {
 
                         inv.update(txn)
                             .await
-                            .map_err(|e| ServiceError::DatabaseError(e))?;
+                            .map_err(|e| ServiceError::db_error(e))?;
 
                         allocation_results.push(AllocationResult {
                             allocation_id: saved_allocation.id,
@@ -320,7 +320,7 @@ impl AllocateInventoryCommand {
         .map_err(|e| {
             error!("Transaction failed for inventory allocation: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })

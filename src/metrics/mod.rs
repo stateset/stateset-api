@@ -25,8 +25,8 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info};
@@ -408,12 +408,12 @@ pub async fn metrics_json_handler() -> Result<serde_json::Value, MetricsError> {
 // Initialize metrics system
 pub async fn init_metrics(_config: &MetricsConfig) -> Result<(), MetricsError> {
     info!("Initializing metrics system");
-    
+
     // Set up initial metrics
     APP_METRICS.set_database_connections(0);
     BUSINESS_METRICS.set_inventory_count(0);
     BUSINESS_METRICS.set_revenue(0.0);
-    
+
     info!("Metrics system initialized successfully");
     Ok(())
 }

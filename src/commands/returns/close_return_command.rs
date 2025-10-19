@@ -6,16 +6,15 @@ use crate::{
     models::{
         r#return::ReturnStatus,
         return_entity::{self, Entity as Return, Model as ReturnEntity},
-        return_note_entity::{self, Entity as ReturnNote},
         return_history_entity::{self, Entity as ReturnHistory},
+        return_note_entity::{self, Entity as ReturnNote},
     },
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    entity::*,
-    query::*,
-    DatabaseConnection, DatabaseTransaction, Set, TransactionError, TransactionTrait,
+    entity::*, query::*, DatabaseConnection, DatabaseTransaction, Set, TransactionError,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -93,18 +92,34 @@ impl crate::commands::Command for CloseReturnCommand {
                     let return_request = Self::validate_return_state_static(return_id, txn).await?;
 
                     // Update return status to closed
-                    let updated_return = Self::close_return_static(return_id, reason.as_ref(), closed_by.as_ref(), metadata.as_ref(), txn, &return_request).await?;
+                    let updated_return = Self::close_return_static(
+                        return_id,
+                        reason.as_ref(),
+                        closed_by.as_ref(),
+                        metadata.as_ref(),
+                        txn,
+                        &return_request,
+                    )
+                    .await?;
 
                     // Add closure note if provided
                     if let Some(note) = &notes {
-                        Self::add_closure_note_static(return_id, closed_by.as_ref(), txn, note).await?;
+                        Self::add_closure_note_static(return_id, closed_by.as_ref(), txn, note)
+                            .await?;
                     }
 
                     // Create history record
-                    Self::create_history_record_static(return_id, reason.as_ref(), metadata.as_ref(), txn, &return_request).await?;
+                    Self::create_history_record_static(
+                        return_id,
+                        reason.as_ref(),
+                        metadata.as_ref(),
+                        txn,
+                        &return_request,
+                    )
+                    .await?;
 
                     Ok(CloseReturnResult {
-                        id: Uuid::parse_str(&updated_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+                        id: updated_return.id,
                         object: "return".to_string(),
                         closed: true,
                         closed_at: updated_return
@@ -127,7 +142,7 @@ impl crate::commands::Command for CloseReturnCommand {
             Err(e) => {
                 error!("Failed to close return: {}", e);
                 match e {
-                    TransactionError::Connection(db_err) => Err(ServiceError::DatabaseError(db_err)),
+                    TransactionError::Connection(db_err) => Err(ServiceError::db_error(db_err)),
                     TransactionError::Transaction(service_err) => Err(service_err),
                 }
             }
@@ -146,7 +161,7 @@ impl CloseReturnCommand {
             .map_err(|e| {
                 let msg = format!("Database error when finding return: {}", e);
                 error!(error = %e, return_id = %return_id, "{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return with ID {} not found", return_id);
@@ -183,7 +198,7 @@ impl CloseReturnCommand {
         let updated_return = return_active.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return status to Closed: {}", e);
             error!(error = %e, return_id = %return_id, "{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(e)
         })?;
 
         debug!(return_id = %return_id, "Return status updated to Closed");
@@ -213,7 +228,7 @@ impl CloseReturnCommand {
         ReturnNote::insert(note).exec(db).await.map_err(|e| {
             let msg = format!("Failed to add closure note: {}", e);
             error!(error = %e, return_id = %return_id, "{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(e)
         })?;
 
         debug!(return_id = %return_id, "Added closure note");
@@ -242,7 +257,7 @@ impl CloseReturnCommand {
         ReturnHistory::insert(history).exec(db).await.map_err(|e| {
             let msg = format!("Failed to create history record: {}", e);
             error!(error = %e, return_id = %return_id, "{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::database_error_message(msg)
         })?;
 
         debug!(return_id = %return_id, "Created history record for closure");

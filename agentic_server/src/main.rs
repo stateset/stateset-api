@@ -1,17 +1,17 @@
 use axum::{
-    extract::{Json, Path, State},
+    extract::{Json, Path, Request, State},
     http::{HeaderMap, StatusCode},
+    middleware::Next,
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
 use std::sync::Arc;
+use std::{net::SocketAddr, time::Instant};
 use tokio::signal;
 use tower_http::{
     compression::CompressionLayer,
-    cors::{CorsLayer, Any},
+    cors::{Any, CorsLayer},
     trace::TraceLayer,
 };
 use tracing::{info, warn};
@@ -35,20 +35,23 @@ mod tax_service;
 mod validation;
 mod webhook_service;
 
-use auth::{ApiKeyStore, auth_middleware};
+use auth::{auth_middleware, ApiKeyStore};
 use cache::InMemoryCache;
 use config::Config;
-use delegated_payment::{DelegatedPaymentService, DelegatePaymentRequest};
+use delegated_payment::{DelegatePaymentRequest, DelegatedPaymentService};
 use errors::ApiError;
-use events::EventSender;
-use idempotency::IdempotencyService;
-use metrics::{CHECKOUT_SESSIONS_CREATED, VAULT_TOKENS_CREATED, ORDERS_CREATED};
+use events::{Event, EventSender};
+use idempotency::{idempotency_middleware, IdempotencyService};
+use metrics::{
+    record_http_request, CHECKOUT_SESSIONS_CREATED, ORDERS_CREATED, VAULT_TOKENS_CREATED,
+};
 use models::*;
 use product_catalog::ProductCatalogService;
-use rate_limit::RateLimiter;
+use rate_limit::{rate_limit_middleware, RateLimiter};
 use redis_store::RedisStore;
-use security::SignatureVerifier;
+use security::{signature_verification_middleware, SignatureVerifier};
 use service::AgenticCheckoutService;
+use stripe_integration::{StripeConfig, StripePaymentProcessor};
 use tax_service::TaxService;
 use webhook_service::WebhookService;
 
@@ -75,13 +78,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting Agentic Commerce Server...");
 
+    // Load environment variables from .env if present
+    let _ = dotenvy::dotenv();
+
     // Load configuration
     let config = Config::load()?;
-    info!("Configuration loaded");
+    info!(
+        "Configuration loaded (host: {}, port: {}, webhook_url_configured: {})",
+        config.host,
+        config.port,
+        config.webhook_url.as_ref().map(|_| "yes").unwrap_or("no")
+    );
+
+    // Initialize signature verifier (optional - set secret to enable)
+    let signature_verifier = std::env::var("WEBHOOK_SECRET").ok().map(|secret| {
+        info!("Signature verification enabled");
+        Arc::new(SignatureVerifier::new(secret))
+    });
 
     // Initialize database connection (optional - only if you need persistence)
     // For now, we'll use in-memory storage
-    
+
     // Initialize cache
     let cache = Arc::new(InMemoryCache::new());
     info!("Cache initialized");
@@ -89,12 +106,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize event sender
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(1024);
     let event_sender = Arc::new(EventSender::new(event_tx));
-    
+
+    // Initialize webhook service
+    let webhook_service = Arc::new(WebhookService::new(signature_verifier.clone()));
+    info!("Webhook service initialized");
+
     // Spawn event processor
+    let webhook_service_events = webhook_service.clone();
+    let webhook_url = config.webhook_url.clone();
+    if webhook_url.is_none() {
+        info!("WEBHOOK_URL not set; outbound webhook delivery disabled");
+    }
     tokio::spawn(async move {
         while let Some(event) = event_rx.recv().await {
             info!("Event received: {:?}", event);
-            // Process events (emit webhooks, etc.)
+
+            if let (
+                Some(url),
+                Event::CheckoutCompleted {
+                    session_id,
+                    order_id,
+                },
+            ) = (&webhook_url, &event)
+            {
+                let session_id_str = session_id.to_string();
+                let order_id_str = order_id.to_string();
+                let permalink = format!("https://merchant.example.com/orders/{}", order_id);
+
+                if let Err(err) = webhook_service_events
+                    .send_order_created(
+                        url,
+                        session_id_str.clone(),
+                        order_id_str.clone(),
+                        permalink.clone(),
+                    )
+                    .await
+                {
+                    warn!("Webhook delivery failed: {}", err);
+                }
+
+                if let Err(err) = webhook_service_events
+                    .send_order_updated(
+                        url,
+                        session_id_str,
+                        permalink,
+                        "created".to_string(),
+                        vec![],
+                    )
+                    .await
+                {
+                    warn!("Webhook update delivery failed: {}", err);
+                }
+            }
         }
     });
 
@@ -106,9 +169,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tax_service = Arc::new(TaxService::new());
     info!("Tax service initialized (5 jurisdictions)");
 
-    // Initialize webhook service
-    let webhook_service = Arc::new(WebhookService::new(signature_verifier.clone()));
-    info!("Webhook service initialized");
+    // Initialize Stripe integration (optional)
+    let stripe_processor = match StripeConfig::from_env() {
+        Ok(config) => {
+            info!("Stripe integration enabled");
+            Some(Arc::new(StripePaymentProcessor::new(config)))
+        }
+        Err(err) => {
+            info!("Stripe integration disabled: {}", err);
+            None
+        }
+    };
 
     // Initialize checkout service
     let checkout_service = Arc::new(AgenticCheckoutService::new(
@@ -116,6 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         event_sender,
         product_catalog,
         tax_service,
+        stripe_processor.clone(),
     ));
     info!("Checkout service initialized");
 
@@ -132,12 +204,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("API key store initialized ({} keys)", 2);
 
     // Initialize signature verifier (optional - set secret to enable)
-    let signature_verifier = std::env::var("WEBHOOK_SECRET")
-        .ok()
-        .map(|secret| {
-            info!("Signature verification enabled");
-            Arc::new(SignatureVerifier::new(secret))
-        });
+    let signature_verifier = std::env::var("WEBHOOK_SECRET").ok().map(|secret| {
+        info!("Signature verification enabled");
+        Arc::new(SignatureVerifier::new(secret))
+    });
 
     // Initialize Redis store (optional - falls back to in-memory)
     let redis_store = if let Ok(redis_url) = std::env::var("REDIS_URL") {
@@ -179,33 +249,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
         .route("/metrics", get(metrics_handler))
-        
         // Agentic Checkout endpoints
         .route("/checkout_sessions", post(create_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id", get(get_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id", post(update_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id/complete", post(complete_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id/cancel", post(cancel_checkout_session))
-        
+        .route(
+            "/checkout_sessions/:checkout_session_id",
+            get(get_checkout_session),
+        )
+        .route(
+            "/checkout_sessions/:checkout_session_id",
+            post(update_checkout_session),
+        )
+        .route(
+            "/checkout_sessions/:checkout_session_id/complete",
+            post(complete_checkout_session),
+        )
+        .route(
+            "/checkout_sessions/:checkout_session_id/cancel",
+            post(cancel_checkout_session),
+        )
         // Delegated Payment endpoint (PSP mock)
         .route("/agentic_commerce/delegate_payment", post(delegate_payment))
-        
         // Middleware layers (applied in reverse order: bottom to top)
         .layer(CompressionLayer::new())
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
                 .allow_methods(Any)
-                .allow_headers(Any)
+                .allow_headers(Any),
         )
         .layer(TraceLayer::new_for_http())
-        
-        // Security middleware
+        .layer(axum::middleware::from_fn_with_state(
+            signature_verifier.clone(),
+            signature_verification_middleware,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             api_key_store.clone(),
             auth_middleware,
         ))
-        
+        .layer(axum::middleware::from_fn_with_state(
+            idempotency_service.clone(),
+            idempotency_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            rate_limiter.clone(),
+            rate_limit_middleware,
+        ))
+        .layer(axum::middleware::from_fn(metrics_middleware))
         .with_state(app_state);
 
     // Bind to address
@@ -250,8 +339,22 @@ async fn metrics_handler() -> impl IntoResponse {
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to gather metrics: {}", e),
-        ).into_response(),
+        )
+            .into_response(),
     }
+}
+
+async fn metrics_middleware(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let start = Instant::now();
+
+    let response = next.run(request).await;
+    let status = response.status().as_u16();
+
+    record_http_request(method.as_str(), &path, status, start);
+
+    response
 }
 
 /// Create a checkout session
@@ -268,10 +371,7 @@ async fn create_checkout_session(
         });
     }
 
-    let session = state
-        .checkout_service
-        .create_session(payload)
-        .await?;
+    let session = state.checkout_service.create_session(payload).await?;
 
     // Record metrics
     CHECKOUT_SESSIONS_CREATED.inc();
@@ -291,10 +391,9 @@ async fn create_checkout_session(
         response = response.header("Request-Id", request_id);
     }
 
-    let body = serde_json::to_string(&session)
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Serialization error: {}", e),
-        })?;
+    let body = serde_json::to_string(&session).map_err(|e| ApiError::InternalServerError {
+        message: format!("Serialization error: {}", e),
+    })?;
 
     Ok(response
         .body(body.into())
@@ -366,10 +465,9 @@ async fn cancel_checkout_session(
         .cancel_session(&checkout_session_id)
         .await?;
 
-    let body = serde_json::to_string(&session)
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Serialization error: {}", e),
-        })?;
+    let body = serde_json::to_string(&session).map_err(|e| ApiError::InternalServerError {
+        message: format!("Serialization error: {}", e),
+    })?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -399,7 +497,7 @@ async fn delegate_payment(
                 message: msg,
                 error_code: Some("processing_error".to_string()),
             },
-                         _ => ApiError::InternalServerError {
+            _ => ApiError::InternalServerError {
                 message: "Failed to process delegated payment".to_string(),
             },
         })?;
@@ -422,10 +520,9 @@ async fn delegate_payment(
         response = response.header("Request-Id", request_id);
     }
 
-    let body = serde_json::to_string(&result)
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Serialization error: {}", e),
-        })?;
+    let body = serde_json::to_string(&result).map_err(|e| ApiError::InternalServerError {
+        message: format!("Serialization error: {}", e),
+    })?;
 
     Ok(response
         .body(body.into())
@@ -463,4 +560,4 @@ async fn shutdown_signal() {
     }
 
     info!("Shutting down gracefully...");
-} 
+}

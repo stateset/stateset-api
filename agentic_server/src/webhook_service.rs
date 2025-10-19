@@ -3,7 +3,7 @@ use crate::security::SignatureVerifier;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, warn, instrument};
+use tracing::{error, info, instrument, warn};
 
 /// Webhook event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,7 +11,7 @@ use tracing::{error, info, warn, instrument};
 pub enum WebhookEvent {
     #[serde(rename = "order_created")]
     OrderCreated { data: OrderEventData },
-    
+
     #[serde(rename = "order_updated")]
     OrderUpdated { data: OrderEventData },
 }
@@ -52,7 +52,7 @@ impl WebhookService {
             max_retries: 3,
         }
     }
-    
+
     /// Send webhook to OpenAI
     #[instrument(skip(self))]
     pub async fn send_order_created(
@@ -71,10 +71,11 @@ impl WebhookService {
                 refunds: vec![],
             },
         };
-        
-        self.send_webhook(webhook_url, event).await
+
+        self.send_async(webhook_url.to_string(), event);
+        Ok(())
     }
-    
+
     /// Send order updated webhook
     #[instrument(skip(self))]
     pub async fn send_order_updated(
@@ -94,10 +95,11 @@ impl WebhookService {
                 refunds,
             },
         };
-        
-        self.send_webhook(webhook_url, event).await
+
+        self.send_async(webhook_url.to_string(), event);
+        Ok(())
     }
-    
+
     /// Send webhook with retry logic
     #[instrument(skip(self, event))]
     async fn send_webhook(
@@ -107,58 +109,72 @@ impl WebhookService {
     ) -> Result<(), ServiceError> {
         let body = serde_json::to_string(&event)
             .map_err(|e| ServiceError::SerializationError(e.to_string()))?;
-        
+
         let timestamp = chrono::Utc::now().to_rfc3339();
-        
+
         // Generate signature if verifier available
-        let signature = self.signature_verifier.as_ref()
+        let signature = self
+            .signature_verifier
+            .as_ref()
             .map(|v| v.sign_payload(&timestamp, &body));
-        
+
         // Retry logic with exponential backoff
         for attempt in 1..=self.max_retries {
-            let mut request = self.client
+            let mut request = self
+                .client
                 .post(webhook_url)
                 .header("Content-Type", "application/json")
                 .header("Timestamp", &timestamp)
                 .body(body.clone());
-            
+
             // Add signature if available
             if let Some(ref sig) = signature {
                 request = request.header("Merchant-Signature", sig);
             }
-            
+
             match request.send().await {
                 Ok(response) => {
                     if response.status().is_success() {
                         info!("Webhook delivered successfully to {}", webhook_url);
                         return Ok(());
                     } else {
-                        warn!("Webhook delivery failed with status: {} (attempt {}/{})", 
-                            response.status(), attempt, self.max_retries);
+                        warn!(
+                            "Webhook delivery failed with status: {} (attempt {}/{})",
+                            response.status(),
+                            attempt,
+                            self.max_retries
+                        );
                     }
                 }
                 Err(e) => {
-                    warn!("Webhook delivery error: {} (attempt {}/{})", e, attempt, self.max_retries);
+                    warn!(
+                        "Webhook delivery error: {} (attempt {}/{})",
+                        e, attempt, self.max_retries
+                    );
                 }
             }
-            
+
             // Exponential backoff: 1s, 2s, 4s
             if attempt < self.max_retries {
                 let backoff = Duration::from_secs(2_u64.pow(attempt - 1));
                 tokio::time::sleep(backoff).await;
             }
         }
-        
-        error!("Webhook delivery failed after {} attempts", self.max_retries);
-        Err(ServiceError::ExternalServiceError(
-            format!("Failed to deliver webhook after {} retries", self.max_retries)
-        ))
+
+        error!(
+            "Webhook delivery failed after {} attempts",
+            self.max_retries
+        );
+        Err(ServiceError::ExternalServiceError(format!(
+            "Failed to deliver webhook after {} retries",
+            self.max_retries
+        )))
     }
-    
+
     /// Send webhook asynchronously (fire-and-forget with logging)
     pub fn send_async(&self, webhook_url: String, event: WebhookEvent) {
         let service = self.clone();
-        
+
         tokio::spawn(async move {
             if let Err(e) = service.send_webhook(&webhook_url, event).await {
                 error!("Async webhook delivery failed: {}", e);
@@ -189,7 +205,7 @@ mod tests {
                 refunds: vec![],
             },
         };
-        
+
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("order_created"));
         assert!(json.contains("session_123"));
@@ -201,9 +217,9 @@ mod tests {
             refund_type: "store_credit".to_string(),
             amount: 5000,
         };
-        
+
         let json = serde_json::to_string(&refund).unwrap();
         assert!(json.contains("store_credit"));
         assert!(json.contains("5000"));
     }
-} 
+}

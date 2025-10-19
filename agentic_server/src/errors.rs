@@ -27,6 +27,15 @@ pub enum ServiceError {
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
 
+    #[error("Insufficient stock: {0}")]
+    InsufficientStock(String),
+
+    #[error("Payment failed: {0}")]
+    PaymentFailed(String),
+
+    #[error("External service error: {0}")]
+    ExternalServiceError(String),
+
     #[error("Cache error: {0}")]
     CacheError(String),
 
@@ -45,24 +54,14 @@ pub enum ApiError {
     #[error("Service error: {0}")]
     ServiceError(#[from] ServiceError),
 
-    #[error("Not found: {0}")]
-    NotFound(String),
-
     #[error("Bad request: {message}")]
     BadRequest {
         message: String,
         error_code: Option<String>,
     },
 
-    #[error("Method not allowed: {message}")]
-    MethodNotAllowed {
-        message: String,
-    },
-
     #[error("Internal server error: {message}")]
-    InternalServerError {
-        message: String,
-    },
+    InternalServerError { message: String },
 }
 
 impl IntoResponse for ApiError {
@@ -87,6 +86,24 @@ impl IntoResponse for ApiError {
                     "invalid".to_string(),
                     msg.clone(),
                 ),
+                ServiceError::InsufficientStock(msg) => (
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request".to_string(),
+                    "insufficient_stock".to_string(),
+                    msg.clone(),
+                ),
+                ServiceError::PaymentFailed(msg) => (
+                    StatusCode::BAD_REQUEST,
+                    "payment_error".to_string(),
+                    "payment_failed".to_string(),
+                    msg.clone(),
+                ),
+                ServiceError::ExternalServiceError(msg) => (
+                    StatusCode::BAD_GATEWAY,
+                    "processing_error".to_string(),
+                    "external_service_error".to_string(),
+                    msg.clone(),
+                ),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "processing_error".to_string(),
@@ -94,22 +111,13 @@ impl IntoResponse for ApiError {
                     "Internal server error".to_string(),
                 ),
             },
-            ApiError::NotFound(msg) => (
-                StatusCode::NOT_FOUND,
-                "invalid_request".to_string(),
-                "not_found".to_string(),
-                msg.clone(),
-            ),
-            ApiError::BadRequest { message, error_code } => (
+            ApiError::BadRequest {
+                message,
+                error_code,
+            } => (
                 StatusCode::BAD_REQUEST,
                 "invalid_request".to_string(),
                 error_code.clone().unwrap_or_else(|| "invalid".to_string()),
-                message.clone(),
-            ),
-            ApiError::MethodNotAllowed { message } => (
-                StatusCode::METHOD_NOT_ALLOWED,
-                "invalid_request".to_string(),
-                "not_allowed".to_string(),
                 message.clone(),
             ),
             ApiError::InternalServerError { message } => (
@@ -129,4 +137,4 @@ impl IntoResponse for ApiError {
 
         (status, Json(error_response)).into_response()
     }
-} 
+}

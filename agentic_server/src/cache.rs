@@ -1,3 +1,4 @@
+use crate::metrics::{CACHE_HITS, CACHE_MISSES, CACHE_OPERATIONS};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -49,28 +50,39 @@ impl InMemoryCache {
     }
 
     pub async fn get(&self, key: &str) -> Result<Option<String>, CacheError> {
+        CACHE_OPERATIONS.inc();
         let store = self.store.read().unwrap();
         if let Some(entry) = store.get(key) {
             if entry.is_expired() {
                 drop(store);
                 let mut store = self.store.write().unwrap();
                 store.remove(key);
+                CACHE_MISSES.inc();
                 Ok(None)
             } else {
+                CACHE_HITS.inc();
                 Ok(Some(entry.value.clone()))
             }
         } else {
+            CACHE_MISSES.inc();
             Ok(None)
         }
     }
 
-    pub async fn set(&self, key: &str, value: &str, ttl: Option<Duration>) -> Result<(), CacheError> {
+    pub async fn set(
+        &self,
+        key: &str,
+        value: &str,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
+        CACHE_OPERATIONS.inc();
         let mut store = self.store.write().unwrap();
         store.insert(key.to_string(), CacheEntry::new(value.to_string(), ttl));
         Ok(())
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), CacheError> {
+        CACHE_OPERATIONS.inc();
         let mut store = self.store.write().unwrap();
         store.remove(key);
         Ok(())
@@ -81,4 +93,4 @@ impl Default for InMemoryCache {
     fn default() -> Self {
         Self::new()
     }
-} 
+}

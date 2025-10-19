@@ -17,7 +17,11 @@ pub struct Model {
     pub order_id: Uuid,
 
     /// Name of the product.
-    #[validate(length(min = 1, max = 200, message = "Product name must be between 1 and 200 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 200,
+        message = "Product name must be between 1 and 200 characters"
+    ))]
     pub product_name: String,
 
     /// Quantity of the product ordered.
@@ -37,31 +41,59 @@ pub struct Model {
     pub seller_discount: i32,
 
     /// Unit of measurement (e.g., pcs, kg).
-    #[validate(length(min = 1, max = 20, message = "Unit must be between 1 and 20 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 20,
+        message = "Unit must be between 1 and 20 characters"
+    ))]
     pub unit: String,
 
     /// Identifier for the product.
-    #[validate(length(min = 1, max = 50, message = "Product ID must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "Product ID must be between 1 and 50 characters"
+    ))]
     pub product_id: String,
 
     /// Brand of the product.
-    #[validate(length(min = 1, max = 100, message = "Brand must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Brand must be between 1 and 100 characters"
+    ))]
     pub brand: String,
 
     /// Stock code of the product.
-    #[validate(length(min = 1, max = 50, message = "Stock code must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "Stock code must be between 1 and 50 characters"
+    ))]
     pub stock_code: String,
 
     /// Size of the product.
-    #[validate(length(min = 1, max = 20, message = "Size must be between 1 and 20 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 20,
+        message = "Size must be between 1 and 20 characters"
+    ))]
     pub size: String,
 
     /// Seller's SKU for the product.
-    #[validate(length(min = 1, max = 50, message = "Seller SKU must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "Seller SKU must be between 1 and 50 characters"
+    ))]
     pub seller_sku: String,
 
     /// SKU ID.
-    #[validate(length(min = 1, max = 50, message = "SKU ID must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "SKU ID must be between 1 and 50 characters"
+    ))]
     pub sku_id: String,
 
     /// URL to the SKU image.
@@ -69,11 +101,19 @@ pub struct Model {
     pub sku_image: String,
 
     /// Name of the SKU.
-    #[validate(length(min = 1, max = 100, message = "SKU name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "SKU name must be between 1 and 100 characters"
+    ))]
     pub sku_name: String,
 
     /// Type of SKU.
-    #[validate(length(min = 1, max = 50, message = "SKU type must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "SKU type must be between 1 and 50 characters"
+    ))]
     pub sku_type: String,
 
     /// Timestamp when the line item was created.
@@ -226,17 +266,18 @@ impl Model {
 
     /// Validates the line item data.
     pub fn validate_line_item(&self) -> Result<(), validator::ValidationErrors> {
-        self.validate().map_err(|_| validator::ValidationErrors::new())?;
-        
+        self.validate()
+            .map_err(|_| validator::ValidationErrors::new())?;
+
         // Additional business logic validation
         if self.sale_price > self.original_price {
             return Err(validator::ValidationErrors::new());
         }
-        
+
         if self.seller_discount > self.original_price {
             return Err(validator::ValidationErrors::new());
         }
-        
+
         Ok(())
     }
 

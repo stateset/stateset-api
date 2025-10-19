@@ -1,5 +1,3 @@
-use uuid::Uuid;
-use sea_orm::DatabaseTransaction;
 use crate::commands::Command;
 use crate::events::{Event, EventSender};
 use crate::{
@@ -9,16 +7,18 @@ use crate::{
 };
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
-use rust_decimal::Decimal as RustDecimal;
 use futures::stream::{self, StreamExt};
 use futures::TryStreamExt;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
+use rust_decimal::Decimal as RustDecimal;
 use sea_orm::QueryOrder;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 lazy_static! {
@@ -36,12 +36,12 @@ lazy_static! {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct CalculateCOGSCommand {
-    pub work_order_number: String,
+    pub work_order_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct COGSResult {
-    pub work_order_number: String,
+    pub work_order_id: Uuid,
     pub total_cost: BigDecimal,
     pub quantity_produced: i32,
 }
@@ -49,7 +49,7 @@ pub struct COGSResult {
 #[async_trait::async_trait]
 impl Command for CalculateCOGSCommand {
     type Result = COGSResult;
-    
+
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(
         &self,
@@ -57,66 +57,71 @@ impl Command for CalculateCOGSCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
-        
+
         // Fetch the work order
-        let work_order = work_order_entity::Entity::find()
-            .filter(work_order_entity::Column::Id.eq(self.work_order_number.parse::<Uuid>().map_err(|_| ServiceError::ValidationError("Invalid work order number format".to_string()))?))
+        let work_order = work_order_entity::Entity::find_by_id(self.work_order_id)
             .one(&*db)
             .await
             .map_err(|e| {
                 COGS_CALCULATION_FAILURES.inc();
-                error!(
-                    "Failed to fetch work order {}: {}",
-                    self.work_order_number, e
-                );
-                ServiceError::DatabaseError(e)
+                error!("Failed to fetch work order {}: {}", self.work_order_id, e);
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
-                ServiceError::NotFound(format!("Work order {} not found", self.work_order_number))
+                ServiceError::NotFound(format!("Work order {} not found", self.work_order_id))
             })?;
 
         // Fetch the bill of materials
+        let bom_number = work_order.bill_of_materials_number.clone().ok_or_else(|| {
+            ServiceError::NotFound(format!(
+                "Work order {} has no bill of materials",
+                self.work_order_id
+            ))
+        })?;
         let bom = bill_of_materials_entity::Entity::find()
-            .filter(
-                bill_of_materials_entity::Column::Number
-                    .eq(work_order.bill_of_materials_number.clone()),
-            )
+            .filter(bill_of_materials_entity::Column::Number.eq(bom_number.clone()))
             .one(&*db)
             .await
-            .map_err(ServiceError::DatabaseError)?
-            .ok_or_else(|| ServiceError::NotFound(format!("Bill of materials not found for work order {}", self.work_order_number)))?;
-        
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!(
+                    "Bill of materials not found for work order {}",
+                    self.work_order_id
+                ))
+            })?;
+
         // Calculate total cost
         let total_cost = self.calculate_total_cost(&*db, &bom).await?;
-        
+
         // Calculate quantity produced - simplified version
         let quantity_produced = work_order.quantity_produced.unwrap_or(0);
-        
+
         let result = COGSResult {
-            work_order_number: self.work_order_number.clone(),
+            work_order_id: self.work_order_id,
             total_cost,
             quantity_produced,
         };
-        
+
         // Trigger an event indicating that COGS was calculated
         if let Err(e) = event_sender
             .send(Event::COGSCalculated {
-                work_order_id: self.work_order_number.parse::<Uuid>().unwrap_or_default(),
-                total_cogs: RustDecimal::from_str(&result.total_cost.to_string()).unwrap_or(RustDecimal::ZERO),
+                work_order_id: self.work_order_id,
+                total_cogs: RustDecimal::from_str(&result.total_cost.to_string())
+                    .unwrap_or(RustDecimal::ZERO),
             })
             .await
         {
             COGS_CALCULATION_FAILURES.inc();
             error!(
                 "Failed to send COGSCalculated event for work order {}: {}",
-                self.work_order_number, e
+                self.work_order_id, e
             );
             return Err(ServiceError::EventError(e.to_string()));
         }
-        
+
         COGS_CALCULATIONS.inc();
         info!(
-            work_order_number = %self.work_order_number,
+            work_order_id = %self.work_order_id,
             total_cost = %result.total_cost,
             quantity_produced = %result.quantity_produced,
             "COGS calculated successfully"
@@ -128,7 +133,7 @@ impl Command for CalculateCOGSCommand {
 impl CalculateCOGSCommand {
     async fn calculate_total_cost(
         &self,
-        db: &DatabaseTransaction,
+        db: &DatabaseConnection,
         bom: &bill_of_materials_entity::Model,
     ) -> Result<BigDecimal, ServiceError> {
         let bom_items = bom_item_entity::Entity::find()
@@ -137,13 +142,15 @@ impl CalculateCOGSCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch BOM items for BOM {}: {}", bom.number, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
-        
+
         let total_cost = stream::iter(bom_items)
             .map(|item| async move {
                 let component_cost = self.get_component_cost(db, &item.part_number).await?;
-                Ok::<BigDecimal, ServiceError>(component_cost * BigDecimal::from_f64(item.quantity).unwrap_or(BigDecimal::from(0)))
+                let quantity = BigDecimal::from_str(&item.quantity.to_string())
+                    .unwrap_or_else(|_| BigDecimal::from(0));
+                Ok::<BigDecimal, ServiceError>(component_cost * quantity)
             })
             .buffer_unordered(10) // Process up to 10 items concurrently
             .try_fold(
@@ -156,7 +163,7 @@ impl CalculateCOGSCommand {
 
     async fn get_component_cost(
         &self,
-        db: &DatabaseTransaction,
+        db: &DatabaseConnection,
         part_number: &str,
     ) -> Result<BigDecimal, ServiceError> {
         let latest_inventory = inventory_item_entity::Entity::find()
@@ -169,11 +176,15 @@ impl CalculateCOGSCommand {
                     "Failed to fetch latest inventory for part {}: {}",
                     part_number, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
-        
+
         match latest_inventory {
-            Some(inventory) => Ok(inventory.unit_cost),
+            Some(inventory) => {
+                let cost = BigDecimal::from_str(&inventory.unit_cost.to_string())
+                    .unwrap_or_else(|_| BigDecimal::from(0));
+                Ok(cost)
+            }
             None => {
                 error!("No inventory found for part number: {}", part_number);
                 Err(ServiceError::InvalidOperation(format!(

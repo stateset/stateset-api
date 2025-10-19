@@ -1,3 +1,5 @@
+#![cfg(feature = "demos")]
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -11,21 +13,31 @@ use tonic::transport::Endpoint;
 
 #[derive(Clone, Debug)]
 struct BenchConfig {
-    mode: String,                 // "grpc" or "http"
-    target: String,               // e.g., "http://127.0.0.1:8081" for gRPC
-    duration_secs: u64,           // test duration in seconds
-    concurrency: usize,           // number of concurrent workers
-    warmup_secs: u64,             // warmup duration in seconds
+    mode: String,       // "grpc" or "http"
+    target: String,     // e.g., "http://127.0.0.1:8081" for gRPC
+    duration_secs: u64, // test duration in seconds
+    concurrency: usize, // number of concurrent workers
+    warmup_secs: u64,   // warmup duration in seconds
 }
 
 impl BenchConfig {
     fn from_env_or_args() -> Self {
         // Very light CLI parsing without external deps
         let mut mode = std::env::var("MODE").unwrap_or_else(|_| "grpc".to_string());
-        let mut target = std::env::var("TARGET").unwrap_or_else(|_| "http://127.0.0.1:8081".to_string());
-        let mut duration_secs = std::env::var("DURATION_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(15);
-        let mut concurrency = std::env::var("CONCURRENCY").ok().and_then(|v| v.parse().ok()).unwrap_or(64);
-        let mut warmup_secs = std::env::var("WARMUP_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+        let mut target =
+            std::env::var("TARGET").unwrap_or_else(|_| "http://127.0.0.1:8081".to_string());
+        let mut duration_secs = std::env::var("DURATION_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(15);
+        let mut concurrency = std::env::var("CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(64);
+        let mut warmup_secs = std::env::var("WARMUP_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3);
 
         let args: Vec<String> = std::env::args().collect();
         let mut i = 1;
@@ -41,7 +53,13 @@ impl BenchConfig {
             i += 2;
         }
 
-        Self { mode, target, duration_secs, concurrency, warmup_secs }
+        Self {
+            mode,
+            target,
+            duration_secs,
+            concurrency,
+            warmup_secs,
+        }
     }
 }
 
@@ -161,7 +179,8 @@ async fn main() {
         let warmup_end = Instant::now() + Duration::from_secs(cfg.warmup_secs);
         let warmup_metrics = Arc::new(Mutex::new(Metrics::default()));
         let mut warmup_tasks = JoinSet::new();
-        for _ in 0..cfg.concurrency.min(8) { // keep warmup light
+        for _ in 0..cfg.concurrency.min(8) {
+            // keep warmup light
             let target = cfg.target.clone();
             let wm = warmup_metrics.clone();
             warmup_tasks.spawn(worker_grpc(target, warmup_end, wm));
@@ -183,7 +202,10 @@ async fn main() {
             }
         }
         other => {
-            eprintln!("Unsupported mode: {} (only 'grpc' is implemented in this bench)", other);
+            eprintln!(
+                "Unsupported mode: {} (only 'grpc' is implemented in this bench)",
+                other
+            );
             return;
         }
     }
@@ -205,8 +227,13 @@ async fn main() {
     let p99_ms = percentile(&mut lats, 0.99).unwrap_or(0.0);
 
     println!("\nResults:");
-    println!("  Total requests: {} (successes={} failures={})", total, successes, failures);
+    println!(
+        "  Total requests: {} (successes={} failures={})",
+        total, successes, failures
+    );
     println!("  Throughput: {:.2} orders/sec", rps);
-    println!("  Latency (ms): avg={:.2} p50={:.2} p95={:.2} p99={:.2}", avg_ms, p50_ms, p95_ms, p99_ms);
+    println!(
+        "  Latency (ms): avg={:.2} p50={:.2} p95={:.2} p99={:.2}",
+        avg_ms, p50_ms, p95_ms, p99_ms
+    );
 }
-#![cfg(feature = "demos")]

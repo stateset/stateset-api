@@ -200,4 +200,4 @@ pub struct Order {
     pub id: String,
     pub checkout_session_id: String,
     pub permalink_url: String,
-} 
+}

@@ -17,12 +17,6 @@ tower-http = { version = "0.5", features = ["cors", "compression-full", "trace"]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Database
-sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
-
-# Async
-async-trait = "0.1"
-
 # Utilities
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -48,7 +42,6 @@ redis = { version = "0.26", features = ["tokio-comp", "connection-manager", "aio
 
 # Error handling
 thiserror = "1.0"
-anyhow = "1.0"
 
 # HTTP
 http = "1.0"

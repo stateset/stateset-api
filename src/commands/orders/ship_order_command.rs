@@ -81,7 +81,7 @@ impl ShipOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 let msg = format!("Order {} not found", self.order_id);
@@ -106,7 +106,7 @@ impl ShipOrderCommand {
         order.update(db).await.map_err(|e| {
             let msg = format!("Failed to update order status: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

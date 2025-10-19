@@ -51,7 +51,7 @@ impl Command for GenerateSalesReportCommand {
             .await
             .map_err(|e| {
                 error!("Failed to calculate total sales: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .unwrap_or(0.0);
 

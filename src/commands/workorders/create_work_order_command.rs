@@ -53,7 +53,7 @@ impl Command for CreateWorkOrderCommand {
             .await
         {
             Ok(model) => model,
-            Err(e) => return Err(ServiceError::DatabaseError(e.to_string())),
+            Err(e) => return Err(ServiceError::db_error(e.to_string())),
         };
         self.log_and_trigger_event(event_sender, &work_order)
             .await?;
@@ -74,7 +74,7 @@ impl CreateWorkOrderCommand {
             created_at: Set(Utc::now()),
             ..Default::default()
         };
-        new_work_order.insert(txn).await.map_err(ServiceError::DatabaseError)
+        new_work_order.insert(txn).await.map_err(ServiceError::db_error)
     }
 
     async fn log_and_trigger_event(

@@ -1,9 +1,9 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use async_trait::async_trait;
 
 /// Status for inventory reservations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,19 +70,19 @@ impl ActiveModelBehavior for ActiveModel {
     {
         let mut active_model = self;
         let now = Utc::now();
-        
+
         if insert {
             active_model.created_at = Set(now);
-            
+
             // Generate UUID if not set
             if let ActiveValue::NotSet = active_model.id {
                 active_model.id = Set(Uuid::new_v4());
             }
         }
-        
+
         // Always update the updated_at timestamp
         active_model.updated_at = Set(Some(now));
-        
+
         Ok(active_model)
     }
 }

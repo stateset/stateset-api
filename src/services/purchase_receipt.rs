@@ -1,23 +1,23 @@
-use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, TransactionTrait,
-    QueryFilter, ColumnTrait, ModelTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
+    QueryFilter, TransactionTrait,
 };
+use std::sync::Arc;
 use tracing::{error, info, instrument};
 
 use crate::{
     entities::{
+        item_master::{self, Entity as ItemMasterEntity},
         po_receipt_headers::{self, Entity as ReceiptHeaderEntity},
         po_receipt_lines::{self, Entity as ReceiptLineEntity},
         purchase_order_headers::{self, Entity as POHeaderEntity},
         purchase_order_lines::{self, Entity as POLineEntity},
-        item_master::{self, Entity as ItemMasterEntity},
     },
     errors::ServiceError,
-    services::inventory_sync::{InventorySyncService, TransactionType},
     events::{Event, EventSender},
+    services::inventory_sync::{InventorySyncService, TransactionType},
 };
 
 /// Purchase order receipt service for receiving goods and updating inventory
@@ -51,7 +51,7 @@ impl PurchaseReceiptService {
         receipt_source: Option<String>,
     ) -> Result<po_receipt_headers::Model, ServiceError> {
         let db = &*self.db;
-        
+
         let receipt = po_receipt_headers::ActiveModel {
             shipment_header_id: Set(0), // Auto-generated
             receipt_num: Set(receipt_num.clone()),
@@ -64,7 +64,7 @@ impl PurchaseReceiptService {
 
         let created = receipt.insert(db).await.map_err(|e| {
             error!("Failed to create receipt header: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         info!("Receipt header created: {}", receipt_num);
@@ -82,39 +82,43 @@ impl PurchaseReceiptService {
         location_id: i32,
     ) -> Result<po_receipt_lines::Model, ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Verify receipt header exists
         let header = ReceiptHeaderEntity::find_by_id(shipment_header_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Receipt header {} not found", shipment_header_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Receipt header {} not found", shipment_header_id))
+            })?;
 
         // Get PO line details
         let po_line = POLineEntity::find_by_id(po_line_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound(format!("PO line {} not found", po_line_id)))?;
 
-        let item_id = po_line.item_id
+        let item_id = po_line
+            .item_id
             .ok_or_else(|| ServiceError::InvalidOperation("PO line has no item".to_string()))?;
 
         // Validate quantity doesn't exceed ordered quantity
         let ordered_quantity = po_line.quantity.unwrap_or(Decimal::ZERO);
-        
+
         // Get previously received quantity for this PO line
         let previous_receipts = ReceiptLineEntity::find()
             .filter(po_receipt_lines::Column::PoLineId.eq(po_line_id))
             .all(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
-        
-        let total_received: Decimal = previous_receipts.iter()
+            .map_err(|e| ServiceError::db_error(e))?;
+
+        let total_received: Decimal = previous_receipts
+            .iter()
             .map(|r| r.quantity_received.unwrap_or(Decimal::ZERO))
             .sum();
-        
+
         if total_received + quantity_received > ordered_quantity {
             return Err(ServiceError::InvalidOperation(
                 format!("Cannot receive more than ordered. Ordered: {}, Already received: {}, Trying to receive: {}",
@@ -136,7 +140,7 @@ impl PurchaseReceiptService {
 
         let created = receipt_line.insert(&txn).await.map_err(|e| {
             error!("Failed to create receipt line: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         // Update inventory
@@ -151,20 +155,24 @@ impl PurchaseReceiptService {
             )
             .await?;
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::PurchaseOrderReceived {
-                po_line_id,
-                item_id,
-                quantity: quantity_received,
-                location_id,
-            }).await;
+            let _ = sender
+                .send(Event::PurchaseOrderReceived {
+                    po_line_id,
+                    item_id,
+                    quantity: quantity_received,
+                    location_id,
+                })
+                .await;
         }
 
-        info!("PO line {} received: {} units of item {} at location {}", 
-            po_line_id, quantity_received, item_id, location_id);
+        info!(
+            "PO line {} received: {} units of item {} at location {}",
+            po_line_id, quantity_received, item_id, location_id
+        );
 
         Ok(created)
     }
@@ -180,14 +188,16 @@ impl PurchaseReceiptService {
         let mut received_lines = Vec::new();
 
         for line in lines {
-            let received = self.receive_po_line(
-                shipment_header_id,
-                line.po_header_id,
-                line.po_line_id,
-                line.quantity_received,
-                location_id,
-            ).await?;
-            
+            let received = self
+                .receive_po_line(
+                    shipment_header_id,
+                    line.po_header_id,
+                    line.po_line_id,
+                    line.quantity_received,
+                    location_id,
+                )
+                .await?;
+
             received_lines.push(received);
         }
 
@@ -204,24 +214,27 @@ impl PurchaseReceiptService {
         reason: String,
     ) -> Result<(), ServiceError> {
         let db = &*self.db;
-        
+
         // Get receipt line
         let receipt_line = ReceiptLineEntity::find_by_id(receipt_line_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Receipt line {} not found", receipt_line_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Receipt line {} not found", receipt_line_id))
+            })?;
 
-        let item_id = receipt_line.item_id
-            .ok_or_else(|| ServiceError::InvalidOperation("Receipt line has no item".to_string()))?;
-        
+        let item_id = receipt_line.item_id.ok_or_else(|| {
+            ServiceError::InvalidOperation("Receipt line has no item".to_string())
+        })?;
+
         let received_quantity = receipt_line.quantity_received.unwrap_or(Decimal::ZERO);
-        
+
         if return_quantity > received_quantity {
-            return Err(ServiceError::InvalidOperation(
-                format!("Cannot return more than received. Received: {}, Trying to return: {}",
-                    received_quantity, return_quantity)
-            ));
+            return Err(ServiceError::InvalidOperation(format!(
+                "Cannot return more than received. Received: {}, Trying to return: {}",
+                received_quantity, return_quantity
+            )));
         }
 
         // Update inventory (deduct returned quantity)
@@ -238,16 +251,20 @@ impl PurchaseReceiptService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::PurchaseOrderReturned {
-                receipt_line_id,
-                item_id,
-                quantity: return_quantity,
-                reason,
-            }).await;
+            let _ = sender
+                .send(Event::PurchaseOrderReturned {
+                    receipt_line_id,
+                    item_id,
+                    quantity: return_quantity,
+                    reason,
+                })
+                .await;
         }
 
-        info!("Returned {} units of item {} to vendor from receipt line {}", 
-            return_quantity, item_id, receipt_line_id);
+        info!(
+            "Returned {} units of item {} to vendor from receipt line {}",
+            return_quantity, item_id, receipt_line_id
+        );
 
         Ok(())
     }
@@ -259,13 +276,13 @@ impl PurchaseReceiptService {
         po_header_id: i64,
     ) -> Result<POReceiptStatus, ServiceError> {
         let db = &*self.db;
-        
+
         // Get PO lines
         let po_lines = POLineEntity::find()
             .filter(purchase_order_lines::Column::PoHeaderId.eq(po_header_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut total_ordered = Decimal::ZERO;
         let mut total_received = Decimal::ZERO;
@@ -279,12 +296,13 @@ impl PurchaseReceiptService {
                 .filter(po_receipt_lines::Column::PoLineId.eq(line.po_line_id))
                 .all(db)
                 .await
-                .map_err(|e| ServiceError::DatabaseError(e))?;
+                .map_err(|e| ServiceError::db_error(e))?;
 
-            let line_received: Decimal = receipts.iter()
+            let line_received: Decimal = receipts
+                .iter()
                 .map(|r| r.quantity_received.unwrap_or(Decimal::ZERO))
                 .sum();
-            
+
             total_received += line_received;
         }
 

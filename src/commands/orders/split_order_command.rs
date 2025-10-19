@@ -122,7 +122,7 @@ impl SplitOrderCommand {
                 };
                 
                 let new_order = new_order.insert(txn).await
-                    .map_err(|e| ServiceError::DatabaseError(e))?;
+                    .map_err(|e| ServiceError::db_error(e))?;
                 
                 split_orders.push(new_order);
                 
@@ -133,7 +133,7 @@ impl SplitOrderCommand {
         .map_err(|e| {
             error!("Transaction failed for order split: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })
@@ -148,7 +148,7 @@ impl SplitOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Order {} not found", self.order_id);
@@ -166,7 +166,7 @@ impl SplitOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch order items for order {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 
@@ -200,7 +200,7 @@ impl SplitOrderCommand {
 
         new_order.insert(txn).await.map_err(|e| {
             error!("Failed to create new order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -215,7 +215,7 @@ impl SplitOrderCommand {
             item.order_id = Set(new_order.id);
             item.update(txn).await.map_err(|e| {
                 error!("Failed to update item for new order: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         }
         Ok(())
@@ -232,7 +232,7 @@ impl SplitOrderCommand {
         // For example, you might want to update the total price or item count
         original_order.update(txn).await.map_err(|e| {
             error!("Failed to update original order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -272,7 +272,7 @@ impl SplitOrderCommand {
 
         new_note.insert(txn).await.map_err(|e| {
             error!("Failed to create order note: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(())

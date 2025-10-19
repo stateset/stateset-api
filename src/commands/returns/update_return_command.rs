@@ -5,7 +5,7 @@ use crate::{
     events::{Event, EventSender},
     models::return_entity::{self, Entity as Return},
 };
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -17,14 +17,13 @@ pub struct UpdateReturnCommand {
     pub return_id: Uuid,
     #[validate(length(min = 1))]
     pub reason: Option<String>,
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateReturnResult {
     pub id: Uuid,
-    pub reason: Option<String>,
-    pub description: Option<String>,
+    pub reason: String,
+    pub updated_at: chrono::NaiveDateTime,
 }
 
 #[async_trait::async_trait]
@@ -51,8 +50,8 @@ impl Command for UpdateReturnCommand {
             .map_err(ServiceError::EventError)?;
 
         Ok(UpdateReturnResult {
-            id: Uuid::parse_str(&updated.id).unwrap_or_else(|_| Uuid::new_v4()),
-            reason: Some(updated.reason),
+            id: updated.id,
+            reason: updated.reason,
             updated_at: updated.updated_at,
         })
     }
@@ -69,7 +68,7 @@ impl UpdateReturnCommand {
             .map_err(|e| {
                 let msg = format!("Failed to fetch return request: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return {} not found", self.return_id);
@@ -86,7 +85,7 @@ impl UpdateReturnCommand {
         active.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return {}: {}", self.return_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 }

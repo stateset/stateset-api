@@ -38,4 +38,3 @@ pub async fn security_headers_middleware(mut req: Request, next: Next) -> Respon
 
     res
 }
-

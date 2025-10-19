@@ -8,7 +8,7 @@ use crate::{
         return_entity::{self, Entity as Return},
     },
 };
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -55,7 +55,7 @@ impl Command for RejectReturnCommand {
             .await?;
 
         Ok(RejectReturnResult {
-            id: Uuid::parse_str(&rejected_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+            id: rejected_return.id,
             object: "return".to_string(),
             rejected: true,
             reason: self.reason.clone(),
@@ -74,7 +74,7 @@ impl RejectReturnCommand {
             .map_err(|e| {
                 let msg = format!("Failed to find return request: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return {} not found", self.return_id);
@@ -83,13 +83,13 @@ impl RejectReturnCommand {
             })?;
 
         let mut return_request: return_entity::ActiveModel = return_request.into();
-        return_request.status = Set(ReturnStatus::Rejected);
+        return_request.status = Set(ReturnStatus::Rejected.as_str().to_owned());
         return_request.reason = Set(self.reason.clone());
 
         let updated_return = return_request.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return {}: {}", self.return_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(updated_return)

@@ -3,16 +3,9 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Event {
-    CheckoutStarted {
-        session_id: Uuid,
-    },
-    CheckoutCompleted {
-        session_id: Uuid,
-        order_id: Uuid,
-    },
-    OrderCreated {
-        order_id: Uuid,
-    },
+    CheckoutStarted { session_id: Uuid },
+    CheckoutCompleted { session_id: Uuid, order_id: Uuid },
+    OrderCreated { order_id: Uuid },
 }
 
 #[derive(Clone)]
@@ -30,4 +23,4 @@ impl EventSender {
             eprintln!("Failed to send event: {}", e);
         }
     }
-} 
+}

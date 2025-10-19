@@ -21,10 +21,10 @@ impl RateLimiter {
     pub fn new(requests_per_minute: u32) -> Self {
         let quota = Quota::per_minute(NonZeroU32::new(requests_per_minute).unwrap());
         let limiter = Arc::new(GovernorRateLimiter::direct(quota));
-        
+
         Self { limiter }
     }
-    
+
     pub fn check(&self) -> bool {
         self.limiter.check().is_ok()
     }
@@ -51,10 +51,11 @@ pub async fn rate_limit_middleware(
                 "type": "rate_limit_exceeded",
                 "code": "rate_limit_exceeded",
                 "message": "Too many requests. Please try again later."
-            }))
-        ).into_response();
+            })),
+        )
+            .into_response();
     }
-    
+
     next.run(request).await
 }
 
@@ -65,8 +66,8 @@ mod tests {
     #[test]
     fn test_rate_limiter() {
         let limiter = RateLimiter::new(60); // 60 requests per minute
-        
+
         // First request should succeed
         assert!(limiter.check());
     }
-} 
+}

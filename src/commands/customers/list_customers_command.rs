@@ -47,7 +47,7 @@ impl Command for ListCustomersCommand {
         let customers = query.all(db).await.map_err(|e| {
             let msg = format!("Failed to list customers: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
 
         info!(count = customers.len(), "Listed customers");

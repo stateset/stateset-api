@@ -147,6 +147,13 @@ StateSet API provides a rich set of RESTful endpoints:
 ### Authentication
 - `POST /auth/login` - Authenticate user and get JWT token
 - `POST /auth/register` - Register a new user
+- `POST /auth/logout` - Revoke the current access token and all associated refresh tokens
+- `POST /auth/password/change` - Change the password for the authenticated user
+- `POST /auth/password/reset/request` - Request a password reset token (delivered via email in production)
+- `POST /auth/password/reset/confirm` - Complete a password reset with the issued token
+- `GET /auth/api-keys` - List API keys for the authenticated user (requires `api-keys:read`)
+- `POST /auth/api-keys` - Issue a new API key (requires `api-keys:create`)
+- `DELETE /auth/api-keys/{id}` - Revoke an API key (requires `api-keys:delete`)
 
 #### Auth and Permissions
 - Use `POST /api/v1/auth/login` with `{ email, password }` to obtain a JWT `access_token` and `refresh_token`.

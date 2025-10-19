@@ -1,7 +1,7 @@
 use crate::errors::ServiceError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{info, warn, instrument};
+use tracing::{info, instrument, warn};
 
 /// Stripe configuration
 #[derive(Clone)]
@@ -12,13 +12,14 @@ pub struct StripeConfig {
 
 impl StripeConfig {
     pub fn from_env() -> Result<Self, ServiceError> {
-        let secret_key = std::env::var("STRIPE_SECRET_KEY")
-            .map_err(|_| ServiceError::InternalError(
-                "STRIPE_SECRET_KEY environment variable not set".to_string()
-            ))?;
-        
+        let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| {
+            ServiceError::InternalError(
+                "STRIPE_SECRET_KEY environment variable not set".to_string(),
+            )
+        })?;
+
         let publishable_key = std::env::var("STRIPE_PUBLISHABLE_KEY").ok();
-        
+
         Ok(Self {
             secret_key,
             publishable_key,
@@ -40,7 +41,7 @@ impl StripePaymentProcessor {
             client: reqwest::Client::new(),
         }
     }
-    
+
     /// Process payment using SharedPaymentToken
     #[instrument(skip(self))]
     pub async fn process_shared_payment_token(
@@ -50,76 +51,89 @@ impl StripePaymentProcessor {
         currency: &str,
         metadata: HashMap<String, String>,
     ) -> Result<PaymentIntentResponse, ServiceError> {
-        info!("Processing SharedPaymentToken: {} for amount {}", token, amount);
-        
+        info!(
+            "Processing SharedPaymentToken: {} for amount {}",
+            token, amount
+        );
+
         // Create PaymentIntent with SharedPaymentToken
-        let mut params = HashMap::new();
-        params.insert("amount", amount.to_string());
-        params.insert("currency", currency.to_string());
-        params.insert("shared_payment_token", token.to_string());
-        params.insert("confirm", "true".to_string());
-        
+        let mut params: HashMap<String, String> = HashMap::new();
+        params.insert("amount".to_string(), amount.to_string());
+        params.insert("currency".to_string(), currency.to_string());
+        params.insert("shared_payment_token".to_string(), token.to_string());
+        params.insert("confirm".to_string(), "true".to_string());
+
         // Add metadata
         for (key, value) in metadata {
             params.insert(format!("metadata[{}]", key), value);
         }
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post("https://api.stripe.com/v1/payment_intents")
             .basic_auth(&self.config.secret_key, Some(""))
             .form(&params)
             .send()
             .await
             .map_err(|e| ServiceError::InternalError(format!("Stripe API error: {}", e)))?;
-        
+
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             warn!("Stripe API error: {}", error_text);
-            return Err(ServiceError::PaymentFailed(format!("Stripe error: {}", error_text)));
+            return Err(ServiceError::PaymentFailed(format!(
+                "Stripe error: {}",
+                error_text
+            )));
         }
-        
-        let payment_intent: PaymentIntentResponse = response
-            .json()
-            .await
-            .map_err(|e| ServiceError::ParseError(format!("Failed to parse Stripe response: {}", e)))?;
-        
+
+        let payment_intent: PaymentIntentResponse = response.json().await.map_err(|e| {
+            ServiceError::ParseError(format!("Failed to parse Stripe response: {}", e))
+        })?;
+
         info!("PaymentIntent created: {}", payment_intent.id);
         Ok(payment_intent)
     }
-    
+
     /// Retrieve granted token details (risk assessment)
     #[instrument(skip(self))]
     pub async fn get_granted_token(
         &self,
         token_id: &str,
     ) -> Result<GrantedTokenResponse, ServiceError> {
-        let url = format!("https://api.stripe.com/v1/shared_payment/granted_tokens/{}", token_id);
-        
-        let response = self.client
+        let url = format!(
+            "https://api.stripe.com/v1/shared_payment/granted_tokens/{}",
+            token_id
+        );
+
+        let response = self
+            .client
             .get(&url)
             .basic_auth(&self.config.secret_key, Some(""))
             .send()
             .await
             .map_err(|e| ServiceError::InternalError(format!("Stripe API error: {}", e)))?;
-        
+
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(ServiceError::NotFound(format!("Token not found: {}", error_text)));
+            return Err(ServiceError::NotFound(format!(
+                "Token not found: {}",
+                error_text
+            )));
         }
-        
+
         let token: GrantedTokenResponse = response
             .json()
             .await
             .map_err(|e| ServiceError::ParseError(format!("Failed to parse response: {}", e)))?;
-        
+
         Ok(token)
     }
-    
+
     /// Assess risk from granted token
     pub fn assess_risk(&self, token: &GrantedTokenResponse) -> RiskAssessment {
         let mut should_block = false;
         let mut warnings = Vec::new();
-        
+
         if let Some(risks) = &token.risk_details {
             // Check fraudulent dispute risk
             if let Some(fraud_score) = risks.fraudulent_dispute {
@@ -130,7 +144,7 @@ impl StripePaymentProcessor {
                     warnings.push("Moderate fraudulent dispute risk".to_string());
                 }
             }
-            
+
             // Check stolen card risk
             if let Some(stolen_score) = risks.stolen_card {
                 if stolen_score > 75 {
@@ -138,7 +152,7 @@ impl StripePaymentProcessor {
                     warnings.push("High stolen card risk".to_string());
                 }
             }
-            
+
             // Check card testing
             if let Some(testing_score) = risks.card_testing {
                 if testing_score > 0.8 {
@@ -147,39 +161,46 @@ impl StripePaymentProcessor {
                 }
             }
         }
-        
+
         RiskAssessment {
             should_block,
             warnings,
             recommendation: if should_block { "block" } else { "continue" }.to_string(),
         }
     }
-    
+
     /// Capture a payment intent
     #[instrument(skip(self))]
     pub async fn capture_payment(
         &self,
         payment_intent_id: &str,
     ) -> Result<PaymentIntentResponse, ServiceError> {
-        let url = format!("https://api.stripe.com/v1/payment_intents/{}/capture", payment_intent_id);
-        
-        let response = self.client
+        let url = format!(
+            "https://api.stripe.com/v1/payment_intents/{}/capture",
+            payment_intent_id
+        );
+
+        let response = self
+            .client
             .post(&url)
             .basic_auth(&self.config.secret_key, Some(""))
             .send()
             .await
             .map_err(|e| ServiceError::InternalError(format!("Stripe API error: {}", e)))?;
-        
+
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(ServiceError::PaymentFailed(format!("Capture failed: {}", error_text)));
+            return Err(ServiceError::PaymentFailed(format!(
+                "Capture failed: {}",
+                error_text
+            )));
         }
-        
+
         let payment_intent: PaymentIntentResponse = response
             .json()
             .await
             .map_err(|e| ServiceError::ParseError(format!("Failed to parse response: {}", e)))?;
-        
+
         info!("Payment captured: {}", payment_intent.id);
         Ok(payment_intent)
     }
@@ -228,11 +249,11 @@ pub struct UsageLimits {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RiskDetails {
-    pub fraudulent_dispute: Option<i32>, // 0-100
-    pub card_testing: Option<f32>, // 0.0-1.0
-    pub stolen_card: Option<i32>, // 0-100
+    pub fraudulent_dispute: Option<i32>,  // 0-100
+    pub card_testing: Option<f32>,        // 0.0-1.0
+    pub stolen_card: Option<i32>,         // 0-100
     pub card_issuer_decline: Option<f32>, // 0.0-1.0
-    pub bot: Option<f32>, // 0.0-1.0
+    pub bot: Option<f32>,                 // 0.0-1.0
 }
 
 #[derive(Debug)]
@@ -240,32 +261,6 @@ pub struct RiskAssessment {
     pub should_block: bool,
     pub warnings: Vec<String>,
     pub recommendation: String, // "block" or "continue"
-}
-
-/// Mock implementation for testing (when Stripe key not available)
-pub struct MockStripeProcessor;
-
-impl MockStripeProcessor {
-    pub async fn process_shared_payment_token(
-        &self,
-        token: &str,
-        amount: i64,
-        currency: &str,
-        _metadata: HashMap<String, String>,
-    ) -> Result<PaymentIntentResponse, ServiceError> {
-        info!("Mock: Processing SharedPaymentToken: {} for ${}", token, amount as f64 / 100.0);
-        
-        // Simulate payment processing
-        Ok(PaymentIntentResponse {
-            id: format!("pi_mock_{}", uuid::Uuid::new_v4()),
-            object: "payment_intent".to_string(),
-            amount,
-            currency: currency.to_string(),
-            status: "succeeded".to_string(),
-            payment_method: Some(format!("pm_mock_{}", uuid::Uuid::new_v4())),
-            client_secret: None,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -297,7 +292,7 @@ mod tests {
                 bot: Some(0.02),
             }),
         };
-        
+
         let processor = StripePaymentProcessor {
             config: StripeConfig {
                 secret_key: "sk_test_123".to_string(),
@@ -305,7 +300,7 @@ mod tests {
             },
             client: reqwest::Client::new(),
         };
-        
+
         let assessment = processor.assess_risk(&token);
         assert!(!assessment.should_block);
         assert_eq!(assessment.recommendation, "continue");
@@ -330,13 +325,13 @@ mod tests {
             },
             risk_details: Some(RiskDetails {
                 fraudulent_dispute: Some(90), // High risk!
-                card_testing: Some(0.9), // High risk!
-                stolen_card: Some(85), // High risk!
+                card_testing: Some(0.9),      // High risk!
+                stolen_card: Some(85),        // High risk!
                 card_issuer_decline: Some(0.5),
                 bot: Some(0.3),
             }),
         };
-        
+
         let processor = StripePaymentProcessor {
             config: StripeConfig {
                 secret_key: "sk_test_123".to_string(),
@@ -344,10 +339,10 @@ mod tests {
             },
             client: reqwest::Client::new(),
         };
-        
+
         let assessment = processor.assess_risk(&token);
         assert!(assessment.should_block);
         assert_eq!(assessment.recommendation, "block");
         assert!(!assessment.warnings.is_empty());
     }
-} 
+}

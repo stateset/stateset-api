@@ -52,7 +52,7 @@ impl Command for AddComponentToBOMCommand {
                     self.component_id, self.bom_id, e
                 );
                 match e {
-                    TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                    TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                     TransactionError::Transaction(service_err) => service_err,
                 }
             })?;
@@ -84,7 +84,7 @@ impl AddComponentToBOMCommand {
                 "Failed to add component {} to BOM ID {}: {}",
                 self.component_id, self.bom_id, e
             );
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

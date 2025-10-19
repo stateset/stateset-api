@@ -40,7 +40,7 @@ impl Query for GetManufactureOrderByIdQuery {
         ManufactureOrder::find_by_id(self.order_id.clone())
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Not found".to_string()))
     }
 }
@@ -65,7 +65,7 @@ impl Query for GetManufactureOrdersByStatusQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -99,14 +99,14 @@ impl Query for GetManufactureOrderDetailsQuery {
         let order = ManufactureOrder::find_by_id(self.order_id.clone())
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Resource not found".to_string()))?;
 
         // Note: manufacture_orders doesn't have a product_id field
         // let product = ProductEntity::find_by_id(order.product_id)
         //     .one(db_pool)
         //     .await
-        //     .map_err(|e| ServiceError::DatabaseError(e))?
+        //     .map_err(|e| ServiceError::db_error(e))?
         //     .ok_or_else(|| ServiceError::NotFound("Resource not found".to_string()))?;
 
         let components = ManufactureOrderComponentEntity::find()
@@ -115,7 +115,7 @@ impl Query for GetManufactureOrderDetailsQuery {
             )
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let manufacture_components = components
             .into_iter()
@@ -160,21 +160,21 @@ impl Query for GetManufactureOrderEfficiencyQuery {
             .filter(crate::models::manufacture_orders::Column::CreatedOn.between(self.start_date, self.end_date))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let completed_orders = ManufactureOrder::find()
             .filter(crate::models::manufacture_orders::Column::CreatedOn.between(self.start_date, self.end_date))
             .filter(crate::models::manufacture_orders::Column::Priority.eq("Completed"))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let on_time_completions = ManufactureOrder::find()
             .filter(crate::models::manufacture_orders::Column::CreatedOn.between(self.start_date, self.end_date))
             .filter(crate::models::manufacture_orders::Column::Priority.eq("Completed"))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let on_time_completion_rate = if completed_orders > 0 {
             on_time_completions as f64 / completed_orders as f64
@@ -193,7 +193,7 @@ impl Query for GetManufactureOrderEfficiencyQuery {
             .into_tuple()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .unwrap_or(0.0);
 
         Ok(ManufactureOrderEfficiency {
@@ -240,7 +240,7 @@ impl Query for GetResourceUtilizationQuery {
         //     )
             // .all(db_pool)
             // .await
-            // .map_err(|_| ServiceError::DatabaseError)?;
+            // .map_err(|_| ServiceError::db_error)?;
 
         let _total_hours = (self.end_date - self.start_date).num_hours() as f64;
 

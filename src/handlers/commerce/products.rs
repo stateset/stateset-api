@@ -16,7 +16,6 @@ use axum::{
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use tracing::info;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
@@ -30,7 +29,7 @@ fn validate_decimal_min_zero(value: &Decimal) -> Result<(), ValidationError> {
 }
 
 /// Creates the router for product endpoints
-pub fn products_routes() -> Router<Arc<AppState>> {
+pub fn products_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_products))
         .route("/", post(create_product))
@@ -44,7 +43,7 @@ pub fn products_routes() -> Router<Arc<AppState>> {
 /// Create a new product
 async fn create_product(
     _user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateProductRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     validate_input(&payload)?;
@@ -70,7 +69,7 @@ async fn create_product(
 
 /// Get a product by ID
 async fn get_product(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let product = state
@@ -85,7 +84,7 @@ async fn get_product(
 
 /// Get product variants
 async fn get_product_variants(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let variants = state
@@ -101,7 +100,7 @@ async fn get_product_variants(
 /// Create a product variant
 async fn create_variant(
     _user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(product_id): Path<Uuid>,
     Json(payload): Json<CreateVariantRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -134,7 +133,7 @@ async fn create_variant(
 /// Update variant price
 async fn update_variant_price(
     _user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(variant_id): Path<Uuid>,
     Json(payload): Json<UpdatePriceRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -154,7 +153,7 @@ async fn update_variant_price(
 
 /// Search products
 async fn search_products(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Query(query): Query<ProductSearchQuery>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let result = state
@@ -169,7 +168,7 @@ async fn search_products(
 
 /// List all products with pagination
 async fn list_products(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let query = ProductSearchQuery {
@@ -244,4 +243,4 @@ pub struct CreateVariantRequest {
 pub struct UpdatePriceRequest {
     #[validate(custom = "validate_decimal_min_zero")]
     pub price: Decimal,
-} 
+}

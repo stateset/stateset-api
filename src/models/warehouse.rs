@@ -9,22 +9,22 @@ use validator::Validate;
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     #[validate(length(min = 1, max = 100))]
     pub name: String,
-    
+
     pub address: Option<String>,
-    
+
     pub city: Option<String>,
-    
+
     pub state: Option<String>,
-    
+
     pub country: Option<String>,
-    
+
     pub postal_code: Option<String>,
-    
+
     pub created_at: DateTime<Utc>,
-    
+
     pub updated_at: DateTime<Utc>,
 }
 

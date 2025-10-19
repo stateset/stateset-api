@@ -39,18 +39,18 @@
  * ```
  */
 use axum::{
-    extract::{Request},
-    http::{Response, StatusCode, HeaderMap},
+    extract::Request,
+    http::{HeaderMap, Response, StatusCode},
     middleware::Next,
     response::IntoResponse,
 };
 use dashmap::DashMap;
-use std::collections::HashMap;
+use metrics::counter;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
-use metrics::counter;
 use tracing::{debug, info, warn};
 
 // In-memory rate limiter implementation
@@ -83,7 +83,7 @@ impl RateLimitEntry {
 
     fn increment(&mut self, window_duration: Duration) {
         let now = Instant::now();
-        
+
         // Reset if window has expired
         if now.duration_since(self.window_start) >= window_duration {
             self.count = 1;
@@ -91,18 +91,18 @@ impl RateLimitEntry {
         } else {
             self.count += 1;
         }
-        
+
         self.last_request = now;
     }
 
     fn is_allowed(&self, limit: u32, window_duration: Duration) -> bool {
         let now = Instant::now();
-        
+
         // If window has expired, allow the request
         if now.duration_since(self.window_start) >= window_duration {
             return true;
         }
-        
+
         // Check if under limit
         self.count <= limit
     }
@@ -151,8 +151,11 @@ impl RateLimiter {
     }
 
     pub async fn check_rate_limit(&self, key: &str) -> Result<RateLimitResult, RateLimitError> {
-        let mut entry = self.entries.entry(key.to_string()).or_insert_with(RateLimitEntry::new);
-        
+        let mut entry = self
+            .entries
+            .entry(key.to_string())
+            .or_insert_with(RateLimitEntry::new);
+
         // Check if request is allowed
         if !entry.is_allowed(self.config.requests_per_window, self.config.window_duration) {
             let time_until_reset = entry.time_until_reset(self.config.window_duration);
@@ -198,10 +201,9 @@ impl RateLimiter {
     pub async fn cleanup_expired(&self) {
         let now = Instant::now();
         let window_duration = self.config.window_duration;
-        
-        self.entries.retain(|_, entry| {
-            now.duration_since(entry.window_start) < window_duration * 2
-        });
+
+        self.entries
+            .retain(|_, entry| now.duration_since(entry.window_start) < window_duration * 2);
     }
 }
 
@@ -230,13 +232,13 @@ pub fn extract_ip_key(request: &Request) -> String {
             }
         }
     }
-    
+
     if let Some(real_ip) = request.headers().get("x-real-ip") {
         if let Ok(ip_str) = real_ip.to_str() {
             return format!("ip:{}", ip_str);
         }
     }
-    
+
     // Fallback to connection info (this would need to be passed through middleware state)
     "ip:unknown".to_string()
 }
@@ -246,16 +248,19 @@ pub fn extract_user_key(request: &Request) -> Option<String> {
     if let Some(auth) = request.headers().get("authorization") {
         if let Ok(auth_str) = auth.to_str() {
             // Simple extraction - in real implementation you'd decode JWT token
-            return Some(format!("user:{}", auth_str.chars().take(20).collect::<String>()));
+            return Some(format!(
+                "user:{}",
+                auth_str.chars().take(20).collect::<String>()
+            ));
         }
     }
-    
+
     if let Some(user_id) = request.headers().get("x-user-id") {
         if let Ok(user_str) = user_id.to_str() {
             return Some(format!("user:{}", user_str));
         }
     }
-    
+
     None
 }
 
@@ -265,7 +270,7 @@ pub fn extract_api_key(request: &Request) -> Option<String> {
             return Some(format!("api_key:{}", key_str));
         }
     }
-    
+
     None
 }
 
@@ -277,7 +282,7 @@ pub async fn rate_limit_middleware(
     // This is a simplified middleware - in practice you'd inject the rate limiter
     let config = RateLimitConfig::default();
     let rate_limiter = RateLimiter::new(config.clone());
-    
+
     // Extract key (prefer API key, then user, then IP)
     let key = if let Some(k) = extract_api_key(&request) {
         k
@@ -286,37 +291,52 @@ pub async fn rate_limit_middleware(
     } else {
         extract_ip_key(&request)
     };
-    
+
     // Check rate limit
     match rate_limiter.check_rate_limit(&key).await {
         Ok(result) => {
             if !result.allowed {
                 warn!("Rate limit exceeded for key: {}", key);
-                
+
                 let mut response = Response::new(axum::body::Body::from("Rate limit exceeded"));
                 *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
-                
+
                 if config.enable_headers {
                     let headers = response.headers_mut();
-                    headers.insert("X-RateLimit-Limit", result.limit.to_string().parse().unwrap());
+                    headers.insert(
+                        "X-RateLimit-Limit",
+                        result.limit.to_string().parse().unwrap(),
+                    );
                     headers.insert("X-RateLimit-Remaining", "0".parse().unwrap());
-                    headers.insert("X-RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                    headers.insert(
+                        "X-RateLimit-Reset",
+                        result.reset_time.as_secs().to_string().parse().unwrap(),
+                    );
                 }
-                
+
                 return Err(response);
             }
-            
+
             // Process request
             let mut response = next.run(request).await;
-            
+
             // Add rate limit headers to successful response
             if config.enable_headers {
                 let headers = response.headers_mut();
-                headers.insert("X-RateLimit-Limit", result.limit.to_string().parse().unwrap());
-                headers.insert("X-RateLimit-Remaining", result.remaining.to_string().parse().unwrap());
-                headers.insert("X-RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                headers.insert(
+                    "X-RateLimit-Limit",
+                    result.limit.to_string().parse().unwrap(),
+                );
+                headers.insert(
+                    "X-RateLimit-Remaining",
+                    result.remaining.to_string().parse().unwrap(),
+                );
+                headers.insert(
+                    "X-RateLimit-Reset",
+                    result.reset_time.as_secs().to_string().parse().unwrap(),
+                );
             }
-            
+
             Ok(response)
         }
         Err(e) => {
@@ -392,9 +412,14 @@ where
 {
     type Response = Response<axum::body::Body>;
     type Error = S::Error;
-    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
@@ -408,7 +433,13 @@ where
         Box::pin(async move {
             // Skip certain paths entirely
             let path = request.uri().path().to_string();
-            if path.starts_with("/health") || path == "/metrics" || path.starts_with("/metrics/") || path.starts_with("/docs") || path.starts_with("/api-docs") || path.starts_with("/api/versions") {
+            if path.starts_with("/health")
+                || path == "/metrics"
+                || path.starts_with("/metrics/")
+                || path.starts_with("/docs")
+                || path.starts_with("/api-docs")
+                || path.starts_with("/api/versions")
+            {
                 return inner.call(request).await;
             }
 
@@ -451,7 +482,10 @@ where
             }
 
             // Use a temporary limiter if overrides differ
-            let limiter = if effective.requests_per_window != rate_limiter.config.requests_per_window || effective.window_duration != rate_limiter.config.window_duration {
+            let limiter = if effective.requests_per_window
+                != rate_limiter.config.requests_per_window
+                || effective.window_duration != rate_limiter.config.window_duration
+            {
                 RateLimiter::new(effective)
             } else {
                 rate_limiter.clone()
@@ -482,24 +516,37 @@ where
                             use crate::metrics::increment_counter;
                             increment_counter("rate_limit_denied_total");
                         };
-                        
-                        let mut response = Response::new(axum::body::Body::from("Rate limit exceeded"));
+
+                        let mut response =
+                            Response::new(axum::body::Body::from("Rate limit exceeded"));
                         *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
-                        
+
                         if rate_limiter.config.enable_headers {
                             let headers = response.headers_mut();
-                            let _ = headers.insert("X-RateLimit-Limit", result.limit.to_string().parse().unwrap());
+                            let _ = headers.insert(
+                                "X-RateLimit-Limit",
+                                result.limit.to_string().parse().unwrap(),
+                            );
                             let _ = headers.insert("X-RateLimit-Remaining", "0".parse().unwrap());
-                            let _ = headers.insert("X-RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                            let _ = headers.insert(
+                                "X-RateLimit-Reset",
+                                result.reset_time.as_secs().to_string().parse().unwrap(),
+                            );
                             // RFC 9447 headers
-                            let _ = headers.insert("RateLimit-Limit", result.limit.to_string().parse().unwrap());
+                            let _ = headers.insert(
+                                "RateLimit-Limit",
+                                result.limit.to_string().parse().unwrap(),
+                            );
                             let _ = headers.insert("RateLimit-Remaining", "0".parse().unwrap());
-                            let _ = headers.insert("RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                            let _ = headers.insert(
+                                "RateLimit-Reset",
+                                result.reset_time.as_secs().to_string().parse().unwrap(),
+                            );
                         }
-                        
+
                         return Ok(response);
                     }
-                    
+
                     // Process request
                     let mut response = inner.call(request).await?;
                     // Emit allowed metric
@@ -521,19 +568,35 @@ where
                         use crate::metrics::increment_counter;
                         increment_counter("rate_limit_allowed_total");
                     };
-                    
+
                     // Add rate limit headers to successful response
                     if rate_limiter.config.enable_headers {
                         let headers = response.headers_mut();
-                        let _ = headers.insert("X-RateLimit-Limit", result.limit.to_string().parse().unwrap());
-                        let _ = headers.insert("X-RateLimit-Remaining", result.remaining.to_string().parse().unwrap());
-                        let _ = headers.insert("X-RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                        let _ = headers.insert(
+                            "X-RateLimit-Limit",
+                            result.limit.to_string().parse().unwrap(),
+                        );
+                        let _ = headers.insert(
+                            "X-RateLimit-Remaining",
+                            result.remaining.to_string().parse().unwrap(),
+                        );
+                        let _ = headers.insert(
+                            "X-RateLimit-Reset",
+                            result.reset_time.as_secs().to_string().parse().unwrap(),
+                        );
                         // RFC 9447
-                        let _ = headers.insert("RateLimit-Limit", result.limit.to_string().parse().unwrap());
-                        let _ = headers.insert("RateLimit-Remaining", result.remaining.to_string().parse().unwrap());
-                        let _ = headers.insert("RateLimit-Reset", result.reset_time.as_secs().to_string().parse().unwrap());
+                        let _ = headers
+                            .insert("RateLimit-Limit", result.limit.to_string().parse().unwrap());
+                        let _ = headers.insert(
+                            "RateLimit-Remaining",
+                            result.remaining.to_string().parse().unwrap(),
+                        );
+                        let _ = headers.insert(
+                            "RateLimit-Reset",
+                            result.reset_time.as_secs().to_string().parse().unwrap(),
+                        );
                     }
-                    
+
                     Ok(response)
                 }
                 Err(e) => {
@@ -549,7 +612,7 @@ where
 // Background cleanup task
 pub async fn start_cleanup_task(rate_limiter: RateLimiter, interval: Duration) {
     let mut interval_timer = tokio::time::interval(interval);
-    
+
     loop {
         interval_timer.tick().await;
         rate_limiter.cleanup_expired().await;
@@ -582,8 +645,12 @@ impl IntoResponse for RateLimitError {
     fn into_response(self) -> axum::response::Response {
         let (status, message) = match self {
             RateLimitError::LimitExceeded => (StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"),
-            RateLimitError::InvalidConfig(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Invalid configuration"),
-            RateLimitError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+            RateLimitError::InvalidConfig(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Invalid configuration")
+            }
+            RateLimitError::InternalError(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal error")
+            }
         };
 
         (status, message).into_response()
@@ -611,7 +678,9 @@ impl RateLimitStats {
 
     pub fn calculate_success_rate(&mut self) {
         if self.total_requests > 0 {
-            self.success_rate = ((self.total_requests - self.blocked_requests) as f64 / self.total_requests as f64) * 100.0;
+            self.success_rate = ((self.total_requests - self.blocked_requests) as f64
+                / self.total_requests as f64)
+                * 100.0;
         }
     }
 }

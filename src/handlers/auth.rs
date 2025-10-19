@@ -21,7 +21,7 @@ use axum::{
     Router,
 };
 use chrono::{Duration, Utc};
-use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header, Validation, decode};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -29,10 +29,10 @@ use uuid::Uuid;
 /// JWT Claims structure
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,    // Subject (user ID)
-    pub email: String,  // User email
-    pub exp: usize,     // Expiration time
-    pub iat: usize,     // Issued at
+    pub sub: String,   // Subject (user ID)
+    pub email: String, // User email
+    pub exp: usize,    // Expiration time
+    pub iat: usize,    // Issued at
 }
 
 /// Login request payload
@@ -83,19 +83,21 @@ pub async fn login(
     // 2. Query the database for the user
     // 3. Compare password hashes
     // 4. Validate user status (active, verified, etc.)
-    
+
     // Mock user validation for demonstration
     if payload.email.is_empty() || payload.password.is_empty() {
-        return Err(ApiError::ValidationError("Email and password are required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Email and password are required".to_string(),
+        ));
     }
 
     // Mock successful authentication
     let user_id = Uuid::new_v4().to_string();
-    
+
     // Create JWT claims
     let now = Utc::now();
     let exp = (now + Duration::seconds(state.config.jwt_expiration as i64)).timestamp() as usize;
-    
+
     let claims = Claims {
         sub: user_id,
         email: payload.email.clone(),
@@ -133,19 +135,21 @@ pub async fn refresh_token(
     // 1. Validate the refresh token against the database
     // 2. Check if it's expired or revoked
     // 3. Get user info associated with the token
-    
+
     if payload.refresh_token.is_empty() {
-        return Err(ApiError::ValidationError("Refresh token is required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Refresh token is required".to_string(),
+        ));
     }
 
     // Mock token validation (always succeeds for demo)
     let user_id = Uuid::new_v4().to_string();
     let email = "user@example.com".to_string();
-    
+
     // Create new JWT claims
     let now = Utc::now();
     let exp = (now + Duration::seconds(state.config.jwt_expiration as i64)).timestamp() as usize;
-    
+
     let claims = Claims {
         sub: user_id,
         email: email.clone(),
@@ -185,18 +189,20 @@ pub async fn register(
     // 3. Hash the password
     // 4. Store user in database
     // 5. Send verification email
-    
+
     if payload.email.is_empty() || payload.password.is_empty() || payload.name.is_empty() {
-        return Err(ApiError::ValidationError("Email, password, and name are required".to_string()));
+        return Err(ApiError::ValidationError(
+            "Email, password, and name are required".to_string(),
+        ));
     }
 
     // Mock user creation
     let user_id = Uuid::new_v4().to_string();
-    
+
     // Create JWT claims
     let now = Utc::now();
     let exp = (now + Duration::seconds(state.config.jwt_expiration as i64)).timestamp() as usize;
-    
+
     let claims = Claims {
         sub: user_id,
         email: payload.email.clone(),
@@ -255,7 +261,7 @@ pub async fn get_current_user() -> Result<impl IntoResponse, ApiError> {
 //             }
 //         }
 //     }
-    
+
 //     warn!("Auth middleware: no valid token found");
 //     Ok(next.run(request).await)
 // }

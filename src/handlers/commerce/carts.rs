@@ -1,4 +1,6 @@
-use crate::handlers::common::{created_response, map_service_error, no_content_response, success_response, validate_input};
+use crate::handlers::common::{
+    created_response, map_service_error, no_content_response, success_response, validate_input,
+};
 use crate::{
     auth::AuthenticatedUser,
     errors::ApiError,
@@ -11,12 +13,11 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
 
 /// Creates the router for cart endpoints
-pub fn carts_routes() -> Router<Arc<AppState>> {
+pub fn carts_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_cart))
         .route("/{id}", get(get_cart))
@@ -28,7 +29,7 @@ pub fn carts_routes() -> Router<Arc<AppState>> {
 
 /// Create a new cart
 async fn create_cart(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateCartRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let input = CreateCartInput {
@@ -50,7 +51,7 @@ async fn create_cart(
 
 /// Get cart with items
 async fn get_cart(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let cart_with_items = state
@@ -65,7 +66,7 @@ async fn get_cart(
 
 /// Add item to cart
 async fn add_to_cart(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(cart_id): Path<Uuid>,
     Json(payload): Json<AddItemRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -88,7 +89,7 @@ async fn add_to_cart(
 
 /// Update cart item quantity
 async fn update_cart_item(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path((cart_id, item_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<UpdateQuantityRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -106,7 +107,7 @@ async fn update_cart_item(
 
 /// Remove item from cart
 async fn remove_cart_item(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path((cart_id, item_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     state
@@ -121,7 +122,7 @@ async fn remove_cart_item(
 
 /// Clear all items from cart
 async fn clear_cart(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     state
@@ -157,4 +158,4 @@ pub struct AddItemRequest {
 pub struct UpdateQuantityRequest {
     #[validate(range(min = 0))]
     pub quantity: i32,
-} 
+}

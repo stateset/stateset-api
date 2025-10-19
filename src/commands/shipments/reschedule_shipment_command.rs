@@ -1,19 +1,15 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
     events::{Event, EventSender},
 };
-use crate::{
-    db::DbPool,
-    errors::ServiceError,
-    models::{shipment, Shipment},
-};
+use crate::{db::DbPool, errors::ServiceError, models::shipment};
 use async_trait::async_trait;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use sea_orm::{entity::*, query::*, ActiveValue, ColumnTrait, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -25,7 +21,7 @@ pub struct RescheduleShipmentCommand {
 
 #[async_trait::async_trait]
 impl Command for RescheduleShipmentCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
@@ -48,7 +44,7 @@ impl RescheduleShipmentCommand {
     async fn reschedule_shipment(
         &self,
         db: &sea_orm::DatabaseConnection,
-    ) -> Result<Shipment, ServiceError> {
+    ) -> Result<shipment::Model, ServiceError> {
         let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
             .one(db)
             .await
@@ -57,39 +53,39 @@ impl RescheduleShipmentCommand {
                     "Failed to fetch shipment with ID {}: {}",
                     self.shipment_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch shipment: {}", e))
+                ServiceError::db_error(format!("Failed to fetch shipment: {}", e))
             })?
             .ok_or_else(|| {
                 error!("Shipment with ID {} not found", self.shipment_id);
-                ServiceError::NotFound
+                ServiceError::NotFound(format!("Shipment with ID {} not found", self.shipment_id))
             })?
             .into();
 
-        shipment.scheduled_date = ActiveValue::Set(self.new_scheduled_date);
+        let rescheduled_at = DateTime::<Utc>::from_utc(self.new_scheduled_date, Utc);
+        shipment.estimated_delivery = ActiveValue::Set(Some(rescheduled_at));
+        shipment.updated_at = ActiveValue::Set(Utc::now());
 
         shipment.update(db).await.map_err(|e| {
             error!(
                 "Failed to reschedule shipment ID {}: {}",
                 self.shipment_id, e
             );
-            ServiceError::DatabaseError(format!("Failed to reschedule shipment: {}", e))
+            ServiceError::db_error(format!("Failed to reschedule shipment: {}", e))
         })
     }
 
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &Shipment,
+        shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment ID: {} rescheduled to: {}",
             self.shipment_id, self.new_scheduled_date
         );
+        let rescheduled_at = DateTime::<Utc>::from_utc(self.new_scheduled_date, Utc);
         event_sender
-            .send(Event::ShipmentRescheduled(
-                self.shipment_id,
-                self.new_scheduled_date,
-            ))
+            .send(Event::ShipmentRescheduled(self.shipment_id, rescheduled_at))
             .await
             .map_err(|e| {
                 error!(

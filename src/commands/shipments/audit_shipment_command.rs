@@ -1,29 +1,29 @@
-use uuid::Uuid;
 use crate::{
-    commands::Command,
-    db::DbPool,
-    errors::ServiceError,
-    events::{Event, EventSender},
-    models::shipment::{self, Entity as Shipment},
+    commands::Command, db::DbPool, errors::ServiceError, events::EventSender, models::shipment,
 };
 use async_trait::async_trait;
 use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuditShipmentCommand {
-    pub shipment_id: i32,
+    pub shipment_id: Uuid,
 }
 
 #[async_trait::async_trait]
 impl Command for AuditShipmentCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, _event_sender))]
-    async fn execute(&self, db_pool: Arc<DbPool>, _event_sender: Arc<EventSender>) -> Result<Self::Result, ServiceError> {
+    async fn execute(
+        &self,
+        db_pool: Arc<DbPool>,
+        _event_sender: Arc<EventSender>,
+    ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
 
         let shipment = self.audit_shipment(&db).await?;
@@ -38,13 +38,13 @@ impl AuditShipmentCommand {
     async fn audit_shipment(
         &self,
         db: &sea_orm::DatabaseConnection,
-    ) -> Result<Shipment, ServiceError> {
+    ) -> Result<shipment::Model, ServiceError> {
         shipment::Entity::find_by_id(self.shipment_id)
             .one(db)
             .await
             .map_err(|e| {
                 error!("Failed to audit shipment: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Shipment with ID {} not found", self.shipment_id);
@@ -52,7 +52,7 @@ impl AuditShipmentCommand {
             })
     }
 
-    fn log_audit_result(&self, shipment: &Shipment) {
+    fn log_audit_result(&self, shipment: &shipment::Model) {
         info!(
             "Shipment audit completed for shipment ID: {}. Status: {:?}",
             shipment.id, shipment.status

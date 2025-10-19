@@ -28,7 +28,7 @@ pub struct ApiKeyInfo {
 impl ApiKeyStore {
     pub fn new() -> Self {
         let mut keys = HashMap::new();
-        
+
         // Add default test keys
         keys.insert(
             "api_key_demo_123".to_string(),
@@ -41,7 +41,7 @@ impl ApiKeyStore {
                 created_at: chrono::Utc::now(),
             },
         );
-        
+
         keys.insert(
             "psp_api_key_456".to_string(),
             ApiKeyInfo {
@@ -53,22 +53,22 @@ impl ApiKeyStore {
                 created_at: chrono::Utc::now(),
             },
         );
-        
+
         Self {
             keys: Arc::new(RwLock::new(keys)),
         }
     }
-    
+
     pub fn validate(&self, api_key: &str) -> Option<ApiKeyInfo> {
         let keys = self.keys.read().unwrap();
         keys.get(api_key).filter(|info| info.is_active).cloned()
     }
-    
+
     pub fn add_key(&self, info: ApiKeyInfo) {
         let mut keys = self.keys.write().unwrap();
         keys.insert(info.key.clone(), info);
     }
-    
+
     pub fn revoke_key(&self, api_key: &str) -> bool {
         let mut keys = self.keys.write().unwrap();
         if let Some(info) = keys.get_mut(api_key) {
@@ -93,11 +93,11 @@ pub fn extract_api_key(headers: &HeaderMap) -> Result<String, StatusCode> {
         .ok_or(StatusCode::UNAUTHORIZED)?
         .to_str()
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
-    
+
     let api_key = auth_header
         .strip_prefix("Bearer ")
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    
+
     Ok(api_key.to_string())
 }
 
@@ -119,19 +119,20 @@ pub async fn auth_middleware(
                     "type": "invalid_request",
                     "code": "unauthorized",
                     "message": "Invalid or missing Authorization header"
-                }))
-            ).into_response();
+                })),
+            )
+                .into_response();
         }
     };
-    
+
     // Validate API key
     match key_store.validate(&api_key) {
         Some(info) => {
             debug!("Authenticated: {} ({})", info.merchant_id, info.name);
-            
+
             // Store merchant info in request extensions
             request.extensions_mut().insert(info);
-            
+
             next.run(request).await
         }
         None => {
@@ -142,8 +143,9 @@ pub async fn auth_middleware(
                     "type": "invalid_request",
                     "code": "invalid_api_key",
                     "message": "Invalid or inactive API key"
-                }))
-            ).into_response()
+                })),
+            )
+                .into_response()
         }
     }
 }
@@ -156,10 +158,10 @@ mod tests {
     #[test]
     fn test_api_key_store() {
         let store = ApiKeyStore::new();
-        
+
         // Valid key
         assert!(store.validate("api_key_demo_123").is_some());
-        
+
         // Invalid key
         assert!(store.validate("invalid_key").is_none());
     }
@@ -171,7 +173,7 @@ mod tests {
             "Authorization",
             HeaderValue::from_static("Bearer test_key_123"),
         );
-        
+
         let key = extract_api_key(&headers).unwrap();
         assert_eq!(key, "test_key_123");
     }
@@ -179,14 +181,14 @@ mod tests {
     #[test]
     fn test_revoke_key() {
         let store = ApiKeyStore::new();
-        
+
         // Key should be valid initially
         assert!(store.validate("api_key_demo_123").is_some());
-        
+
         // Revoke it
         assert!(store.revoke_key("api_key_demo_123"));
-        
+
         // Should now be invalid
         assert!(store.validate("api_key_demo_123").is_none());
     }
-} 
+}

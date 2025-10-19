@@ -1,15 +1,14 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use axum::{
-    routing::get,
-    Router,
-};
-use tokio::signal;
-use tower::timeout::TimeoutLayer;
-use tower_http::{compression::CompressionLayer, cors::{CorsLayer, Any}};
-use http::HeaderValue;
-use tracing::{error, info};
 use axum::http::StatusCode;
+use axum::{routing::get, Router};
+use http::HeaderValue;
+use tokio::{signal, sync::mpsc};
+use tower_http::{
+    compression::CompressionLayer,
+    cors::{Any, CorsLayer},
+};
+use tracing::{error, info};
 
 use stateset_api as api;
 
@@ -29,19 +28,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Init Redis client (construction only; connection checked in health)
     let redis_client = Arc::new(redis::Client::open(cfg.redis_url.clone())?);
 
+    // Build services
+    let db_arc = Arc::new(db_pool);
     // Init events
-    let (event_tx, event_rx) = tokio::mpsc::channel(1024);
+    let (event_tx, event_rx) = mpsc::channel(1024);
     let event_sender = api::events::EventSender::new(event_tx);
     tokio::spawn(api::events::process_events(event_rx));
     // Start outbox worker (best-effort, no-op if table missing)
     api::events::outbox::start_worker(db_arc.clone(), event_sender.clone()).await;
-
-    // Build services
-    let db_arc = Arc::new(db_pool);
-    let inventory_service = api::services::inventory::InventoryService::new(
-        db_arc.clone(),
-        event_sender.clone(),
-    );
+    let inventory_service =
+        api::services::inventory::InventoryService::new(db_arc.clone(), event_sender.clone());
 
     // Auth service for handlers/services requiring it
     let auth_cfg = api::auth::AuthConfig::new(
@@ -73,7 +69,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Build CORS layer from config
-    let cors_layer = if cfg.cors_allowed_origins.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
+    let cors_layer = if cfg
+        .cors_allowed_origins
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+    {
         let origins: Vec<HeaderValue> = cfg
             .cors_allowed_origins
             .as_ref()
@@ -92,14 +93,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Build router: status/health + full v1 API + Swagger UI
-    let mut app = Router::new()
+    let mut app = Router::<api::AppState>::new()
         .route("/", get(|| async { "stateset-api up" }))
         .route(
             "/metrics",
             get(|| async move {
                 match api::metrics::metrics_handler().await {
                     Ok(body) => (StatusCode::OK, body),
-                    Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, String::from("metrics error")),
+                    Err(_) => (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        String::from("metrics error"),
+                    ),
                 }
             }),
         )
@@ -108,17 +112,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(|| async move {
                 match api::metrics::metrics_json_handler().await {
                     Ok(json) => (StatusCode::OK, axum::Json(json)),
-                    Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"error":"metrics error"}))),
+                    Err(_) => (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        axum::Json(serde_json::json!({"error":"metrics error"})),
+                    ),
                 }
             }),
         )
-        .merge(api::openapi::swagger_ui())
         .nest("/api/v1", api::api_v1_routes())
         // HTTP tracing layer for consistent request/response telemetry
         .layer(api::tracing::configure_http_tracing())
         // Apply compression and timeouts
         .layer(CompressionLayer::new())
-        .layer(TimeoutLayer::new(Duration::from_secs(30)))
         // Apply CORS
         .layer(cors_layer)
         // Idempotency (Redis-backed)
@@ -129,7 +134,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Inject AuthService into request extensions for auth middleware
         .layer(axum::middleware::from_fn_with_state(
             auth_service.clone(),
-            |axum::extract::State(auth): axum::extract::State<Arc<api::auth::AuthService>>, mut req, next| async move {
+            |axum::extract::State(auth): axum::extract::State<Arc<api::auth::AuthService>>,
+             mut req: axum::http::Request<axum::body::Body>,
+             next: axum::middleware::Next| async move {
                 req.extensions_mut().insert(auth);
                 next.run(req).await
             },
@@ -150,7 +157,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Optional: path policy overrides in config (format: "/api/v1/orders:60:60,/api/v1/inventory:120:60")
     if let Some(policies) = &cfg.rate_limit_path_policies {
         let mut parsed = Vec::new();
-        for spec in policies.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        for spec in policies
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             let parts: Vec<&str> = spec.split(':').collect();
             if parts.len() == 3 {
                 if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
@@ -170,7 +181,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Per API key policies: "key1:200:60,key2:1000:60"
     if let Some(api_key_specs) = &cfg.rate_limit_api_key_policies {
         let mut map = std::collections::HashMap::new();
-        for spec in api_key_specs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        for spec in api_key_specs
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             let parts: Vec<&str> = spec.split(':').collect();
             if parts.len() == 3 {
                 if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
@@ -178,13 +193,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        if !map.is_empty() { layer = layer.with_api_key_policies(map); }
+        if !map.is_empty() {
+            layer = layer.with_api_key_policies(map);
+        }
     }
 
     // Per user policies: "user123:500:60,user456:50:60"
     if let Some(user_specs) = &cfg.rate_limit_user_policies {
         let mut map = std::collections::HashMap::new();
-        for spec in user_specs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        for spec in user_specs
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             let parts: Vec<&str> = spec.split(':').collect();
             if parts.len() == 3 {
                 if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
@@ -192,7 +213,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        if !map.is_empty() { layer = layer.with_user_policies(map); }
+        if !map.is_empty() {
+            layer = layer.with_user_policies(map);
+        }
     }
 
     app = app.layer(layer);
@@ -202,7 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🚀 stateset-api listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
@@ -220,8 +243,8 @@ async fn shutdown_signal() {
     let terminate = async {
         use tokio::signal::unix::{signal, SignalKind};
 
-        let mut sigterm = signal(SignalKind::terminate())
-            .expect("failed to install signal handler");
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("failed to install signal handler");
         sigterm.recv().await;
     };
 

@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    http::{header, HeaderValue, Method, StatusCode, Request},
+    http::{header, HeaderValue, Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -29,7 +29,7 @@ impl CachedResponse {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        
+
         Self {
             status: status.as_u16(),
             headers,
@@ -45,13 +45,13 @@ impl CachedResponse {
 impl IntoResponse for CachedResponse {
     fn into_response(self) -> Response {
         let mut response = Response::builder().status(self.status);
-        
+
         for (key, value) in &self.headers {
             if let Ok(header_value) = HeaderValue::from_str(value) {
                 response = response.header(key, header_value);
             }
         }
-        
+
         response.body(Body::from(self.body)).unwrap()
     }
 }
@@ -70,7 +70,7 @@ impl Default for CacheOptions {
     fn default() -> Self {
         Self {
             default_ttl: Duration::from_secs(300), // 5 minutes
-            max_body_size: 1024 * 1024, // 1MB
+            max_body_size: 1024 * 1024,            // 1MB
             vary_headers: vec!["Accept".to_string(), "Accept-Encoding".to_string()],
             cache_control_respect: true,
             stale_while_revalidate: Some(Duration::from_secs(86400)), // 24 hours
@@ -136,7 +136,7 @@ impl HttpCache {
 
     fn should_cache_response(&self, response: &Response) -> bool {
         let status = response.status();
-        
+
         // Only cache successful responses
         if !status.is_success() {
             return false;
@@ -146,7 +146,9 @@ impl HttpCache {
         if self.options.cache_control_respect {
             if let Some(cache_control) = response.headers().get(header::CACHE_CONTROL) {
                 if let Ok(cache_control_str) = cache_control.to_str() {
-                    if cache_control_str.contains("no-cache") || cache_control_str.contains("no-store") {
+                    if cache_control_str.contains("no-cache")
+                        || cache_control_str.contains("no-store")
+                    {
                         return false;
                     }
                 }
@@ -179,24 +181,25 @@ impl HttpCache {
 
     pub async fn invalidate_pattern(&self, pattern: &str) -> Result<(), CacheError> {
         // This is a simple implementation - in a real system you'd want more sophisticated pattern matching
-        warn!("Pattern-based cache invalidation not fully implemented: {}", pattern);
+        warn!(
+            "Pattern-based cache invalidation not fully implemented: {}",
+            pattern
+        );
         Ok(())
     }
 
     pub async fn get_cached_response(&self, cache_key: &str) -> Option<CachedResponse> {
         match self.cache.get(cache_key).await {
-            Ok(Some(cached_data)) => {
-                match serde_json::from_str::<CachedResponse>(&cached_data) {
-                    Ok(cached_response) => {
-                        debug!("Cache hit for key: {}", cache_key);
-                        Some(cached_response)
-                    }
-                    Err(e) => {
-                        warn!("Failed to deserialize cached response: {}", e);
-                        None
-                    }
+            Ok(Some(cached_data)) => match serde_json::from_str::<CachedResponse>(&cached_data) {
+                Ok(cached_response) => {
+                    debug!("Cache hit for key: {}", cache_key);
+                    Some(cached_response)
                 }
-            }
+                Err(e) => {
+                    warn!("Failed to deserialize cached response: {}", e);
+                    None
+                }
+            },
             Ok(None) => {
                 debug!("Cache miss for key: {}", cache_key);
                 None
@@ -220,27 +223,21 @@ impl HttpCache {
             return Ok(());
         }
 
-        let cached_response = CachedResponse::new(
-            response.status(),
-            response.headers(),
-            body.to_vec(),
-        );
+        let cached_response =
+            CachedResponse::new(response.status(), response.headers(), body.to_vec());
 
-        let serialized = serde_json::to_string(&cached_response)
-            .map_err(CacheError::Serialization)?;
+        let serialized =
+            serde_json::to_string(&cached_response).map_err(CacheError::Serialization)?;
 
         self.cache.set(cache_key, &serialized, ttl).await?;
         debug!("Stored response in cache with key: {}", cache_key);
-        
+
         Ok(())
     }
 }
 
 // Middleware function
-pub async fn cache_middleware(
-    request: Request<Body>,
-    next: Next,
-) -> Result<Response, Response> {
+pub async fn cache_middleware(request: Request<Body>, next: Next) -> Result<Response, Response> {
     // For now, just pass through without caching since we need the cache instance
     // In a real implementation, this would be configured with the cache instance
     let response = next.run(request).await;
@@ -285,9 +282,14 @@ where
 {
     type Response = Response;
     type Error = S::Error;
-    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
