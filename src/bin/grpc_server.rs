@@ -370,24 +370,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             OrderGrpcService,
         ))
         .add_service(
-            inventory::inventory_service_server::InventoryServiceServer::new(
-                InventoryGrpcService,
-            ),
+            inventory::inventory_service_server::InventoryServiceServer::new(InventoryGrpcService),
         )
         .add_service(
-            return_order::return_service_server::ReturnServiceServer::new(
-                ReturnGrpcService,
-            ),
+            return_order::return_service_server::ReturnServiceServer::new(ReturnGrpcService),
         )
         .add_service(
-            warranty::warranty_service_server::WarrantyServiceServer::new(
-                WarrantyGrpcService,
-            ),
+            warranty::warranty_service_server::WarrantyServiceServer::new(WarrantyGrpcService),
         )
         .add_service(
-            shipment::shipment_service_server::ShipmentServiceServer::new(
-                ShipmentGrpcService,
-            ),
+            shipment::shipment_service_server::ShipmentServiceServer::new(ShipmentGrpcService),
         )
         .add_service(WorkOrderServiceServer::new(PlaceholderWorkOrderService))
         .serve_with_shutdown(grpc_addr, shutdown_signal());

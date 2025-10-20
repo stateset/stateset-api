@@ -1,6 +1,6 @@
 [package]
 name = "stateset-api"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 autobins = false
 
@@ -117,3 +117,7 @@ required-features = ["demos"]
 [[bin]]
 name = "orders-mock-server"
 path = "src/bin/orders_mock_server.rs"
+
+[[bin]]
+name = "migration"
+path = "src/bin/migration.rs"
