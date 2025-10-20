@@ -73,7 +73,7 @@ impl UpdateShippingAddressCommand {
             .map_err(|e| {
                 SHIPPING_ADDRESS_UPDATE_FAILURES.inc();
                 error!("Failed to find order ID {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 SHIPPING_ADDRESS_UPDATE_FAILURES.inc();
@@ -91,7 +91,7 @@ impl UpdateShippingAddressCommand {
                 "Failed to update shipping address for order ID {}: {}",
                 self.order_id, e
             );
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

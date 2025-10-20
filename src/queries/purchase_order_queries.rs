@@ -43,7 +43,7 @@ impl Query for GetPurchaseOrderQuery {
         PurchaseOrderEntity::find_by_id(self.purchase_order_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -67,7 +67,7 @@ impl Query for GetPurchaseOrdersByStatusQuery {
             .order_by_desc(crate::models::purchase_order_entity::Column::OrderDate)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -91,7 +91,7 @@ impl Query for GetPurchaseOrdersBySupplierQuery {
             .order_by_desc(crate::models::purchase_order_entity::Column::OrderDate)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -116,7 +116,7 @@ impl Query for GetPurchaseOrdersByDateRangeQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -141,7 +141,7 @@ impl Query for GetPurchaseOrdersByDeliveryDateQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -175,14 +175,14 @@ impl Query for GetPurchaseOrderDetailsQuery {
         let purchase_order = PurchaseOrderEntity::find_by_id(self.purchase_order_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Purchase order not found".to_string()))?;
 
         // Fetch the supplier
         let supplier = SupplierEntity::find_by_id(purchase_order.supplier_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Supplier not found".to_string()))?;
 
         // Fetch purchase order items
@@ -190,7 +190,7 @@ impl Query for GetPurchaseOrderDetailsQuery {
             .filter(crate::models::purchase_order_item_entity::Column::PurchaseOrderId.eq(self.purchase_order_id))
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(PurchaseOrderDetails {
             purchase_order,
@@ -233,7 +233,7 @@ impl Query for GetPurchaseOrderStatisticsQuery {
             .filter(crate::models::purchase_order_entity::Column::OrderDate.between(self.start_date, self.end_date))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Get status counts
         let status_counts = PurchaseOrderEntity::find()
@@ -248,7 +248,7 @@ impl Query for GetPurchaseOrderStatisticsQuery {
             .into_model::<StatusCount>()
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Convert to tuple format
         let status_counts: Vec<(PurchaseOrderStatus, i64)> = status_counts
@@ -267,7 +267,7 @@ impl Query for GetPurchaseOrderStatisticsQuery {
             .into_tuple::<Option<Decimal>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .unwrap_or(Some(Decimal::ZERO))
             .unwrap_or(Decimal::ZERO);
 
@@ -284,7 +284,7 @@ impl Query for GetPurchaseOrderStatisticsQuery {
             .filter(crate::models::purchase_order_entity::Column::Status.eq(PurchaseOrderStatus::Received))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let on_time_delivery_rate = if total_purchase_orders > 0 {
             (on_time_deliveries as f64 / total_purchase_orders as f64) * 100.0
@@ -322,6 +322,6 @@ impl Query for SearchPurchaseOrdersQuery {
             .order_by_desc(crate::models::purchase_order_entity::Column::OrderDate)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }

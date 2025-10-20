@@ -58,7 +58,7 @@ impl TagOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Order {} not found", self.order_id);

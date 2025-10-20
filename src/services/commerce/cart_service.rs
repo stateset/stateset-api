@@ -8,8 +8,8 @@ use crate::{
 use chrono::{Duration, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter,
-    Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter, Set,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -53,9 +53,7 @@ impl CartService {
 
         let cart = cart.insert(&*self.db).await?;
 
-        self.event_sender
-            .send(Event::CartCreated(cart_id))
-            .await;
+        self.event_sender.send(Event::CartCreated(cart_id)).await;
 
         info!("Created cart: {}", cart_id);
         Ok(cart)
@@ -63,7 +61,11 @@ impl CartService {
 
     /// Add item to cart
     #[instrument(skip(self))]
-    pub async fn add_item(&self, cart_id: Uuid, input: AddToCartInput) -> Result<CartModel, ServiceError> {
+    pub async fn add_item(
+        &self,
+        cart_id: Uuid,
+        input: AddToCartInput,
+    ) -> Result<CartModel, ServiceError> {
         let txn = self.db.begin().await?;
 
         // Verify cart exists and is active
@@ -73,14 +75,18 @@ impl CartService {
             .ok_or_else(|| ServiceError::NotFound(format!("Cart {} not found", cart_id)))?;
 
         if cart.status != cart::CartStatus::Active {
-            return Err(ServiceError::InvalidOperation("Cart is not active".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Cart is not active".to_string(),
+            ));
         }
 
         // Get variant details
         let variant = ProductVariant::find_by_id(input.variant_id)
             .one(&txn)
             .await?
-            .ok_or_else(|| ServiceError::NotFound(format!("Variant {} not found", input.variant_id)))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Variant {} not found", input.variant_id))
+            })?;
 
         // Check if item already exists in cart
         let existing_item = CartItem::find()
@@ -129,7 +135,10 @@ impl CartService {
             })
             .await;
 
-        info!("Added item to cart {}: variant {} x{}", cart_id, input.variant_id, input.quantity);
+        info!(
+            "Added item to cart {}: variant {} x{}",
+            cart_id, input.variant_id, input.quantity
+        );
         Ok(updated_cart)
     }
 
@@ -150,10 +159,14 @@ impl CartService {
             let item = CartItem::find_by_id(item_id)
                 .one(&txn)
                 .await?
-                .ok_or_else(|| ServiceError::NotFound(format!("Cart item {} not found", item_id)))?;
+                .ok_or_else(|| {
+                    ServiceError::NotFound(format!("Cart item {} not found", item_id))
+                })?;
 
             if item.cart_id != cart_id {
-                return Err(ServiceError::InvalidOperation("Item does not belong to this cart".to_string()));
+                return Err(ServiceError::InvalidOperation(
+                    "Item does not belong to this cart".to_string(),
+                ));
             }
 
             let mut item: cart_item::ActiveModel = item.into();
@@ -262,4 +275,4 @@ pub struct AddToCartInput {
 pub struct CartWithItems {
     pub cart: CartModel,
     pub items: Vec<cart_item::Model>,
-} 
+}

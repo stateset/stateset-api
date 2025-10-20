@@ -47,7 +47,7 @@ impl Command for SearchCustomersCommand {
             .map_err(|e| {
                 let msg = format!("Failed to search customers: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
 
         info!(

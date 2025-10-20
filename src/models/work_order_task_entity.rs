@@ -9,24 +9,24 @@ use validator::Validate;
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     pub work_order_id: Uuid,
-    
+
     #[validate(length(min = 1, max = 200))]
     pub task_name: String,
-    
+
     pub description: Option<String>,
-    
+
     pub status: String,
-    
+
     pub assigned_to: Option<String>,
-    
+
     pub estimated_hours: Option<f64>,
-    
+
     pub actual_hours: Option<f64>,
-    
+
     pub created_at: DateTime<Utc>,
-    
+
     pub updated_at: DateTime<Utc>,
 }
 

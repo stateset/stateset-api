@@ -11,7 +11,7 @@ use crate::{
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -65,7 +65,7 @@ impl Command for ReleaseASNFromHoldCommand {
 
         Ok(ReleaseASNFromHoldResult {
             id: updated_asn.id,
-            status: updated_asn.status,
+            status: updated_asn.status.to_string(),
             version: updated_asn.version,
         })
     }
@@ -79,17 +79,19 @@ impl ReleaseASNFromHoldCommand {
         let asn = ASN::find_by_id(self.asn_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| {
-                ServiceError::NotFound(format!("ASN {} not found", self.asn_id))
-            })?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| ServiceError::NotFound(format!("ASN {} not found", self.asn_id)))?;
 
         if asn.version != self.version {
-            return Err(ServiceError::InvalidOperation("Concurrent modification".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Concurrent modification".to_string(),
+            ));
         }
 
         if asn.status != ASNStatus::OnHold {
-            return Err(ServiceError::InvalidOperation("ASN must be on hold to release".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "ASN must be on hold to release".to_string(),
+            ));
         }
 
         let mut asn: asn_entity::ActiveModel = asn.into();
@@ -100,7 +102,7 @@ impl ReleaseASNFromHoldCommand {
         let updated = asn
             .update(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         if let Some(note) = &self.notes {
             let note_model = asn_note_entity::ActiveModel {
@@ -114,7 +116,7 @@ impl ReleaseASNFromHoldCommand {
             note_model
                 .insert(db)
                 .await
-                .map_err(|e| ServiceError::DatabaseError(e))?;
+                .map_err(|e| ServiceError::db_error(e))?;
         }
 
         Ok(updated)

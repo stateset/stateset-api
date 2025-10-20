@@ -8,7 +8,7 @@ use crate::{
         return_entity::{self, Entity as Return},
     },
 };
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -49,7 +49,7 @@ impl Command for CancelReturnCommand {
             .await?;
 
         Ok(CancelReturnResult {
-            id: Uuid::parse_str(&cancelled_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+            id: cancelled_return.id,
             object: "return".to_string(),
             cancelled: true,
             reason: self.reason.clone(),
@@ -65,7 +65,7 @@ impl CancelReturnCommand {
         let return_request = return_entity::Entity::find_by_id(self.return_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 let msg = format!("Return request {} not found", self.return_id);
                 error!("{}", msg);
@@ -79,7 +79,7 @@ impl CancelReturnCommand {
         let updated_return = return_request.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return request {}: {}", self.return_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(updated_return)

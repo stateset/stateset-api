@@ -42,7 +42,8 @@ impl Command for DeleteReturnCommand {
             .await?;
 
         Ok(DeleteReturnResult {
-            id: Uuid::parse_str(&deleted_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+            id: deleted_return.id,
+            object: "return".to_string(),
             deleted: true,
         })
     }
@@ -59,7 +60,7 @@ impl DeleteReturnCommand {
             .map_err(|e| {
                 let msg = format!("Failed to find return request: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return {} not found", self.return_id);
@@ -77,7 +78,7 @@ impl DeleteReturnCommand {
             .map_err(|e| {
                 let msg = format!("Failed to delete return {}: {}", self.return_id, e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(deleted_return)

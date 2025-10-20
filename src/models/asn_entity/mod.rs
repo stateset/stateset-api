@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
-use std::fmt;
 
 /// ASN Status enumeration
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
@@ -163,7 +163,8 @@ impl Model {
         };
 
         // Validate the new ASN
-        asn.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        asn.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(asn)
     }
@@ -175,7 +176,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }
@@ -194,7 +196,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }
@@ -221,7 +224,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }
@@ -239,7 +243,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }
@@ -257,7 +262,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }
@@ -279,7 +285,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }
@@ -297,7 +304,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_| ValidationError::new("ASN validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("ASN validation failed"))?;
 
         Ok(())
     }

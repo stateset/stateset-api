@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     pub name: String,
     pub description: Option<String>,
     pub slug: String,
@@ -18,13 +18,9 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "Entity",
-        from = "Column::ParentId",
-        to = "Column::Id"
-    )]
+    #[sea_orm(belongs_to = "Entity", from = "Column::ParentId", to = "Column::Id")]
     Parent,
-    
+
     #[sea_orm(has_many = "Entity")]
     Children,
 }

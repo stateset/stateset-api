@@ -1,17 +1,22 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
-    events::{Event, EventSender},
     db::DbPool,
     errors::ServiceError,
-    models::{shipment::{self, ShippingCarrier}, Shipment, ShipmentStatus},
+    events::{Event, EventSender},
+    models::{
+        shipment::{self, ShippingCarrier},
+        Shipment, ShipmentStatus,
+    },
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sea_orm::{ActiveValue::Set, ActiveModelTrait, EntityTrait, TransactionError, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionError, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -85,7 +90,7 @@ impl Command for CreateShipmentCommand {
                     let inserted = shipment::Entity::insert(new_shipment)
                         .exec_with_returning(txn)
                         .await
-                        .map_err(ServiceError::DatabaseError)?;
+                        .map_err(ServiceError::db_error)?;
                     Ok(inserted)
                 })
             })
@@ -93,7 +98,7 @@ impl Command for CreateShipmentCommand {
             .map_err(|e| {
                 error!("Transaction failed for creating shipment: {}", e);
                 match e {
-                    TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                    TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                     TransactionError::Transaction(service_err) => service_err,
                 }
             })?;

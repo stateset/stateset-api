@@ -2,8 +2,8 @@ use crate::auth::AuthenticatedUser;
 use crate::db::DbPool;
 use crate::errors::ServiceError;
 use crate::services::notifications::{
-    delete_user_notification, delete_user_notifications, get_user_notifications, mark_notification_as_read,
-    mark_notification_as_unread, Notification,
+    delete_user_notification, delete_user_notifications, get_user_notifications,
+    mark_notification_as_read, mark_notification_as_unread, Notification,
 };
 use axum::{
     extract::{Path, State},

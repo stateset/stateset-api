@@ -94,7 +94,8 @@ impl Model {
             scrap_factor,
             manufacture_order_id,
         };
-        item.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        item.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(item)
     }
 

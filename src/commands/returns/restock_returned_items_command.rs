@@ -10,14 +10,14 @@ use crate::{
     proto::return_order::ReturnItem,
 };
 use chrono::Utc;
-use sea_orm::{*, Set, TransactionError, TransactionTrait, EntityTrait, ColumnTrait};
+use sea_orm::{ColumnTrait, EntityTrait, Set, TransactionError, TransactionTrait, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct RestockReturnedItemsCommand {
     pub return_id: Uuid,
 }
@@ -40,24 +40,32 @@ impl Command for RestockReturnedItemsCommand {
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.as_ref();
 
+        let command_clone = self.clone();
         let items_restocked = db
-            .transaction::<_, usize, ServiceError>(|txn| {
+            .transaction::<_, usize, ServiceError>(move |txn| {
+                let cmd = command_clone.clone();
                 Box::pin(async move {
-                    let items = self.fetch_returned_items(txn).await?;
+                    let items = cmd.fetch_returned_items(txn).await?;
                     let count = items.len();
-                    self.restock_items(txn, items).await?;
-                    // Enqueue outbox inside txn
+                    cmd.restock_items(txn, items).await?;
                     let payload = serde_json::json!({
-                        "return_id": self.return_id.to_string(),
+                        "return_id": cmd.return_id.to_string(),
                         "items_restocked": count,
                     });
-                    let _ = crate::events::outbox::enqueue(txn, "return", Some(self.return_id), "ReturnRestocked", &payload).await;
+                    let _ = crate::events::outbox::enqueue(
+                        txn,
+                        "return",
+                        Some(cmd.return_id),
+                        "ReturnRestocked",
+                        &payload,
+                    )
+                    .await;
                     Ok(count)
                 })
             })
             .await
             .map_err(|e| match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             })?;
 
@@ -68,7 +76,7 @@ impl Command for RestockReturnedItemsCommand {
         );
 
         event_sender
-            .send(Event::InventoryUpdated {
+            .send(Event::InventoryUpdatedLegacy {
                 item_id: self.return_id,
                 quantity: items_restocked as i32,
             })
@@ -89,7 +97,7 @@ impl Command for RestockReturnedItemsCommand {
 impl RestockReturnedItemsCommand {
     async fn fetch_returned_items(
         &self,
-        db: &DatabaseConnection,
+        db: &DatabaseTransaction,
     ) -> Result<Vec<return_item_entity::Model>, ServiceError> {
         ReturnedItem::find()
             .filter(return_item_entity::Column::ReturnId.eq(self.return_id))
@@ -98,7 +106,7 @@ impl RestockReturnedItemsCommand {
             .map_err(|e| {
                 let msg = format!("Failed to fetch returned items: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 
@@ -108,28 +116,37 @@ impl RestockReturnedItemsCommand {
         items: Vec<return_item_entity::Model>,
     ) -> Result<(), ServiceError> {
         for item in items {
-            let inventory = Inventory::find_by_id(item.product_id)
+            let inventory = Inventory::find()
+                .filter(inventory_item_entity::Column::Sku.eq(item.sku.clone()))
                 .one(txn)
                 .await
                 .map_err(|e| {
                     let msg = format!("Failed to fetch inventory: {}", e);
                     error!("{}", msg);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?
                 .ok_or_else(|| {
-                    let msg = format!("Inventory for product {} not found", item.product_id);
+                    let msg = format!("Inventory for SKU {} not found", item.sku);
                     error!("{}", msg);
                     ServiceError::NotFound(msg)
                 })?;
 
             let mut inventory: inventory_item_entity::ActiveModel = inventory.into();
-            let current_quantity = inventory.quantity.clone().unwrap_or(Set(0));
+            let current_quantity = match inventory.quantity.clone() {
+                ActiveValue::Set(val) | ActiveValue::Unchanged(val) => val,
+                ActiveValue::NotSet => 0,
+            };
             inventory.quantity = Set(current_quantity + item.quantity);
+            let current_available = match inventory.available_quantity.clone() {
+                ActiveValue::Set(val) | ActiveValue::Unchanged(val) => val,
+                ActiveValue::NotSet => 0,
+            };
+            inventory.available_quantity = Set(current_available + item.quantity);
 
             inventory.update(txn).await.map_err(|e| {
                 let msg = format!("Failed to update inventory: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         }
         Ok(())
@@ -145,9 +162,9 @@ impl RestockReturnedItemsCommand {
             self.return_id, items_restocked
         );
         event_sender
-            .send(Event::InventoryAdjusted {
-                product_id: self.return_id, // This should be the actual product ID in a real implementation
-                adjustment: items_restocked as i32,
+            .send(Event::InventoryUpdatedLegacy {
+                item_id: self.return_id,
+                quantity: items_restocked as i32,
             })
             .await
             .map_err(|e| {

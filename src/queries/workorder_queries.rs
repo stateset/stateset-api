@@ -37,7 +37,7 @@ impl Query for GetWorkOrderByIdQuery {
         WorkOrderEntity::find_by_id(self.work_order_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Work order not found".to_string()))
     }
 }
@@ -62,7 +62,7 @@ impl Query for GetWorkOrdersByStatusQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -87,7 +87,7 @@ impl Query for GetWorkOrdersInDateRangeQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -119,13 +119,13 @@ impl Query for GetWorkOrderDetailsQuery {
             .filter(work_order_task_entity::Column::WorkOrderId.eq(self.work_order_id))
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let materials = work_order_material_entity::Entity::find()
             .filter(work_order_material_entity::Column::WorkOrderId.eq(self.work_order_id))
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(WorkOrderDetails {
             work_order,
@@ -158,14 +158,14 @@ impl Query for GetWorkOrderProductivityQuery {
             .filter(crate::models::work_order::Column::CreatedAt.between(self.start_date, self.end_date))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let completed_work_orders = WorkOrderEntity::find()
             .filter(crate::models::work_order::Column::CreatedAt.between(self.start_date, self.end_date))
             .filter(crate::models::work_order::Column::Status.eq(WorkOrderStatus::Completed))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // For now, let's simplify this - we can't directly average DateTime fields
         // We would need to calculate duration from created_at to completion_time

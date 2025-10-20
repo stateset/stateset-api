@@ -82,4 +82,4 @@ pub enum CustomerStatus {
     Suspended,
     #[sea_orm(string_value = "deleted")]
     Deleted,
-} 
+}

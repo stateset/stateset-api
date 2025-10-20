@@ -1,5 +1,3 @@
-use uuid::Uuid;
-use async_trait::async_trait;
 use crate::{
     commands::Command,
     db::DbPool,
@@ -11,13 +9,15 @@ use crate::{
         order_note_entity,
     },
 };
+use async_trait::async_trait;
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set, TransactionError, TransactionTrait};
+use sea_orm::{Set, TransactionError, TransactionTrait, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 lazy_static! {
@@ -50,8 +50,8 @@ impl Command for ArchiveOrderCommand {
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.as_ref();
 
-        let updated_order =
-            archive_order_in_db(&db, self.order_id, &self.reason, self.version).await
+        let updated_order = archive_order_in_db(&db, self.order_id, &self.reason, self.version)
+            .await
             .map_err(|e| ServiceError::OrderError(format!("Archive failed: {}", e)))?;
 
         event_sender
@@ -112,7 +112,9 @@ async fn archive_order_in_db(
                     ..Default::default()
                 };
 
-                note.insert(txn).await.map_err(|e| OrderError::DatabaseError(e))?;
+                note.insert(txn)
+                    .await
+                    .map_err(|e| OrderError::DatabaseError(e))?;
 
                 Ok(updated_order)
             })
@@ -122,7 +124,7 @@ async fn archive_order_in_db(
             TransactionError::Connection(db_err) => OrderError::DatabaseError(db_err),
             TransactionError::Transaction(service_err) => service_err,
         })?;
-    
+
     Ok(transaction_result)
 }
 

@@ -133,7 +133,7 @@ impl GetStockSafetyCommand {
             .map_err(|e| {
                 let msg = format!("Failed to fetch inventory levels: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         let lookback_days = self.lookback_days.unwrap_or(30);
         let start_date =
@@ -217,7 +217,7 @@ impl GetStockSafetyCommand {
             .map_err(|e| {
                 let msg = format!("Failed to fetch safety stock alerts: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         for alert in alerts {
             let triggered = self.evaluate_alert(&alert, levels);

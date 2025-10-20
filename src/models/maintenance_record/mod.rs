@@ -1,13 +1,13 @@
 use crate::models::machine::MachineError;
 use crate::models::machine::MaintenanceType;
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
+use sea_orm::QueryOrder;
 use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
 use serde::{Deserialize, Serialize};
-use validator::{Validate, ValidationError};
-use sea_orm::QueryOrder;
 use uuid::Uuid;
-use async_trait::async_trait;
+use validator::{Validate, ValidationError};
 
 /// Maintenance Record entity model
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -85,11 +85,7 @@ impl Related<crate::models::machine::Entity> for Entity {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -142,7 +138,9 @@ impl Model {
             attachment_urls: None,
         };
 
-        record.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        record
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(record)
     }
 
@@ -157,7 +155,8 @@ impl Model {
         self.follow_up_notes = notes;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -166,7 +165,8 @@ impl Model {
         self.parts_replaced = Some(parts.join(", "));
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -175,7 +175,8 @@ impl Model {
         self.issues_found = Some(issues.join(", "));
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -193,7 +194,8 @@ impl Model {
         self.attachment_urls = Some(all_attachments.join(", "));
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -202,14 +204,16 @@ impl Model {
         self.preventive_actions = Some(actions);
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
     /// Save the maintenance record to database
     pub async fn save(&self, db: &DatabaseConnection) -> Result<Model, MachineError> {
         // Validate before saving
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
 
         let model: ActiveModel = self.clone().into();
         let result = match self.id {

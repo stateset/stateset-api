@@ -168,7 +168,7 @@ impl ReleaseInventoryCommand {
                         )
                         .all(txn)
                         .await
-                        .map_err(|e| ServiceError::DatabaseError(e))?
+                        .map_err(|e| ServiceError::db_error(e))?
                 } else {
                     // Process specific release requests
                     let mut reservations = Vec::new();
@@ -201,7 +201,7 @@ impl ReleaseInventoryCommand {
                             );
                         }
                         let mut found_reservations = query.all(txn).await
-                            .map_err(|e| ServiceError::DatabaseError(e))?;
+                            .map_err(|e| ServiceError::db_error(e))?;
                         reservations.append(&mut found_reservations);
                     }
                     reservations
@@ -233,14 +233,14 @@ impl ReleaseInventoryCommand {
                         res.updated_at = Set(Utc::now());
                         fully_released = false;
                         res.update(txn).await
-                            .map_err(|e| ServiceError::DatabaseError(e))?
+                            .map_err(|e| ServiceError::db_error(e))?
                     } else {
                         let mut res: inventory_reservation_entity::ActiveModel = reservation.clone().into();
                         res.status = Set(ReservationStatus::Released);
                         res.quantity_released = Set(res.quantity_released.unwrap() + release_quantity);
                         res.updated_at = Set(Utc::now());
                         res.update(txn).await
-                            .map_err(|e| ServiceError::DatabaseError(e))?
+                            .map_err(|e| ServiceError::db_error(e))?
                     };
                     
                     release_results.push(ReleaseResult {
@@ -269,7 +269,7 @@ impl ReleaseInventoryCommand {
         .map_err(|e| {
             error!("Transaction failed for inventory release: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })

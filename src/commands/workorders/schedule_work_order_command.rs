@@ -45,7 +45,7 @@ impl ScheduleWorkOrderCommand {
         let target = work_order_entity::Entity::find_by_id(self.work_order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(format!("Database error: {}", e)))?
+            .map_err(|e| ServiceError::db_error(format!("Database error: {}", e)))?
             .ok_or_else(|| {
                 error!("Work Order ID {} not found", self.work_order_id);
                 ServiceError::NotFound(format!("Work Order ID {} not found", self.work_order_id))
@@ -58,7 +58,7 @@ impl ScheduleWorkOrderCommand {
                 "Failed to schedule Work Order ID {}: {}",
                 self.work_order_id, e
             );
-            ServiceError::DatabaseError(format!("Failed to schedule Work Order: {}", e))
+            ServiceError::db_error(format!("Failed to schedule Work Order: {}", e))
         })
     }
 

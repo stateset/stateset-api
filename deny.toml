@@ -1,0 +1,41 @@
+[advisory]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "warn"
+notice = "warn"
+informational = "warn"
+severity-threshold = "medium"
+ignore = []
+
+[[advisory.sources]]
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-DFS-2016"
+]
+default = "deny"
+unlicensed = "deny"
+copyleft = "warn"
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+skip = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []

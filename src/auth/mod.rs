@@ -11,31 +11,30 @@
  * The module also provides role-based access control (RBAC) and permission verification.
  */
 
+use async_trait::async_trait;
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
 use axum::{
+    extract::DefaultBodyLimit,
     extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
-    extract::DefaultBodyLimit,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use metrics::counter;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use sea_orm::{DatabaseConnection,
-};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use metrics::counter;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 use uuid::Uuid;
-use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
-use async_trait::async_trait;
 
 // Entity modules
 pub mod api_key;
@@ -366,11 +365,18 @@ impl AuthService {
         let mut roles = vec!["user".to_string()];
         if let Ok(raw) = std::env::var("AUTH_DEFAULT_ROLES") {
             for r in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                if !roles.iter().any(|x| x == r) { roles.push(r.to_string()); }
+                if !roles.iter().any(|x| x == r) {
+                    roles.push(r.to_string());
+                }
             }
         }
-        if std::env::var("AUTH_ADMIN").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
-            if !roles.iter().any(|x| x == "admin") { roles.push("admin".to_string()); }
+        if std::env::var("AUTH_ADMIN")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            if !roles.iter().any(|x| x == "admin") {
+                roles.push("admin".to_string());
+            }
         }
         Ok(roles)
     }
@@ -381,7 +387,9 @@ impl AuthService {
         let mut perms = vec!["orders:read".to_string(), "orders:create".to_string()];
         if let Ok(raw) = std::env::var("AUTH_DEFAULT_PERMISSIONS") {
             for p in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                if !perms.iter().any(|x| x == p) { perms.push(p.to_string()); }
+                if !perms.iter().any(|x| x == p) {
+                    perms.push(p.to_string());
+                }
             }
         }
         Ok(perms)
@@ -646,6 +654,8 @@ impl IntoResponse for AuthError {
 
 /// Extract AuthUser from request extensions.
 /// Assumes `auth_middleware` has populated `AuthUser` in request extensions.
+#[async_trait::async_trait]
+#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
@@ -890,7 +900,9 @@ async fn logout_handler(
 
                 // Revoke the token
                 auth_service.revoke_token(token).await?;
-                return Ok(Json(serde_json::json!({ "message": "Successfully logged out" })));
+                return Ok(Json(
+                    serde_json::json!({ "message": "Successfully logged out" }),
+                ));
             }
         }
     }

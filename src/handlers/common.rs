@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use utoipa::IntoParams;
 use validator::Validate;
 
 /// Standard success response
@@ -24,7 +25,9 @@ pub fn no_content_response() -> Response {
 
 /// Validate request input
 pub fn validate_input<T: Validate>(input: &T) -> Result<(), ApiError> {
-    input.validate().map_err(|e| ApiError::ValidationError(format!("Validation failed: {}", e)))
+    input
+        .validate()
+        .map_err(|e| ApiError::ValidationError(format!("Validation failed: {}", e)))
 }
 
 /// Map service errors to API errors
@@ -39,7 +42,7 @@ pub fn map_service_error(err: ServiceError) -> ApiError {
 }
 
 /// Pagination parameters for list operations
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, IntoParams)]
 pub struct PaginationParams {
     #[serde(default = "default_page")]
     pub page: u64,
@@ -82,7 +85,11 @@ pub struct PaginationMeta {
 
 impl PaginationMeta {
     pub fn new(page: u64, per_page: u64, total: u64) -> Self {
-        let total_pages = if total == 0 { 0 } else { (total + per_page - 1) / per_page };
+        let total_pages = if total == 0 {
+            0
+        } else {
+            (total + per_page - 1) / per_page
+        };
         Self {
             page,
             per_page,

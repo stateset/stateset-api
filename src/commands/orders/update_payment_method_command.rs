@@ -71,7 +71,7 @@ impl UpdatePaymentMethodCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 let msg = format!("Order {} not found", self.order_id);
@@ -85,7 +85,7 @@ impl UpdatePaymentMethodCommand {
 
         order_active_model.update(db).await.map_err(|e| {
             error!("Failed to update payment method: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

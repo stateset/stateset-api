@@ -95,7 +95,7 @@ impl ReportService {
             .filter(order::Column::CreatedDate.lte(end_date))
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Get total revenue
         let orders = order::Entity::find()
@@ -103,7 +103,7 @@ impl ReportService {
             .filter(order::Column::CreatedDate.lte(end_date))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // TODO: Calculate total_revenue from order items when order total field is available
         let total_revenue: f64 = 0.0; // orders.iter().filter_map(|o| o.total_amount).sum::<f64>();
@@ -140,7 +140,7 @@ impl ReportService {
         let total_products = inventory_items::Entity::find()
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Get low stock products (less than 10 units)
         let low_stock_products = inventory_items::Entity::find()
@@ -148,14 +148,14 @@ impl ReportService {
             .filter(inventory_items::Column::Available.gt(0))
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Get out of stock products
         let out_of_stock_products = inventory_items::Entity::find()
             .filter(inventory_items::Column::Available.eq(0))
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // TODO: Calculate inventory value from products and quantities
         // This is just a placeholder
@@ -188,7 +188,7 @@ impl ReportService {
         let supplier_model = suppliers::Entity::find_by_id(supplier_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 let msg = format!("Supplier not found with ID: {}", supplier_id);
                 error!(supplier_id = %supplier_id, "Supplier not found");
@@ -235,7 +235,7 @@ impl ReportService {
             .filter(return_entity::Column::CreatedAt.lte(end_date))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Group returns by reason
         let mut returns_by_reason = HashMap::new();

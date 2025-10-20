@@ -126,13 +126,18 @@ pub struct ClaimFilters {
 }
 
 /// Create the warranties router
-pub fn warranties_router<S>() -> Router<S> 
-where 
+pub fn warranties_router<S>() -> Router<S>
+where
     S: WarrantiesAppState,
 {
     Router::new()
         .route("/", get(list_warranties::<S>).post(create_warranty::<S>))
-        .route("/{id}", get(get_warranty::<S>).put(update_warranty::<S>).delete(delete_warranty::<S>))
+        .route(
+            "/{id}",
+            get(get_warranty::<S>)
+                .put(update_warranty::<S>)
+                .delete(delete_warranty::<S>),
+        )
         .route("/{id}/void", post(void_warranty::<S>))
         .route("/{id}/extend", post(extend_warranty::<S>))
         .route("/claims", get(list_claims::<S>).post(create_claim::<S>))
@@ -147,8 +152,8 @@ where
 pub async fn list_warranties<S>(
     State(_state): State<S>,
     Query(filters): Query<WarrantyFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     // Mock data for now - replace with actual database queries
@@ -182,7 +187,11 @@ where
             end_date: Utc::now() + chrono::Duration::days(720),
             status: "active".to_string(),
             terms: "Extended warranty with comprehensive coverage".to_string(),
-            coverage: vec!["manufacturing_defects".to_string(), "parts".to_string(), "labor".to_string()],
+            coverage: vec![
+                "manufacturing_defects".to_string(),
+                "parts".to_string(),
+                "labor".to_string(),
+            ],
             exclusions: vec!["accidental_damage".to_string()],
             created_at: Utc::now() - chrono::Duration::days(10),
             updated_at: Utc::now() - chrono::Duration::days(10),
@@ -221,14 +230,14 @@ where
 pub async fn create_warranty<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateWarrantyRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let warranty_id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let end_date = now + chrono::Duration::days(payload.duration_months as i64 * 30);
-    
+
     let warranty = Warranty {
         id: warranty_id,
         product_id: payload.product_id,
@@ -254,8 +263,8 @@ where
 pub async fn get_warranty<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let warranty = Warranty {
@@ -284,8 +293,8 @@ pub async fn update_warranty<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateWarrantyRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let warranty = Warranty {
@@ -297,9 +306,13 @@ where
         warranty_type: "limited".to_string(),
         duration_months: 12,
         start_date: Utc::now() - chrono::Duration::days(30),
-        end_date: payload.end_date.unwrap_or_else(|| Utc::now() + chrono::Duration::days(335)),
+        end_date: payload
+            .end_date
+            .unwrap_or_else(|| Utc::now() + chrono::Duration::days(335)),
         status: payload.status.unwrap_or_else(|| "active".to_string()),
-        terms: payload.terms.unwrap_or_else(|| "Standard limited warranty covering manufacturing defects".to_string()),
+        terms: payload.terms.unwrap_or_else(|| {
+            "Standard limited warranty covering manufacturing defects".to_string()
+        }),
         coverage: vec!["manufacturing_defects".to_string(), "parts".to_string()],
         exclusions: vec!["accidental_damage".to_string(), "wear_and_tear".to_string()],
         created_at: Utc::now() - chrono::Duration::days(30),
@@ -313,8 +326,8 @@ where
 pub async fn delete_warranty<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let _ = id; // placeholder until wired to DB
@@ -325,8 +338,8 @@ where
 async fn void_warranty<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let response = json!({
@@ -344,11 +357,14 @@ async fn extend_warranty<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
-    let additional_months = payload.get("additional_months").and_then(|v| v.as_i64()).unwrap_or(6) as i32;
+    let additional_months = payload
+        .get("additional_months")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(6) as i32;
     let new_end_date = Utc::now() + chrono::Duration::days(additional_months as i64 * 30);
 
     let response = json!({
@@ -366,8 +382,8 @@ where
 async fn list_claims<S>(
     State(_state): State<S>,
     Query(filters): Query<ClaimFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let mut claims = vec![
@@ -385,15 +401,13 @@ where
             repair_cost: None,
             replacement_product_id: None,
             refund_amount: None,
-            attachments: vec![
-                ClaimAttachment {
-                    id: "att_001".to_string(),
-                    filename: "device_photo.jpg".to_string(),
-                    file_type: "image/jpeg".to_string(),
-                    file_size: 256000,
-                    upload_date: Utc::now() - chrono::Duration::days(5),
-                }
-            ],
+            attachments: vec![ClaimAttachment {
+                id: "att_001".to_string(),
+                filename: "device_photo.jpg".to_string(),
+                file_type: "image/jpeg".to_string(),
+                file_size: 256000,
+                upload_date: Utc::now() - chrono::Duration::days(5),
+            }],
             created_at: Utc::now() - chrono::Duration::days(5),
             updated_at: Utc::now() - chrono::Duration::days(2),
         },
@@ -407,7 +421,9 @@ where
             submitted_date: Utc::now() - chrono::Duration::days(10),
             resolution_date: Some(Utc::now() - chrono::Duration::days(2)),
             resolution_type: Some("replacement".to_string()),
-            resolution_notes: Some("Approved for replacement under manufacturing defect coverage".to_string()),
+            resolution_notes: Some(
+                "Approved for replacement under manufacturing defect coverage".to_string(),
+            ),
             repair_cost: None,
             replacement_product_id: Some("prod_def_new".to_string()),
             refund_amount: None,
@@ -445,13 +461,13 @@ where
 async fn create_claim<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateClaimRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let claim_id = Uuid::new_v4().to_string();
     let now = Utc::now();
-    
+
     let claim = WarrantyClaim {
         id: claim_id,
         warranty_id: payload.warranty_id,
@@ -478,8 +494,8 @@ where
 async fn get_claim<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let claim = WarrantyClaim {
@@ -509,8 +525,8 @@ async fn update_claim<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateClaimRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let claim = WarrantyClaim {
@@ -521,7 +537,11 @@ where
         issue_description: "Device stopped working after 3 months of use".to_string(),
         status: payload.status.unwrap_or_else(|| "under_review".to_string()),
         submitted_date: Utc::now() - chrono::Duration::days(5),
-        resolution_date: if payload.resolution_type.is_some() { Some(Utc::now()) } else { None },
+        resolution_date: if payload.resolution_type.is_some() {
+            Some(Utc::now())
+        } else {
+            None
+        },
         resolution_type: payload.resolution_type,
         resolution_notes: payload.resolution_notes,
         repair_cost: payload.repair_cost,
@@ -539,8 +559,8 @@ where
 async fn approve_claim<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let response = json!({
@@ -557,8 +577,8 @@ where
 async fn reject_claim<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let response = json!({
@@ -576,12 +596,15 @@ async fn resolve_claim<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
-    let resolution_type = payload.get("resolution_type").and_then(|v| v.as_str()).unwrap_or("repair");
-    
+    let resolution_type = payload
+        .get("resolution_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("repair");
+
     let response = json!({
         "message": format!("Warranty claim {} has been resolved", id),
         "claim_id": id,
@@ -597,23 +620,21 @@ where
 async fn get_expiring_warranties<S>(
     State(_state): State<S>,
     Query(filters): Query<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
     let days_ahead = filters.get("days").and_then(|v| v.as_i64()).unwrap_or(30);
     let expiring_date = Utc::now() + chrono::Duration::days(days_ahead);
 
     // Mock expiring warranties
-    let expiring_warranties = vec![
-        json!({
-            "id": "warranty_003",
-            "product_id": "prod_xyz",
-            "customer_id": "cust_789",
-            "end_date": expiring_date - chrono::Duration::days(15),
-            "days_until_expiry": 15
-        })
-    ];
+    let expiring_warranties = vec![json!({
+        "id": "warranty_003",
+        "product_id": "prod_xyz",
+        "customer_id": "cust_789",
+        "end_date": expiring_date - chrono::Duration::days(15),
+        "days_until_expiry": 15
+    })];
 
     let response = json!({
         "expiring_warranties": expiring_warranties,
@@ -628,13 +649,19 @@ where
 pub async fn create_warranty_claim<S>(
     State(_state): State<S>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WarrantiesAppState,
 {
-    let warranty_id = payload.get("warranty_id").and_then(|w| w.as_str()).unwrap_or("warranty-123");
-    let claim_reason = payload.get("reason").and_then(|r| r.as_str()).unwrap_or("Defective product");
-    
+    let warranty_id = payload
+        .get("warranty_id")
+        .and_then(|w| w.as_str())
+        .unwrap_or("warranty-123");
+    let claim_reason = payload
+        .get("reason")
+        .and_then(|r| r.as_str())
+        .unwrap_or("Defective product");
+
     let claim = json!({
         "id": Uuid::new_v4().to_string(),
         "warranty_id": warranty_id,

@@ -1,11 +1,11 @@
 use crate::models::billofmaterials::{LineItemStatus, LineType, SupplyType};
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
-use validator::{Validate, ValidationError};
 use uuid::Uuid;
-use async_trait::async_trait;
+use validator::{Validate, ValidationError};
 
 /// Line item model for Bill of Materials
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -68,11 +68,7 @@ impl Related<crate::models::billofmaterials::Entity> for Entity {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -115,7 +111,8 @@ impl Model {
             created_at: now,
             updated_at: now,
         };
-        item.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        item.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(item)
     }
 }

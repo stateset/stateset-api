@@ -41,7 +41,7 @@ impl Command for GetCustomerByEmailCommand {
             .map_err(|e| {
                 let msg = format!("Failed to get customer by email: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
 
         info!("Fetched customer by email: {}", self.email);

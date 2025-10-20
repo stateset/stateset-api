@@ -8,10 +8,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    entity::prelude::*,
-    ActiveModelTrait, 
-    ActiveValue::Set,
-    Database, DatabaseConnection, EntityTrait,
+    entity::prelude::*, ActiveModelTrait, ActiveValue::Set, Database, DatabaseConnection,
+    EntityTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -123,16 +121,11 @@ async fn get_product(
     Ok(Json(ProductResponse::from(product)))
 }
 
-async fn list_products(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let products = Entity::find()
-        .all(&*state.db)
-        .await
-        .map_err(|e| {
-            error!("Failed to list products: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+async fn list_products(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+    let products = Entity::find().all(&*state.db).await.map_err(|e| {
+        error!("Failed to list products: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let response: Vec<ProductResponse> = products.into_iter().map(ProductResponse::from).collect();
     Ok(Json(response))
@@ -145,9 +138,7 @@ async fn health_check() -> impl IntoResponse {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter("debug")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("debug").init();
 
     info!("Starting minimal API...");
 
@@ -158,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to database
     info!("Connecting to database...");
     let db = Database::connect(&database_url).await?;
-    
+
     // Create products table if it doesn't exist
     let create_table_sql = r#"
         CREATE TABLE IF NOT EXISTS products (
@@ -172,14 +163,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             updated_at TIMESTAMPTZ
         );
     "#;
-    
+
     db.execute_unprepared(create_table_sql).await?;
     info!("Database table ready");
 
     // Create app state
-    let state = AppState {
-        db: Arc::new(db),
-    };
+    let state = AppState { db: Arc::new(db) };
 
     // Build the router
     let app = Router::new()
@@ -193,9 +182,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run the server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     info!("Listening on {}", addr);
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
-} 
+}

@@ -1,8 +1,7 @@
-use super::{InMemoryCache, CacheError};
+use super::{CacheError, InMemoryCache};
 use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ActiveValue, ColumnTrait,
-    DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryTrait, Select, Statement,
+    ActiveModelBehavior, ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryTrait, Select, Statement,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -84,9 +83,10 @@ where
         }
 
         // Execute the query against the database
-        let result = query.all(db).await.map_err(|e| {
-            CacheError::OperationFailed(format!("Database query failed: {}", e))
-        })?;
+        let result = query
+            .all(db)
+            .await
+            .map_err(|e| CacheError::OperationFailed(format!("Database query failed: {}", e)))?;
 
         // Cache the result
         let cache = self.cache.clone();
@@ -142,9 +142,10 @@ where
         }
 
         // Execute the query against the database
-        let result = query.one(db).await.map_err(|e| {
-            CacheError::OperationFailed(format!("Database query failed: {}", e))
-        })?;
+        let result = query
+            .one(db)
+            .await
+            .map_err(|e| CacheError::OperationFailed(format!("Database query failed: {}", e)))?;
 
         // Cache the result
         let cache = self.cache.clone();
@@ -201,16 +202,20 @@ where
 
         // Execute the count query against the database
         // For now, just count the actual results since sea_orm count API is complex
-        let results = query.all(db).await.map_err(|e| {
-            CacheError::OperationFailed(format!("Database query failed: {}", e))
-        })?;
+        let results = query
+            .all(db)
+            .await
+            .map_err(|e| CacheError::OperationFailed(format!("Database query failed: {}", e)))?;
         let result = results.len() as u64;
 
         // Cache the result
         let cache = self.cache.clone();
         let cache_key_clone = cache_key.clone();
         tokio::spawn(async move {
-            if let Err(err) = cache.set(&cache_key_clone, &result.to_string(), Some(ttl)).await {
+            if let Err(err) = cache
+                .set(&cache_key_clone, &result.to_string(), Some(ttl))
+                .await
+            {
                 warn!("Failed to cache count result: {}", err);
             }
         });
@@ -222,7 +227,10 @@ where
     pub async fn invalidate(&self) -> Result<(), CacheError> {
         // For now, we'll need to implement a more sophisticated invalidation strategy
         // This is a simplified version that just logs the request
-        warn!("Cache invalidation requested for entity: {}", self.entity_name);
+        warn!(
+            "Cache invalidation requested for entity: {}",
+            self.entity_name
+        );
         Ok(())
     }
 
@@ -230,7 +238,10 @@ where
     pub async fn invalidate_pattern(&self, pattern: &str) -> Result<(), CacheError> {
         // In a real implementation, you'd want to iterate through cache keys
         // and remove ones matching the pattern
-        warn!("Pattern-based cache invalidation not implemented for pattern: {}", pattern);
+        warn!(
+            "Pattern-based cache invalidation not implemented for pattern: {}",
+            pattern
+        );
         Ok(())
     }
 }
@@ -291,9 +302,12 @@ pub async fn invalidate_entity_cache(
 ) -> Result<(), CacheError> {
     let _prefix = format!("entity:{}:", entity_name);
     let _query_prefix = format!("query:{}:", entity_name);
-    
+
     // In a real implementation, you'd iterate through cache keys and remove matching ones
-    warn!("Entity cache invalidation not fully implemented for: {}", entity_name);
+    warn!(
+        "Entity cache invalidation not fully implemented for: {}",
+        entity_name
+    );
     Ok(())
 }
 
@@ -301,6 +315,9 @@ pub async fn invalidate_query_cache(
     cache: &InMemoryCache,
     query_pattern: &str,
 ) -> Result<(), CacheError> {
-    warn!("Query cache invalidation not fully implemented for pattern: {}", query_pattern);
+    warn!(
+        "Query cache invalidation not fully implemented for pattern: {}",
+        query_pattern
+    );
     Ok(())
 }

@@ -8,7 +8,7 @@ use crate::{
         return_entity::{self, Entity as Return},
     },
 };
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -45,7 +45,7 @@ impl Command for ReceiveReturnCommand {
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 
         Ok(ReceiveReturnResult {
-            id: Uuid::parse_str(&received_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+            id: received_return.id,
             status: received_return.status,
         })
     }
@@ -62,7 +62,7 @@ impl ReceiveReturnCommand {
             .map_err(|e| {
                 let msg = format!("Failed to fetch return request: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return {} not found", self.return_id);
@@ -71,15 +71,15 @@ impl ReceiveReturnCommand {
             })?;
 
         let mut active: return_entity::ActiveModel = return_request.into();
-        active.status = Set(ReturnStatus::Received);
+        active.status = Set(ReturnStatus::Received.as_str().to_owned());
 
-        active.update(db).await.map_err(|e| {
+        let updated = active.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return {}: {}", self.return_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         info!("Return marked as received: {}", self.return_id);
-        Ok(active.into())
+        Ok(updated)
     }
 }

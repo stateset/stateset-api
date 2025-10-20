@@ -1,4 +1,6 @@
-use crate::handlers::common::{created_response, map_service_error, success_response, validate_input};
+use crate::handlers::common::{
+    created_response, map_service_error, success_response, validate_input,
+};
 use crate::{
     auth::{AuthenticatedUser, LoginCredentials},
     errors::ApiError,
@@ -13,12 +15,11 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
 
 /// Creates the router for customer endpoints
-pub fn customers_routes() -> Router<Arc<AppState>> {
+pub fn customers_routes() -> Router<AppState> {
     Router::new()
         .route("/register", post(register_customer))
         .route("/login", post(login_customer))
@@ -30,7 +31,7 @@ pub fn customers_routes() -> Router<Arc<AppState>> {
 
 /// Register new customer
 async fn register_customer(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     validate_input(&payload)?;
@@ -51,12 +52,14 @@ async fn register_customer(
         .await
         .map_err(map_service_error)?;
 
-    Ok(created_response(crate::services::commerce::customer_service::CustomerResponse::from(customer)))
+    Ok(created_response(
+        crate::services::commerce::customer_service::CustomerResponse::from(customer),
+    ))
 }
 
 /// Login customer
 async fn login_customer(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     validate_input(&payload)?;
@@ -79,7 +82,7 @@ async fn login_customer(
 /// Get current customer profile
 async fn get_current_customer(
     user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let customer_id = Uuid::parse_str(&user.user_id)
         .map_err(|_| ApiError::ValidationError("Invalid user ID".to_string()))?;
@@ -91,13 +94,15 @@ async fn get_current_customer(
         .await
         .map_err(map_service_error)?;
 
-    Ok(success_response(crate::services::commerce::customer_service::CustomerResponse::from(customer)))
+    Ok(success_response(
+        crate::services::commerce::customer_service::CustomerResponse::from(customer),
+    ))
 }
 
 /// Update current customer
 async fn update_current_customer(
     user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<UpdateCustomerRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let customer_id = Uuid::parse_str(&user.user_id)
@@ -117,13 +122,15 @@ async fn update_current_customer(
         .await
         .map_err(map_service_error)?;
 
-    Ok(success_response(crate::services::commerce::customer_service::CustomerResponse::from(customer)))
+    Ok(success_response(
+        crate::services::commerce::customer_service::CustomerResponse::from(customer),
+    ))
 }
 
 /// Get customer addresses
 async fn get_customer_addresses(
     user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let customer_id = Uuid::parse_str(&user.user_id)
         .map_err(|_| ApiError::ValidationError("Invalid user ID".to_string()))?;
@@ -141,7 +148,7 @@ async fn get_customer_addresses(
 /// Add customer address
 async fn add_customer_address(
     user: AuthenticatedUser,
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<AddAddressRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     validate_input(&payload)?;

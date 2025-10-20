@@ -49,7 +49,7 @@ impl Command for ListSuppliersCommand {
         let suppliers = query.all(db).await.map_err(|e| {
             let msg = format!("Failed to list suppliers: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
 
         info!(count = suppliers.len(), "Listed suppliers");

@@ -1,4 +1,3 @@
-use uuid::Uuid;
 use crate::commands::Command;
 use crate::events::{Event, EventSender};
 use crate::{
@@ -14,8 +13,10 @@ use prometheus::IntCounter;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 lazy_static! {
@@ -70,7 +71,7 @@ impl Movement {
 #[async_trait::async_trait]
 impl Command for CalculateWeightedAverageCOGSCommand {
     type Result = WeightedAverageCOGSResult;
-    
+
     #[instrument(skip(db_pool, event_sender))]
     async fn execute(
         &self,
@@ -81,7 +82,7 @@ impl Command for CalculateWeightedAverageCOGSCommand {
         let purchase_orders = self.get_purchase_orders(&db).await?;
         let inventory_movements = self.get_inventory_movements(&db).await?;
         let manufacturing_costs = self.get_manufacturing_costs(&db).await?;
-        
+
         let mut all_movements: Vec<Movement> = Vec::new();
         all_movements.extend(purchase_orders.into_iter().map(Movement::Purchase));
         all_movements.extend(
@@ -91,14 +92,16 @@ impl Command for CalculateWeightedAverageCOGSCommand {
         );
         all_movements.extend(manufacturing_costs.into_iter().map(Movement::Manufacturing));
         all_movements.sort_by(|a, b| a.date().cmp(&b.date()));
-        
+
         let result = self.calculate_cogs(all_movements)?;
-        
+        let total_cogs_decimal = rust_decimal::Decimal::from_str(&result.cogs.to_string())
+            .unwrap_or(rust_decimal::Decimal::ZERO);
+
         // Trigger an event indicating that Weighted Average COGS was calculated
         if let Err(e) = event_sender
             .send(Event::WeightedAverageCOGSCalculated(
                 self.product_id,
-                result.cogs.clone(),
+                total_cogs_decimal,
             ))
             .await
         {
@@ -109,7 +112,7 @@ impl Command for CalculateWeightedAverageCOGSCommand {
             );
             return Err(ServiceError::EventError(e.to_string()));
         }
-        
+
         WAVG_COGS_CALCULATIONS.inc();
         info!(
             product_id = %self.product_id,
@@ -137,7 +140,7 @@ impl CalculateWeightedAverageCOGSCommand {
                     "Failed to fetch purchase order items for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 
@@ -147,7 +150,10 @@ impl CalculateWeightedAverageCOGSCommand {
     ) -> Result<Vec<inventory_transaction_entity::Model>, ServiceError> {
         inventory_transaction_entity::Entity::find()
             .filter(inventory_transaction_entity::Column::ProductId.eq(self.product_id))
-            .filter(inventory_transaction_entity::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(
+                inventory_transaction_entity::Column::CreatedAt
+                    .between(self.start_date, self.end_date),
+            )
             .all(db)
             .await
             .map_err(|e| {
@@ -156,7 +162,7 @@ impl CalculateWeightedAverageCOGSCommand {
                     "Failed to fetch inventory movements for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 
@@ -167,7 +173,10 @@ impl CalculateWeightedAverageCOGSCommand {
         // Since manufacturing_cost_entity doesn't have ProductId and Date columns directly,
         // we need to join with work_order table to get the relevant costs
         let costs = manufacturing_cost_entity::Entity::find()
-            .filter(manufacturing_cost_entity::Column::CreatedAt.between(self.start_date, self.end_date))
+            .filter(
+                manufacturing_cost_entity::Column::CreatedAt
+                    .between(self.start_date, self.end_date),
+            )
             .all(db)
             .await
             .map_err(|e| {
@@ -176,9 +185,9 @@ impl CalculateWeightedAverageCOGSCommand {
                     "Failed to fetch manufacturing costs for product {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
-        
+
         // For now, return all manufacturing costs
         // In a real implementation, we would filter by product_id using a join with work_orders
         Ok(costs)
@@ -194,45 +203,54 @@ impl CalculateWeightedAverageCOGSCommand {
         };
         let mut cogs = BigDecimal::from(0);
         let mut total_purchases = Vec::new();
-        
+
         for movement in movements {
             match movement {
                 Movement::Purchase(poi) => {
                     total_purchases.push((
                         BigDecimal::from(poi.quantity_received),
-                        poi.unit_cost.to_string().parse::<BigDecimal>().unwrap_or_default(),
+                        poi.unit_cost
+                            .to_string()
+                            .parse::<BigDecimal>()
+                            .unwrap_or_default(),
                     ));
                 }
                 Movement::Manufacturing(mc) => {
                     // Get the quantity from the work order associated with this manufacturing cost
                     // For now, we'll use a placeholder quantity of 1
                     let quantity = BigDecimal::from(1);
-                    let unit_cost = mc.cost_amount.to_string().parse::<BigDecimal>().unwrap_or_default();
+                    let unit_cost = mc
+                        .cost_amount
+                        .to_string()
+                        .parse::<BigDecimal>()
+                        .unwrap_or_default();
                     total_purchases.push((quantity, unit_cost));
                 }
                 Movement::InventoryMovement(im) => {
                     match im.transaction_type {
-                        inventory_transaction_entity::InventoryTransactionType::Receipt |
-                        inventory_transaction_entity::InventoryTransactionType::Return |
-                        inventory_transaction_entity::InventoryTransactionType::Production => {
+                        inventory_transaction_entity::InventoryTransactionType::Receipt
+                        | inventory_transaction_entity::InventoryTransactionType::Return
+                        | inventory_transaction_entity::InventoryTransactionType::Production => {
                             let new_average_cost =
                                 Self::calculate_weighted_average_cost(&inventory, &total_purchases);
                             inventory.quantity += BigDecimal::from(im.quantity);
                             inventory.average_cost = new_average_cost;
                             total_purchases.clear();
-                        },
-                        inventory_transaction_entity::InventoryTransactionType::Sale |
-                        inventory_transaction_entity::InventoryTransactionType::Scrap => {
+                        }
+                        inventory_transaction_entity::InventoryTransactionType::Sale
+                        | inventory_transaction_entity::InventoryTransactionType::Scrap => {
                             let quantity_sold = BigDecimal::from(im.quantity.abs());
                             cogs += &inventory.average_cost * &quantity_sold;
                             inventory.quantity -= quantity_sold;
-                        },
+                        }
                         _ => {
                             // For other transaction types like Adjustment, Count, Transfer
                             // We need to check if it's an addition or reduction
                             if im.quantity > 0 {
-                                let new_average_cost =
-                                    Self::calculate_weighted_average_cost(&inventory, &total_purchases);
+                                let new_average_cost = Self::calculate_weighted_average_cost(
+                                    &inventory,
+                                    &total_purchases,
+                                );
                                 inventory.quantity += BigDecimal::from(im.quantity);
                                 inventory.average_cost = new_average_cost;
                                 total_purchases.clear();
@@ -246,7 +264,7 @@ impl CalculateWeightedAverageCOGSCommand {
                 }
             }
         }
-        
+
         Ok(WeightedAverageCOGSResult {
             cogs,
             ending_inventory: inventory,
@@ -259,12 +277,12 @@ impl CalculateWeightedAverageCOGSCommand {
     ) -> BigDecimal {
         let mut total_cost = &inventory.quantity * &inventory.average_cost;
         let mut total_quantity = inventory.quantity.clone();
-        
+
         for (quantity, cost) in purchases {
             total_cost += quantity * cost;
             total_quantity += quantity;
         }
-        
+
         if total_quantity.is_zero() {
             BigDecimal::from(0)
         } else {

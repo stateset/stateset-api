@@ -1,12 +1,16 @@
 use crate::circuit_breaker::CircuitBreaker;
+use crate::commands::purchaseorders::{
+    ApprovePurchaseOrderCommand, CancelPurchaseOrderCommand, CreatePurchaseOrderCommand,
+    ReceivePurchaseOrderCommand, UpdatePurchaseOrderCommand,
+};
 use crate::message_queue::MessageQueue;
 use crate::{
     // commands::purchaseorders::{
-        // approve_purchase_order_command::ApprovePurchaseOrderCommand,
-        // cancel_purchase_order_command::CancelPurchaseOrderCommand,
-        // create_purchase_order_command::CreatePurchaseOrderCommand,
-        // receive_purchase_order_command::ReceivePurchaseOrderCommand,
-        // update_purchase_order_command::UpdatePurchaseOrderCommand,
+    // approve_purchase_order_command::ApprovePurchaseOrderCommand,
+    // cancel_purchase_order_command::CancelPurchaseOrderCommand,
+    // create_purchase_order_command::CreatePurchaseOrderCommand,
+    // receive_purchase_order_command::ReceivePurchaseOrderCommand,
+    // update_purchase_order_command::UpdatePurchaseOrderCommand,
     // },
     commands::Command,
     db::DbPool,
@@ -14,22 +18,15 @@ use crate::{
     events::{Event, EventSender},
     models::{purchase_order, supplier},
 };
-use crate::commands::purchaseorders::{
-    ApprovePurchaseOrderCommand,
-    CancelPurchaseOrderCommand,
-    CreatePurchaseOrderCommand,
-    ReceivePurchaseOrderCommand,
-    UpdatePurchaseOrderCommand,
-};
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use redis::Client as RedisClient;
+use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use slog::Logger;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
-use rust_decimal::Decimal;
 
 /// Service for managing procurement processes
 #[derive(Clone)]
@@ -132,7 +129,7 @@ impl ProcurementService {
         let po = purchase_order::Entity::find_by_id(*po_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(po)
     }
@@ -148,7 +145,7 @@ impl ProcurementService {
             .filter(purchase_order::Column::SupplierId.eq(*supplier_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(pos)
     }
@@ -164,7 +161,7 @@ impl ProcurementService {
             .filter(purchase_order::Column::Status.eq(status))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(pos)
     }
@@ -182,7 +179,7 @@ impl ProcurementService {
             .filter(purchase_order::Column::ExpectedDeliveryDate.lte(end_date))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(pos)
     }
@@ -200,9 +197,12 @@ impl ProcurementService {
             .filter(purchase_order::Column::CreatedAt.lte(end_date))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        let total_value: f64 = pos.iter().filter_map(|po| Some(po.total_amount.to_string().parse::<f64>().unwrap_or(0.0))).sum();
+        let total_value: f64 = pos
+            .iter()
+            .filter_map(|po| Some(po.total_amount.to_string().parse::<f64>().unwrap_or(0.0)))
+            .sum();
 
         Ok(total_value)
     }

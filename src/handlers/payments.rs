@@ -2,7 +2,9 @@ use super::common::PaginationParams;
 use crate::auth::AuthenticatedUser;
 use crate::errors::ServiceError;
 use crate::handlers::AppState;
-use crate::services::payments::{PaymentService, ProcessPaymentRequest, RefundPaymentRequest, PaymentStatus, PaymentMethod};
+use crate::services::payments::{
+    PaymentMethod, PaymentService, PaymentStatus, ProcessPaymentRequest, RefundPaymentRequest,
+};
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
@@ -10,16 +12,17 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
-use rust_decimal::Decimal;
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreatePaymentRequest {
     pub order_id: Uuid,
-    
+
     pub amount: Decimal,
     pub payment_method: String,
     pub payment_method_id: Option<String>,
@@ -27,15 +30,15 @@ pub struct CreatePaymentRequest {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct RefundPaymentHandlerRequest {
     pub payment_id: Uuid,
-    
+
     pub amount: Option<Decimal>,
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct PaymentStatusFilter {
     pub status: Option<String>,
 }
@@ -62,7 +65,9 @@ async fn process_payment(
 ) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:write") {
-        return Err(ServiceError::Forbidden("Insufficient permissions".to_string()));
+        return Err(ServiceError::Forbidden(
+            "Insufficient permissions".to_string(),
+        ));
     }
 
     request.validate()?;
@@ -75,7 +80,11 @@ async fn process_payment(
         "bank_transfer" => PaymentMethod::BankTransfer,
         "cash" => PaymentMethod::Cash,
         "check" => PaymentMethod::Check,
-        _ => return Err(ServiceError::ValidationError("Invalid payment method".to_string())),
+        _ => {
+            return Err(ServiceError::ValidationError(
+                "Invalid payment method".to_string(),
+            ))
+        }
     };
 
     let payment_request = ProcessPaymentRequest {
@@ -87,10 +96,8 @@ async fn process_payment(
         description: request.description,
     };
 
-    let payment_service = PaymentService::new(
-        state.db.clone(),
-        Arc::new(state.event_sender.clone()),
-    );
+    let payment_service =
+        PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let response = payment_service.process_payment(payment_request).await?;
     Ok((StatusCode::CREATED, Json(response)))
@@ -117,13 +124,13 @@ async fn get_payment(
 ) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
-        return Err(ServiceError::Forbidden("Insufficient permissions".to_string()));
+        return Err(ServiceError::Forbidden(
+            "Insufficient permissions".to_string(),
+        ));
     }
 
-    let payment_service = PaymentService::new(
-        state.db.clone(),
-        Arc::new(state.event_sender.clone()),
-    );
+    let payment_service =
+        PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let payment = payment_service.get_payment(payment_id).await?;
     Ok(Json(payment))
@@ -149,13 +156,13 @@ async fn get_order_payments(
 ) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
-        return Err(ServiceError::Forbidden("Insufficient permissions".to_string()));
+        return Err(ServiceError::Forbidden(
+            "Insufficient permissions".to_string(),
+        ));
     }
 
-    let payment_service = PaymentService::new(
-        state.db.clone(),
-        Arc::new(state.event_sender.clone()),
-    );
+    let payment_service =
+        PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let payments = payment_service.get_order_payments(order_id).await?;
     Ok(Json(payments))
@@ -183,7 +190,9 @@ async fn list_payments(
 ) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
-        return Err(ServiceError::Forbidden("Insufficient permissions".to_string()));
+        return Err(ServiceError::Forbidden(
+            "Insufficient permissions".to_string(),
+        ));
     }
 
     let page = params.page;
@@ -199,12 +208,12 @@ async fn list_payments(
         _ => PaymentStatus::Pending,
     });
 
-    let payment_service = PaymentService::new(
-        state.db.clone(),
-        Arc::new(state.event_sender.clone()),
-    );
+    let payment_service =
+        PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
-    let (payments, total) = payment_service.list_payments(page, limit, status_filter).await?;
+    let (payments, total) = payment_service
+        .list_payments(page, limit, status_filter)
+        .await?;
 
     let response = crate::PaginatedResponse {
         items: payments,
@@ -236,7 +245,9 @@ async fn refund_payment(
 ) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:write") {
-        return Err(ServiceError::Forbidden("Insufficient permissions".to_string()));
+        return Err(ServiceError::Forbidden(
+            "Insufficient permissions".to_string(),
+        ));
     }
 
     request.validate()?;
@@ -247,10 +258,8 @@ async fn refund_payment(
         reason: request.reason,
     };
 
-    let payment_service = PaymentService::new(
-        state.db.clone(),
-        Arc::new(state.event_sender.clone()),
-    );
+    let payment_service =
+        PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let refund = payment_service.refund_payment(refund_request).await?;
     Ok((StatusCode::CREATED, Json(refund)))
@@ -276,13 +285,13 @@ async fn get_order_payment_total(
 ) -> Result<impl IntoResponse, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
-        return Err(ServiceError::Forbidden("Insufficient permissions".to_string()));
+        return Err(ServiceError::Forbidden(
+            "Insufficient permissions".to_string(),
+        ));
     }
 
-    let payment_service = PaymentService::new(
-        state.db.clone(),
-        Arc::new(state.event_sender.clone()),
-    );
+    let payment_service =
+        PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let total = payment_service.get_order_total_payments(order_id).await?;
 

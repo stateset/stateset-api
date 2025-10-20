@@ -30,7 +30,7 @@ impl Command for CountCustomersCommand {
         let count = Customer::find().count(db).await.map_err(|e| {
             let msg = format!("Failed to count customers: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
 
         info!(count, "Counted customers");

@@ -54,7 +54,7 @@ impl Command for GenerateCustomerActivityReportCommand {
                     "Failed to count orders for customer {}: {}",
                     self.customer_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         info!(customer_id = %self.customer_id, orders, "Generating customer activity report");

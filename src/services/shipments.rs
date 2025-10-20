@@ -17,12 +17,14 @@ use crate::{
 };
 use anyhow::Result;
 use redis::Client as RedisClient;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, QueryOrder};
+use sea_orm::PaginatorTrait;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
 use slog::Logger;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
-use sea_orm::PaginatorTrait;
 
 /// Service for managing shipments
 #[derive(Clone)]
@@ -64,21 +66,23 @@ impl ShipmentService {
         &self,
         command: CreateShipmentCommand,
     ) -> Result<Uuid, ServiceError> {
-        let new_shipment = shipment::ActiveModel {
-            order_id: Set(command.order_id),
-            carrier: Set(command.carrier),
-            tracking_number: Set(command.tracking_number),
-            ..Default::default()
-        };
-
-        let result = new_shipment.insert(&*self.db_pool).await?;
+        let result = command
+            .execute(self.db_pool.clone(), self.event_sender.clone())
+            .await?;
         // Outbox: ShipmentCreated
         let payload = serde_json::json!({
             "shipment_id": result.id.to_string(),
             "order_id": result.order_id.to_string(),
             "tracking_number": result.tracking_number,
         });
-        let _ = crate::events::outbox::enqueue(&*self.db_pool, "shipment", Some(result.id), "ShipmentCreated", &payload).await;
+        let _ = crate::events::outbox::enqueue(
+            &*self.db_pool,
+            "shipment",
+            Some(result.id),
+            "ShipmentCreated",
+            &payload,
+        )
+        .await;
         Ok(result.id)
     }
 
@@ -167,7 +171,7 @@ impl ShipmentService {
         let shipment = shipment::Entity::find_by_id(shipment_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(shipment)
     }
@@ -183,7 +187,7 @@ impl ShipmentService {
             .filter(shipment::Column::OrderId.eq(*order_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(shipments)
     }
@@ -205,11 +209,16 @@ impl ShipmentService {
             .paginate(db, limit);
 
         // Get the total count of shipments
-        let total = paginator.num_items().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let total = paginator
+            .num_items()
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Get the requested page of shipments
-        let shipments = paginator.fetch_page(page - 1).await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+        let shipments = paginator
+            .fetch_page(page - 1)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((shipments, total))
     }
