@@ -244,7 +244,7 @@ impl CircuitBreakerRegistry {
     /// Get or create a circuit breaker for the given service
     pub fn get(&self, service_name: &str) -> Arc<CircuitBreaker> {
         let mut breakers = self.breakers.lock().unwrap();
-        
+
         if let Some(breaker) = breakers.get(service_name) {
             breaker.clone()
         } else {
@@ -274,32 +274,32 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-async fn test_circuit_breaker_closed_state() {
-    let cb = CircuitBreaker::new(3, Duration::from_millis(100), 2);
+    async fn test_circuit_breaker_closed_state() {
+        let cb = CircuitBreaker::new(3, Duration::from_millis(100), 2);
 
-    // Should be closed initially
-    assert_eq!(cb.state(), CircuitState::Closed);
+        // Should be closed initially
+        assert_eq!(cb.state(), CircuitState::Closed);
 
-    // Successful calls should keep it closed
-    let result = cb.call(|| Ok::<i32, &str>(42)).await;
-    assert!(result.is_ok());
-    assert_eq!(cb.state(), CircuitState::Closed);
-}
+        // Successful calls should keep it closed
+        let result = cb.call(|| Ok::<i32, &str>(42)).await;
+        assert!(result.is_ok());
+        assert_eq!(cb.state(), CircuitState::Closed);
+    }
 
-#[tokio::test]
-async fn test_circuit_breaker_opens_on_failures() {
-    let cb = CircuitBreaker::new(2, Duration::from_millis(100), 2);
+    #[tokio::test]
+    async fn test_circuit_breaker_opens_on_failures() {
+        let cb = CircuitBreaker::new(2, Duration::from_millis(100), 2);
 
-    // First failure
-    let _result = cb.call(|| Err::<i32, &str>("error")).await;
-    assert_eq!(cb.state(), CircuitState::Closed);
+        // First failure
+        let _result = cb.call(|| Err::<i32, &str>("error")).await;
+        assert_eq!(cb.state(), CircuitState::Closed);
 
-    // Second failure should open the circuit
-    let _result = cb.call(|| Err::<i32, &str>("error")).await;
-    assert_eq!(cb.state(), CircuitState::Open);
+        // Second failure should open the circuit
+        let _result = cb.call(|| Err::<i32, &str>("error")).await;
+        assert_eq!(cb.state(), CircuitState::Open);
 
-    // Next call should be rejected
-    let result = cb.call(|| Ok::<i32, &str>(42)).await;
-    assert!(matches!(result, Err(CircuitBreakerError::CircuitOpen)));
-}
+        // Next call should be rejected
+        let result = cb.call(|| Ok::<i32, &str>(42)).await;
+        assert!(matches!(result, Err(CircuitBreakerError::CircuitOpen)));
+    }
 }

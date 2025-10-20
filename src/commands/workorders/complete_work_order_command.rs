@@ -39,7 +39,7 @@ impl Command for CompleteWorkOrderCommand {
             .await
         {
             Ok(model) => model,
-            Err(e) => return Err(ServiceError::DatabaseError(e.to_string())),
+            Err(e) => return Err(ServiceError::db_error(e.to_string())),
         };
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
@@ -55,7 +55,7 @@ impl CompleteWorkOrderCommand {
         let mut work_order = work_order_entity::Entity::find_by_id(self.work_order_id)
             .one(txn)
             .await
-            .map_err(ServiceError::DatabaseError)?
+            .map_err(ServiceError::db_error)?
             .ok_or_else(|| ServiceError::NotFound(format!("Work Order with ID {} not found", self.work_order_id)))?;
         let mut active_model = work_order.into_active_model();
         active_model.status = Set(work_order_entity::WorkOrderStatus::Completed);

@@ -137,7 +137,7 @@ impl AdjustInventoryCommand {
                     )
                     .one(txn)
                     .await
-                    .map_err(|e| ServiceError::DatabaseError(e))?
+                    .map_err(|e| ServiceError::db_error(e))?
                     .ok_or_else(|| {
                         ServiceError::NotFound(format!(
                             "Inventory level not found for product {} in warehouse {}",
@@ -161,7 +161,7 @@ impl AdjustInventoryCommand {
                 let _updated_inventory = inventory
                     .update(txn)
                     .await
-                    .map_err(|e| ServiceError::DatabaseError(e))?;
+                    .map_err(|e| ServiceError::db_error(e))?;
 
                 // Create inventory transaction record
                 let transaction = inventory_transaction_entity::ActiveModel {
@@ -186,7 +186,7 @@ impl AdjustInventoryCommand {
                 let saved_transaction = transaction
                     .insert(txn)
                     .await
-                    .map_err(|e| ServiceError::DatabaseError(e))?;
+                    .map_err(|e| ServiceError::db_error(e))?;
 
                 Ok(AdjustInventoryResult {
                     transaction_id: saved_transaction.id,
@@ -204,7 +204,7 @@ impl AdjustInventoryCommand {
         .map_err(|e| {
             error!("Transaction failed for inventory adjustment: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })

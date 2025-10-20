@@ -3,8 +3,8 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, 
-    QueryFilter, QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
@@ -13,8 +13,13 @@ use validator::Validate;
 
 use crate::{
     db::DbPool,
-    entities::order::{self, ActiveModel as OrderActiveModel, Entity as OrderEntity, Model as OrderModel},
-    entities::order_item::{Entity as OrderItemEntity, Model as OrderItemModel, Column as OrderItemColumn, ActiveModel as OrderItemActiveModel},
+    entities::order::{
+        self, ActiveModel as OrderActiveModel, Entity as OrderEntity, Model as OrderModel,
+    },
+    entities::order_item::{
+        ActiveModel as OrderItemActiveModel, Column as OrderItemColumn, Entity as OrderItemEntity,
+        Model as OrderItemModel,
+    },
     errors::ServiceError,
     events::{Event, EventSender},
 };
@@ -138,7 +143,7 @@ impl OrderService {
 
         let model = order_active.insert(db).await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to create minimal order");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         if let Some(event_sender) = &self.event_sender {
@@ -150,15 +155,19 @@ impl OrderService {
 
     /// Creates a new order in the database
     #[instrument(skip(self, request), fields(customer_id = %request.customer_id, order_number = %request.order_number))]
-    pub async fn create_order(&self, request: CreateOrderRequest) -> Result<OrderResponse, ServiceError> {
+    pub async fn create_order(
+        &self,
+        request: CreateOrderRequest,
+    ) -> Result<OrderResponse, ServiceError> {
         // Validate the request
-        request.validate()
+        request
+            .validate()
             .map_err(|e| ServiceError::ValidationError(format!("Invalid order data: {}", e)))?;
-        
+
         // Additional business validations
         if request.total_amount < Decimal::ZERO {
             return Err(ServiceError::ValidationError(
-                "Total amount cannot be negative".to_string()
+                "Total amount cannot be negative".to_string(),
             ));
         }
 
@@ -169,7 +178,7 @@ impl OrderService {
         // Start a database transaction
         let txn = db.begin().await.map_err(|e| {
             error!(error = %e, "Failed to start transaction for order creation");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         // Create the order active model
@@ -198,19 +207,22 @@ impl OrderService {
         // Insert the order
         let order_model = order_active_model.insert(&txn).await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to create order in database");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         // Enqueue outbox event within the transaction for reliability
         let payload = serde_json::json!({"order_id": order_id.to_string()});
-        if let Err(e) = crate::events::outbox::enqueue(&txn, "order", Some(order_id), "OrderCreated", &payload).await {
+        if let Err(e) =
+            crate::events::outbox::enqueue(&txn, "order", Some(order_id), "OrderCreated", &payload)
+                .await
+        {
             warn!(error = %e, order_id = %order_id, "Failed to enqueue outbox for OrderCreated");
         }
 
         // Commit the transaction
         txn.commit().await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to commit order creation transaction");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         info!(order_id = %order_id, customer_id = %request.customer_id, "Order created successfully");
@@ -236,7 +248,7 @@ impl OrderService {
             .await
             .map_err(|e| {
                 error!(error = %e, order_id = %order_id, "Failed to fetch order from database");
-                ServiceError::DatabaseError(e.into())
+                ServiceError::db_error(e)
             })?;
 
         match order {
@@ -253,20 +265,24 @@ impl OrderService {
 
     /// Lists orders with pagination
     #[instrument(skip(self))]
-    pub async fn list_orders(&self, page: u64, per_page: u64) -> Result<OrderListResponse, ServiceError> {
+    pub async fn list_orders(
+        &self,
+        page: u64,
+        per_page: u64,
+    ) -> Result<OrderListResponse, ServiceError> {
         // Validate pagination parameters
         if page == 0 {
             return Err(ServiceError::ValidationError(
-                "Page number must be greater than 0".to_string()
+                "Page number must be greater than 0".to_string(),
             ));
         }
-        
+
         if per_page == 0 || per_page > 100 {
             return Err(ServiceError::ValidationError(
-                "Per page must be between 1 and 100".to_string()
+                "Per page must be between 1 and 100".to_string(),
             ));
         }
-        
+
         let db = &*self.db_pool;
 
         // Get paginated orders
@@ -277,12 +293,12 @@ impl OrderService {
 
         let total = paginator.num_items().await.map_err(|e| {
             error!(error = %e, "Failed to count orders");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         let orders = paginator.fetch_page(page - 1).await.map_err(|e| {
             error!(error = %e, page = page, per_page = per_page, "Failed to fetch orders page");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         let order_responses: Vec<OrderResponse> = orders
@@ -290,7 +306,13 @@ impl OrderService {
             .map(|order| self.model_to_response(order))
             .collect();
 
-        info!(total = total, page = page, per_page = per_page, returned_count = order_responses.len(), "Orders listed successfully");
+        info!(
+            total = total,
+            page = page,
+            per_page = per_page,
+            returned_count = order_responses.len(),
+            "Orders listed successfully"
+        );
 
         Ok(OrderListResponse {
             orders: order_responses,
@@ -302,7 +324,10 @@ impl OrderService {
 
     /// Retrieves items for a given order
     #[instrument(skip(self), fields(order_id = %order_id))]
-    pub async fn get_order_items(&self, order_id: Uuid) -> Result<Vec<OrderItemModel>, ServiceError> {
+    pub async fn get_order_items(
+        &self,
+        order_id: Uuid,
+    ) -> Result<Vec<OrderItemModel>, ServiceError> {
         let db = &*self.db_pool;
         let items = OrderItemEntity::find()
             .filter(OrderItemColumn::OrderId.eq(order_id))
@@ -311,7 +336,7 @@ impl OrderService {
             .await
             .map_err(|e| {
                 error!(error = %e, order_id = %order_id, "Failed to fetch order items");
-                ServiceError::DatabaseError(e.into())
+                ServiceError::db_error(e)
             })?;
         Ok(items)
     }
@@ -354,7 +379,7 @@ impl OrderService {
 
         let saved = am.insert(db).await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to add order item");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         if let Some(sender) = &self.event_sender {
@@ -366,20 +391,30 @@ impl OrderService {
 
     /// Updates an order's status
     #[instrument(skip(self, request), fields(order_id = %order_id, new_status = %request.status))]
-    pub async fn update_order_status(&self, order_id: Uuid, request: UpdateOrderStatusRequest) -> Result<OrderResponse, ServiceError> {
-        request.validate()
+    pub async fn update_order_status(
+        &self,
+        order_id: Uuid,
+        request: UpdateOrderStatusRequest,
+    ) -> Result<OrderResponse, ServiceError> {
+        request
+            .validate()
             .map_err(|e| ServiceError::ValidationError(format!("Invalid status update: {}", e)))?;
-        
+
         // Validate status transition
         let valid_statuses = vec![
-            STATUS_PENDING, STATUS_PROCESSING, STATUS_SHIPPED, 
-            STATUS_DELIVERED, STATUS_CANCELLED, STATUS_REFUNDED
+            STATUS_PENDING,
+            STATUS_PROCESSING,
+            STATUS_SHIPPED,
+            STATUS_DELIVERED,
+            STATUS_CANCELLED,
+            STATUS_REFUNDED,
         ];
-        
+
         if !valid_statuses.contains(&request.status.as_str()) {
-            return Err(ServiceError::ValidationError(
-                format!("Invalid status: {}. Must be one of: {:?}", request.status, valid_statuses)
-            ));
+            return Err(ServiceError::ValidationError(format!(
+                "Invalid status: {}. Must be one of: {:?}",
+                request.status, valid_statuses
+            )));
         }
 
         let db = &*self.db_pool;
@@ -388,7 +423,7 @@ impl OrderService {
         // Start transaction
         let txn = db.begin().await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to start transaction for status update");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         // Find the order
@@ -397,7 +432,7 @@ impl OrderService {
             .await
             .map_err(|e| {
                 error!(error = %e, order_id = %order_id, "Failed to find order for status update");
-                ServiceError::DatabaseError(e.into())
+                ServiceError::db_error(e)
             })?;
 
         let order = order.ok_or_else(|| {
@@ -406,12 +441,13 @@ impl OrderService {
         })?;
 
         let old_status = order.status.clone();
-        
+
         // Validate status transition rules
         if !self.is_valid_status_transition(&old_status, &request.status) {
-            return Err(ServiceError::ValidationError(
-                format!("Invalid status transition from {} to {}", old_status, request.status)
-            ));
+            return Err(ServiceError::ValidationError(format!(
+                "Invalid status transition from {} to {}",
+                old_status, request.status
+            )));
         }
 
         // Update the order
@@ -426,30 +462,41 @@ impl OrderService {
 
         let updated_order = order_active_model.update(&txn).await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to update order status");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         // Enqueue status change outbox event
         let payload = serde_json::json!({"order_id": order_id.to_string(), "old_status": old_status, "new_status": request.status});
-        if let Err(e) = crate::events::outbox::enqueue(&txn, "order", Some(order_id), "OrderStatusChanged", &payload).await {
+        if let Err(e) = crate::events::outbox::enqueue(
+            &txn,
+            "order",
+            Some(order_id),
+            "OrderStatusChanged",
+            &payload,
+        )
+        .await
+        {
             warn!(error = %e, order_id = %order_id, "Failed to enqueue outbox for OrderStatusChanged");
         }
 
         // Commit transaction
         txn.commit().await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to commit status update transaction");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         info!(order_id = %order_id, old_status = %old_status, new_status = %request.status, "Order status updated successfully");
 
         // Send event if event sender is available
         if let Some(event_sender) = &self.event_sender {
-            if let Err(e) = event_sender.send(Event::OrderStatusChanged {
-                order_id,
-                old_status,
-                new_status: request.status.clone(),
-            }).await {
+            if let Err(e) = event_sender
+                .send(Event::OrderStatusChanged {
+                    order_id,
+                    old_status,
+                    new_status: request.status.clone(),
+                })
+                .await
+            {
                 warn!(error = %e, order_id = %order_id, "Failed to send order status changed event");
             }
         }
@@ -459,17 +506,24 @@ impl OrderService {
 
     /// Cancels an order
     #[instrument(skip(self), fields(order_id = %order_id))]
-    pub async fn cancel_order(&self, order_id: Uuid, reason: Option<String>) -> Result<OrderResponse, ServiceError> {
+    pub async fn cancel_order(
+        &self,
+        order_id: Uuid,
+        reason: Option<String>,
+    ) -> Result<OrderResponse, ServiceError> {
         // First check if the order can be cancelled
-        let order = self.get_order(order_id).await?
+        let order = self
+            .get_order(order_id)
+            .await?
             .ok_or_else(|| ServiceError::NotFound("Order not found".to_string()))?;
-        
+
         if order.status == STATUS_DELIVERED || order.status == STATUS_CANCELLED {
-            return Err(ServiceError::ValidationError(
-                format!("Cannot cancel order with status: {}", order.status)
-            ));
+            return Err(ServiceError::ValidationError(format!(
+                "Cannot cancel order with status: {}",
+                order.status
+            )));
         }
-        
+
         let cancel_request = UpdateOrderStatusRequest {
             status: STATUS_CANCELLED.to_string(),
             notes: reason.or(Some("Order cancelled by user".to_string())),
@@ -499,7 +553,7 @@ impl OrderService {
             .await
             .map_err(|e| {
                 error!(error = %e, order_id = %order_id, "Failed to find order for archiving");
-                ServiceError::DatabaseError(e.into())
+                ServiceError::db_error(e)
             })?;
 
         let order = order.ok_or_else(|| {
@@ -514,7 +568,7 @@ impl OrderService {
 
         let archived_order = order_active_model.update(db).await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to archive order");
-            ServiceError::DatabaseError(e.into())
+            ServiceError::db_error(e)
         })?;
 
         info!(order_id = %order_id, "Order archived successfully");
@@ -535,7 +589,7 @@ impl OrderService {
             .await
             .map_err(|e| {
                 error!(error = %e, order_number = order_number, "Failed to fetch order by order_number");
-                ServiceError::DatabaseError(e.into())
+                ServiceError::db_error(e)
             })?;
         Ok(found.map(|m| self.model_to_response(m)))
     }
@@ -553,7 +607,7 @@ impl OrderService {
             .await
             .map_err(|e| {
                 error!(error = %e, order_number = order_number, "Failed to resolve order id by order_number");
-                ServiceError::DatabaseError(e.into())
+                ServiceError::db_error(e)
             })?;
         Ok(found.map(|m| m.id))
     }
@@ -568,7 +622,8 @@ impl OrderService {
             .filter(order::Column::OrderNumber.eq("order_123"))
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e.into()))? {
+            .map_err(|e| ServiceError::db_error(e))?
+        {
             return Ok(existing.id);
         }
 
@@ -595,14 +650,17 @@ impl OrderService {
             updated_at: Set(Some(now)),
             version: Set(1),
         };
-        let _model = header.insert(db).await.map_err(|e| ServiceError::DatabaseError(e.into()))?;
+        let _model = header
+            .insert(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Add a couple of items if none exist
         let existing_items = OrderItemEntity::find()
             .filter(OrderItemColumn::OrderId.eq(order_id))
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+            .map_err(|e| ServiceError::db_error(e))?;
         if existing_items == 0 {
             let _ = OrderItemActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -623,7 +681,7 @@ impl OrderService {
             }
             .insert(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
             let _ = OrderItemActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -644,7 +702,7 @@ impl OrderService {
             }
             .insert(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
+            .map_err(|e| ServiceError::db_error(e))?;
         }
 
         Ok(order_id)
@@ -667,7 +725,7 @@ impl OrderService {
             _ => false,
         }
     }
-    
+
     /// Converts an order model to response format
     fn model_to_response(&self, model: OrderModel) -> OrderResponse {
         OrderResponse {
@@ -692,27 +750,30 @@ impl OrderService {
             version: model.version,
         }
     }
-    
+
     /// Deletes an order (soft delete by archiving)
     #[instrument(skip(self), fields(order_id = %order_id))]
     pub async fn delete_order(&self, order_id: Uuid) -> Result<(), ServiceError> {
         // Check if order exists and can be deleted
-        let order = self.get_order(order_id).await?
+        let order = self
+            .get_order(order_id)
+            .await?
             .ok_or_else(|| ServiceError::NotFound("Order not found".to_string()))?;
-        
+
         // Only allow deletion of cancelled or draft orders
         if order.status != STATUS_CANCELLED && order.status != STATUS_PENDING {
-            return Err(ServiceError::ValidationError(
-                format!("Cannot delete order with status: {}", order.status)
-            ));
+            return Err(ServiceError::ValidationError(format!(
+                "Cannot delete order with status: {}",
+                order.status
+            )));
         }
-        
+
         self.archive_order(order_id).await?;
-        
+
         info!(order_id = %order_id, "Order deleted (archived) successfully");
         Ok(())
     }
-    
+
     /// Search orders by various criteria
     #[instrument(skip(self))]
     pub async fn search_orders(
@@ -727,48 +788,52 @@ impl OrderService {
         // Validate pagination
         if page == 0 || per_page == 0 || per_page > 100 {
             return Err(ServiceError::ValidationError(
-                "Invalid pagination parameters".to_string()
+                "Invalid pagination parameters".to_string(),
             ));
         }
-        
+
         let db = &*self.db_pool;
         let mut query = OrderEntity::find();
-        
+
         // Apply filters
         query = query.filter(order::Column::IsArchived.eq(false));
-        
+
         if let Some(cid) = customer_id {
             query = query.filter(order::Column::CustomerId.eq(cid));
         }
-        
+
         if let Some(s) = status {
             query = query.filter(order::Column::Status.eq(s));
         }
-        
+
         if let Some(from) = from_date {
             query = query.filter(order::Column::OrderDate.gte(from));
         }
-        
+
         if let Some(to) = to_date {
             query = query.filter(order::Column::OrderDate.lte(to));
         }
-        
+
         // Get results with pagination
         let paginator = query
             .order_by_desc(order::Column::CreatedAt)
             .paginate(db, per_page);
-        
-        let total = paginator.num_items().await
-            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
-        
-        let orders = paginator.fetch_page(page - 1).await
-            .map_err(|e| ServiceError::DatabaseError(e.into()))?;
-        
+
+        let total = paginator
+            .num_items()
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
+
+        let orders = paginator
+            .fetch_page(page - 1)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
+
         let order_responses: Vec<OrderResponse> = orders
             .into_iter()
             .map(|order| self.model_to_response(order))
             .collect();
-        
+
         Ok(OrderListResponse {
             orders: order_responses,
             total,

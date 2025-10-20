@@ -49,8 +49,8 @@ pub mod picks;
 pub mod safety_stock_alert_entity;
 pub mod safety_stock_entity;
 pub mod warehouse;
-pub mod waste_and_scrap;
 pub mod warehouse_location_entity;
+pub mod waste_and_scrap;
 
 // Line items and components
 pub mod bom_line_item;
@@ -64,13 +64,13 @@ pub mod work_order_line_item;
 // Finance related models
 pub mod accounts;
 pub mod agreement_line_item;
-pub mod exchange_rate;
 pub mod agreements;
 pub mod cash_sale;
 pub mod cog_entries;
 pub mod contacts;
 pub mod cycle_count_line_item;
 pub mod cyclecounts;
+pub mod exchange_rate;
 pub mod fulfillment_order;
 pub mod incidents;
 pub mod invoice_line_item;

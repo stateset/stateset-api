@@ -3,12 +3,10 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{
-        asn_entity::{self, Entity as ASN, ASNStatus},
-    },
+    models::asn_entity::{self, ASNStatus, Entity as ASN},
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{*, Set};
+use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -44,12 +42,15 @@ impl Command for InTransitASNCommand {
         let current_asn = ASN::find_by_id(self.asn_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or(ServiceError::NotFound(self.asn_id.to_string()))?;
 
         // Validate that the ASN can be marked as in transit
         if current_asn.status != ASNStatus::Submitted {
-            return Err(ServiceError::ValidationError(format!("ASN {} cannot be marked as in transit from current status", self.asn_id)));
+            return Err(ServiceError::ValidationError(format!(
+                "ASN {} cannot be marked as in transit from current status",
+                self.asn_id
+            )));
         }
 
         // Update ASN status to InTransit
@@ -60,13 +61,14 @@ impl Command for InTransitASNCommand {
                     asn.status = Set(ASNStatus::InTransit);
                     asn.updated_at = Set(Utc::now());
 
-                    asn.update(txn)
-                        .await
-                        .map_err(|e| ServiceError::DatabaseError(e))
+                    asn.update(txn).await.map_err(|e| ServiceError::db_error(e))
                 })
             })
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|err| match err {
+                sea_orm::TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
+                sea_orm::TransactionError::Transaction(service_err) => service_err,
+            })?;
 
         // Send event
         event_sender
@@ -74,7 +76,10 @@ impl Command for InTransitASNCommand {
             .await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 
-        info!("ASN {} marked as in transit by user {}", self.asn_id, self.user_id);
+        info!(
+            "ASN {} marked as in transit by user {}",
+            self.asn_id, self.user_id
+        );
 
         Ok(InTransitASNResult {
             id: updated_asn.id,

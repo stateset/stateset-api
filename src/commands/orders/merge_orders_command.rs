@@ -56,7 +56,7 @@ impl Command for MergeOrdersCommand {
             .filter(order_item_entity::Column::OrderId.eq(merged_order.id))
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))? as i32;
+            .map_err(|e| ServiceError::db_error(e))? as i32;
 
         self.log_and_trigger_event(&event_sender, &merged_order)
             .await?;
@@ -86,7 +86,7 @@ impl MergeOrdersCommand {
         })
         .await
         .map_err(|e| match e {
-            TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+            TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
             TransactionError::Transaction(service_err) => service_err,
         })
     }
@@ -102,7 +102,7 @@ impl MergeOrdersCommand {
             .map_err(|e| {
                 let msg = format!("Failed to fetch orders: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         if orders.len() != self.order_ids.len() {
@@ -133,7 +133,7 @@ impl MergeOrdersCommand {
         new_order.insert(txn).await.map_err(|e| {
             let msg = format!("Failed to create merged order: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -151,7 +151,7 @@ impl MergeOrdersCommand {
                 .map_err(|e| {
                     let msg = format!("Failed to fetch order items: {}", e);
                     error!("{}", msg);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?;
 
             for item in items {
@@ -165,7 +165,7 @@ impl MergeOrdersCommand {
                 new_item.insert(txn).await.map_err(|e| {
                     let msg = format!("Failed to insert merged order item: {}", e);
                     error!("{}", msg);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?;
             }
         }
@@ -182,7 +182,7 @@ impl MergeOrdersCommand {
             Order::delete_by_id(order.id).exec(txn).await.map_err(|e| {
                 let msg = format!("Failed to delete old order: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         }
 

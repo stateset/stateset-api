@@ -71,7 +71,7 @@ impl Command for AddOrderNoteCommand {
         let order = Order::find_by_id(self.order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 let msg = format!("Order {} not found", self.order_id);
                 error!("{}", msg);
@@ -107,7 +107,7 @@ impl AddOrderNoteCommand {
         new_note.insert(db).await.map_err(|e| {
             let msg = format!("Failed to create note for order {}: {}", self.order_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

@@ -8,7 +8,7 @@ use crate::{
         return_entity::{self, Entity as Return},
     },
 };
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -29,6 +29,7 @@ pub struct InitiateReturnResult {
     pub order_id: Uuid,
     pub reason: String,
     pub status: String,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 #[async_trait::async_trait]
@@ -55,8 +56,8 @@ impl Command for InitiateReturnCommand {
             .await?;
 
         Ok(InitiateReturnResult {
-            id: Uuid::parse_str(&saved_return.id).unwrap_or_else(|_| Uuid::new_v4()),
-            order_id: Uuid::parse_str(&saved_return.order_id).unwrap_or_else(|_| Uuid::new_v4()),
+            id: saved_return.id,
+            order_id: saved_return.order_id,
             status: saved_return.status,
             reason: saved_return.reason,
             created_at: saved_return.created_at,
@@ -72,7 +73,7 @@ impl InitiateReturnCommand {
         let return_request = return_entity::ActiveModel {
             order_id: Set(self.order_id),
             reason: Set(self.reason.clone()),
-            status: Set(ReturnStatus::Pending.to_string()),
+            status: Set(ReturnStatus::Requested.as_str().to_owned()),
             ..Default::default()
         };
 
@@ -82,7 +83,7 @@ impl InitiateReturnCommand {
                 self.order_id, e
             );
             error!("{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })
     }
 

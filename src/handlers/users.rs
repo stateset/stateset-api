@@ -15,9 +15,9 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use std::sync::Arc;
 use tracing::{error, info};
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -25,11 +25,10 @@ use validator::Validate;
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateUserRequest {
-    
     pub name: String,
-    
+
     pub email: String,
-    
+
     pub password: String,
     pub role: Option<String>,
     pub department: Option<String>,
@@ -39,7 +38,7 @@ pub struct CreateUserRequest {
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateUserRequest {
     pub name: Option<String>,
-    
+
     pub email: Option<String>,
     pub role: Option<String>,
     pub department: Option<String>,
@@ -54,9 +53,9 @@ pub struct ChangePasswordRequest {
         message = "Current password must be at least 6 characters long"
     ))]
     pub current_password: String,
-    
+
     pub new_password: String,
-    
+
     pub confirm_password: String,
 }
 
@@ -366,7 +365,11 @@ pub async fn get_current_user(
         id: Uuid::parse_str(&current_user.user_id).unwrap_or_else(|_| Uuid::new_v4()),
         name: current_user.name.unwrap_or_default(),
         email: current_user.email.unwrap_or_default(),
-        role: current_user.roles.first().cloned().unwrap_or_else(|| "user".to_string()),
+        role: current_user
+            .roles
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "user".to_string()),
         department: Some("Engineering".to_string()),
         phone: Some("1234567890".to_string()),
         is_active: true,

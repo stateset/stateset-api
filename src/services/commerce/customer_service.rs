@@ -37,7 +37,10 @@ impl CustomerService {
 
     /// Register a new customer
     #[instrument(skip(self, input))]
-    pub async fn register_customer(&self, input: RegisterCustomerInput) -> Result<CustomerModel, ServiceError> {
+    pub async fn register_customer(
+        &self,
+        input: RegisterCustomerInput,
+    ) -> Result<CustomerModel, ServiceError> {
         // Check if email already exists
         let existing = Customer::find()
             .filter(customer::Column::Email.eq(&input.email))
@@ -45,7 +48,9 @@ impl CustomerService {
             .await?;
 
         if existing.is_some() {
-            return Err(ServiceError::ValidationError("Email already registered".to_string()));
+            return Err(ServiceError::ValidationError(
+                "Email already registered".to_string(),
+            ));
         }
 
         let customer_id = Uuid::new_v4();
@@ -75,7 +80,8 @@ impl CustomerService {
         let customer = customer.insert(&*self.db).await?;
 
         // Store password in auth system
-        self.store_customer_credentials(customer_id, &input.email, &password_hash).await?;
+        self.store_customer_credentials(customer_id, &input.email, &password_hash)
+            .await?;
 
         self.event_sender
             .send(Event::CustomerCreated(customer_id))
@@ -87,7 +93,10 @@ impl CustomerService {
 
     /// Login customer
     #[instrument(skip(self, credentials))]
-    pub async fn login(&self, credentials: LoginCredentials) -> Result<CustomerLoginResponse, ServiceError> {
+    pub async fn login(
+        &self,
+        credentials: LoginCredentials,
+    ) -> Result<CustomerLoginResponse, ServiceError> {
         // Find customer
         let customer = Customer::find()
             .filter(customer::Column::Email.eq(&credentials.email))
@@ -101,7 +110,10 @@ impl CustomerService {
 
         // Generate auth tokens
         let auth_user = self.create_auth_user(&customer);
-        let tokens = self.auth_service.generate_token(&auth_user).await
+        let tokens = self
+            .auth_service
+            .generate_token(&auth_user)
+            .await
             .map_err(|e| ServiceError::AuthError(e.to_string()))?;
 
         Ok(CustomerLoginResponse {
@@ -213,7 +225,10 @@ impl CustomerService {
 
     /// Get customer addresses
     #[instrument(skip(self))]
-    pub async fn get_addresses(&self, customer_id: Uuid) -> Result<Vec<CustomerAddressModel>, ServiceError> {
+    pub async fn get_addresses(
+        &self,
+        customer_id: Uuid,
+    ) -> Result<Vec<CustomerAddressModel>, ServiceError> {
         customer_address::Entity::find()
             .filter(customer_address::Column::CustomerId.eq(customer_id))
             .all(&*self.db)
@@ -228,7 +243,12 @@ impl CustomerService {
     }
 
     /// Helper: Store customer credentials
-    async fn store_customer_credentials(&self, _customer_id: Uuid, _email: &str, _password_hash: &str) -> Result<(), ServiceError> {
+    async fn store_customer_credentials(
+        &self,
+        _customer_id: Uuid,
+        _email: &str,
+        _password_hash: &str,
+    ) -> Result<(), ServiceError> {
         // This would store in auth system
         Ok(())
     }

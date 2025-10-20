@@ -97,7 +97,7 @@ impl CustomerService {
         let customer = customer::Entity::find_by_id(*customer_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(customer)
     }
@@ -113,7 +113,7 @@ impl CustomerService {
             .filter(customer::Column::Email.eq(email))
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(customer)
     }
@@ -131,7 +131,7 @@ impl CustomerService {
             .offset(offset)
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(customers)
     }
@@ -140,7 +140,7 @@ impl CustomerService {
     #[instrument(skip(self))]
     pub async fn count_customers(&self) -> Result<u64, ServiceError> {
         let db = &*self.db_pool;
-        let count = customer::Entity::find().count(db).await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let count = customer::Entity::find().count(db).await.map_err(|e| ServiceError::db_error(e))?;
 
         Ok(count)
     }
@@ -163,7 +163,7 @@ impl CustomerService {
             )
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(customers)
     }
@@ -178,14 +178,14 @@ impl CustomerService {
         let customer = customer::Entity::find_by_id(*customer_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or(ServiceError::NotFound("Customer not found".to_string()))?;
 
         let orders = crate::models::order::Entity::find()
             .filter(crate::models::order::Column::CustomerEmail.eq(customer.email)) // Assuming linking by email
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(orders)
     }
@@ -201,7 +201,7 @@ impl CustomerService {
             .filter(crate::models::r#return::Column::CustomerId.eq(*customer_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(returns)
     }

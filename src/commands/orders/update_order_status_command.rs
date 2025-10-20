@@ -11,7 +11,7 @@ use crate::{
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -81,7 +81,7 @@ impl UpdateOrderStatusCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 let msg = format!("Order {} not found", self.order_id);
@@ -92,10 +92,10 @@ impl UpdateOrderStatusCommand {
         let mut order: order_entity::ActiveModel = order.into();
         order.status = Set(self.new_status.clone());
         order.updated_at = Set(Utc::now());
-        
+
         order.update(db).await.map_err(|e| {
             error!("Failed to update order status: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

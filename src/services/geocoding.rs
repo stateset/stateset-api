@@ -40,12 +40,18 @@ impl GeocodingService {
     }
 
     /// Geocode an address to coordinates
-    pub async fn geocode_address(&self, address: &Address) -> Result<GeocodingResult, ServiceError> {
+    pub async fn geocode_address(
+        &self,
+        address: &Address,
+    ) -> Result<GeocodingResult, ServiceError> {
         geocode_address(address).await
     }
 
     /// Reverse geocode coordinates to address
-    pub async fn reverse_geocode(&self, coordinates: &Coordinates) -> Result<GeocodingResult, ServiceError> {
+    pub async fn reverse_geocode(
+        &self,
+        coordinates: &Coordinates,
+    ) -> Result<GeocodingResult, ServiceError> {
         reverse_geocode(coordinates).await
     }
 
@@ -55,7 +61,11 @@ impl GeocodingService {
     }
 
     /// Calculate distance between two addresses
-    pub async fn calculate_distance(&self, from: &Address, to: &Address) -> Result<f64, ServiceError> {
+    pub async fn calculate_distance(
+        &self,
+        from: &Address,
+        to: &Address,
+    ) -> Result<f64, ServiceError> {
         calculate_distance(from, to).await
     }
 }

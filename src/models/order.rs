@@ -59,11 +59,19 @@ pub struct Model {
     pub id: Uuid,
 
     /// Unique order number.
-    #[validate(length(min = 1, max = 50, message = "Order number must be between 1 and 50 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 50,
+        message = "Order number must be between 1 and 50 characters"
+    ))]
     pub order_number: String,
 
     /// Name of the customer who placed the order.
-    #[validate(length(min = 1, max = 100, message = "Customer name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Customer name must be between 1 and 100 characters"
+    ))]
     pub customer_name: String,
 
     /// Email of the customer.
@@ -71,7 +79,11 @@ pub struct Model {
     pub customer_email: String,
 
     /// Delivery address for the order.
-    #[validate(length(min = 1, max = 500, message = "Delivery address must be between 1 and 500 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 500,
+        message = "Delivery address must be between 1 and 500 characters"
+    ))]
     pub delivery_address: String,
 
     /// Optional notes associated with the order.
@@ -126,7 +138,10 @@ pub struct Model {
     pub cancel_reason: Option<String>,
 
     /// Initiator of the order cancellation.
-    #[validate(length(max = 100, message = "Cancellation initiator must not exceed 100 characters"))]
+    #[validate(length(
+        max = 100,
+        message = "Cancellation initiator must not exceed 100 characters"
+    ))]
     pub cancellation_initiator: Option<String>,
 }
 
@@ -255,7 +270,10 @@ impl Model {
 
     /// Checks if the order can be cancelled based on its current status.
     pub fn can_be_cancelled(&self) -> bool {
-        matches!(self.order_status, OrderStatus::Pending | OrderStatus::Processing)
+        matches!(
+            self.order_status,
+            OrderStatus::Pending | OrderStatus::Processing
+        )
     }
 
     /// Checks if the order can be shipped based on its current status.

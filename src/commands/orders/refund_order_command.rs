@@ -81,7 +81,7 @@ impl RefundOrderCommand {
                     .await
                     .map_err(|e| {
                         error!("Failed to find order: {}", e);
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?
                     .ok_or_else(|| {
                         let msg = format!("Order {} not found", order_id);
@@ -105,7 +105,7 @@ impl RefundOrderCommand {
 
                 let updated_order = order.update(txn).await.map_err(|e| {
                     error!("Failed to update order: {}", e);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?;
 
                 // Log refund reason
@@ -121,7 +121,7 @@ impl RefundOrderCommand {
 
                 new_note.insert(txn).await.map_err(|e| {
                     error!("Failed to insert refund reason: {}", e);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?;
 
                 Ok(updated_order)
@@ -131,7 +131,7 @@ impl RefundOrderCommand {
         .map_err(|e| {
             error!("Transaction failed for order refund: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })

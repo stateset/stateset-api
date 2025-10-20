@@ -1,17 +1,17 @@
 use crate::errors::ServiceError;
 use axum::{
     extract::{Json, Path, Query, State},
+    http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
     Router,
-    http::StatusCode,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
 use serde_json::json;
-use uuid::Uuid;
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
 // Generic trait for shipments handler state
 pub trait ShipmentsAppState: Clone + Send + Sync + 'static {}
@@ -129,13 +129,18 @@ pub struct UpdateShipmentStatusBody {
 }
 
 /// Create the shipments router
-pub fn shipments_router<S>() -> Router<S> 
-where 
+pub fn shipments_router<S>() -> Router<S>
+where
     S: ShipmentsAppState,
 {
     Router::new()
         .route("/", get(list_shipments::<S>).post(create_shipment::<S>))
-        .route("/{id}", get(get_shipment::<S>).put(update_shipment::<S>).delete(delete_shipment::<S>))
+        .route(
+            "/{id}",
+            get(get_shipment::<S>)
+                .put(update_shipment::<S>)
+                .delete(delete_shipment::<S>),
+        )
         .route("/{id}/ship", post(mark_shipped::<S>))
         .route("/{id}/deliver", post(mark_delivered::<S>))
         .route("/{id}/track", get(track_shipment::<S>))
@@ -167,8 +172,8 @@ where
 pub async fn list_shipments<S>(
     State(_state): State<S>,
     Query(filters): Query<ShipmentFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     // Mock data for now - replace with actual database queries
@@ -190,15 +195,13 @@ where
                 postal_code: "90210".to_string(),
                 country: "US".to_string(),
             },
-            items: vec![
-                ShipmentItem {
-                    id: "ship_item_001".to_string(),
-                    order_item_id: "order_item_001".to_string(),
-                    product_id: "prod_abc".to_string(),
-                    quantity: 1,
-                    serial_numbers: None,
-                }
-            ],
+            items: vec![ShipmentItem {
+                id: "ship_item_001".to_string(),
+                order_item_id: "order_item_001".to_string(),
+                product_id: "prod_abc".to_string(),
+                quantity: 1,
+                serial_numbers: None,
+            }],
             weight: Some(2.5),
             dimensions: Some(Dimensions {
                 length: 12.0,
@@ -229,15 +232,13 @@ where
                 postal_code: "10001".to_string(),
                 country: "US".to_string(),
             },
-            items: vec![
-                ShipmentItem {
-                    id: "ship_item_002".to_string(),
-                    order_item_id: "order_item_002".to_string(),
-                    product_id: "prod_def".to_string(),
-                    quantity: 2,
-                    serial_numbers: Some(vec!["SN001".to_string(), "SN002".to_string()]),
-                }
-            ],
+            items: vec![ShipmentItem {
+                id: "ship_item_002".to_string(),
+                order_item_id: "order_item_002".to_string(),
+                product_id: "prod_def".to_string(),
+                quantity: 2,
+                serial_numbers: Some(vec!["SN001".to_string(), "SN002".to_string()]),
+            }],
             weight: Some(5.0),
             dimensions: Some(Dimensions {
                 length: 16.0,
@@ -297,13 +298,13 @@ where
 pub async fn create_shipment<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateShipmentRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let shipment_id = Uuid::new_v4().to_string();
     let now = Utc::now();
-    
+
     let shipment = Shipment {
         id: shipment_id.clone(),
         order_id: payload.order_id,
@@ -314,13 +315,18 @@ where
         estimated_delivery: None, // Will be calculated based on service
         actual_delivery: None,
         shipping_address: payload.shipping_address,
-        items: payload.items.into_iter().enumerate().map(|(i, item)| ShipmentItem {
-            id: format!("{}_item_{}", shipment_id, i),
-            order_item_id: item.order_item_id,
-            product_id: "prod_abc".to_string(), // Mock - get from order item
-            quantity: item.quantity,
-            serial_numbers: item.serial_numbers,
-        }).collect(),
+        items: payload
+            .items
+            .into_iter()
+            .enumerate()
+            .map(|(i, item)| ShipmentItem {
+                id: format!("{}_item_{}", shipment_id, i),
+                order_item_id: item.order_item_id,
+                product_id: "prod_abc".to_string(), // Mock - get from order item
+                quantity: item.quantity,
+                serial_numbers: item.serial_numbers,
+            })
+            .collect(),
         weight: payload.weight,
         dimensions: payload.dimensions,
         cost: None, // Will be calculated
@@ -352,8 +358,8 @@ where
 pub async fn get_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let shipment = Shipment {
@@ -373,15 +379,13 @@ where
             postal_code: "90210".to_string(),
             country: "US".to_string(),
         },
-        items: vec![
-            ShipmentItem {
-                id: format!("{}_item_1", id),
-                order_item_id: "order_item_001".to_string(),
-                product_id: "prod_abc".to_string(),
-                quantity: 1,
-                serial_numbers: None,
-            }
-        ],
+        items: vec![ShipmentItem {
+            id: format!("{}_item_1", id),
+            order_item_id: "order_item_001".to_string(),
+            product_id: "prod_abc".to_string(),
+            quantity: 1,
+            serial_numbers: None,
+        }],
         weight: Some(2.5),
         dimensions: Some(Dimensions {
             length: 12.0,
@@ -419,8 +423,8 @@ pub async fn update_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateShipmentRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let shipment = Shipment {
@@ -430,7 +434,9 @@ where
         carrier: payload.carrier.unwrap_or_else(|| "UPS".to_string()),
         service_type: "Ground".to_string(),
         status: payload.status.unwrap_or_else(|| "in_transit".to_string()),
-        estimated_delivery: payload.estimated_delivery.or(Some(Utc::now() + chrono::Duration::days(2))),
+        estimated_delivery: payload
+            .estimated_delivery
+            .or(Some(Utc::now() + chrono::Duration::days(2))),
         actual_delivery: None,
         shipping_address: Address {
             street1: "123 Main St".to_string(),
@@ -469,8 +475,8 @@ where
 pub async fn delete_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let _ = id; // placeholder until wired to DB
@@ -494,8 +500,8 @@ where
 pub async fn mark_shipped<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let response = json!({
@@ -525,8 +531,8 @@ where
 pub async fn mark_delivered<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let response = json!({
@@ -555,8 +561,8 @@ where
 pub async fn track_shipment<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let tracking_events = vec![
@@ -615,8 +621,8 @@ where
 pub async fn track_by_number<S>(
     State(_state): State<S>,
     Path(tracking_number): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let tracking_events = vec![
@@ -671,8 +677,8 @@ pub async fn add_tracking_event<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<TrackingUpdateRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let tracking_event = TrackingEvent {
@@ -708,12 +714,12 @@ pub async fn update_shipment_status<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateShipmentStatusBody>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ShipmentsAppState,
 {
     let new_status = payload.status.as_str();
-    
+
     let response = json!({
         "message": format!("Shipment {} status updated to {}", id, new_status),
         "shipment_id": id,

@@ -37,7 +37,7 @@ impl Query for GetWarehouseLocationQuery {
         WarehouseLocationEntity::find_by_id(self.location_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Warehouse location not found".to_string()))
     }
 }

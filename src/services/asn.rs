@@ -80,7 +80,7 @@ impl ASNService {
             .await
             .map_err(|e| {
                 error!("Failed to get ASN by ID {}: {}", asn_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         Ok(asn)
     }
@@ -235,7 +235,7 @@ impl ASNService {
             .await
             .map_err(|e| {
                 error!("Failed to find ASN {} for deletion: {}", asn_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| ServiceError::NotFound(format!("ASN {} not found", asn_id)))?;
 
@@ -252,7 +252,7 @@ impl ASNService {
             .await
             .map_err(|e| {
                 error!("Failed to delete ASN {}: {}", asn_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         // Send event

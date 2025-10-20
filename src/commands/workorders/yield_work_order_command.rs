@@ -8,7 +8,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -29,15 +29,19 @@ impl Command for YieldWorkOrderCommand {
         event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
+        let work_order_id = self.work_order_id;
+
         let updated_work_order = db
-            .transaction(|txn| Box::pin(async move { self.yield_work_order(txn).await }))
+            .transaction::<_, work_order_entity::Model, ServiceError>(move |txn| {
+                Box::pin(async move { Self::yield_work_order(txn, work_order_id).await })
+            })
             .await
             .map_err(|e| {
-                error!(
-                    "Transaction failed for yielding Work Order ID {}: {}",
-                    self.work_order_id, e
-                );
-                ServiceError::DatabaseError(format!("Transaction failed: {}", e.to_string()))
+                error!("Transaction failed for yielding Work Order ID {}: {}", work_order_id, e);
+                match e {
+                    sea_orm::TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
+                    sea_orm::TransactionError::Transaction(service_err) => service_err,
+                }
             })?;
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
@@ -47,32 +51,26 @@ impl Command for YieldWorkOrderCommand {
 
 impl YieldWorkOrderCommand {
     async fn yield_work_order(
-        &self,
         txn: &DatabaseTransaction,
+        work_order_id: Uuid,
     ) -> Result<work_order_entity::Model, ServiceError> {
         let mut work_order: work_order_entity::ActiveModel =
-            work_order_entity::Entity::find_by_id(self.work_order_id)
+            work_order_entity::Entity::find_by_id(work_order_id)
                 .one(txn)
                 .await
                 .map_err(|e| {
-                    error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
-                    ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
+                    error!("Failed to find Work Order ID {}: {}", work_order_id, e);
+                    ServiceError::db_error(e)
                 })?
                 .ok_or_else(|| {
-                    ServiceError::NotFound(format!(
-                        "Work Order ID {} not found",
-                        self.work_order_id
-                    ))
+                    ServiceError::NotFound(format!("Work Order ID {} not found", work_order_id))
                 })?
                 .into();
         work_order.status = Set(WorkOrderStatus::Yielded);
         work_order.yielded_at = Set(Some(Utc::now()));
         work_order.update(txn).await.map_err(|e| {
-            error!(
-                "Failed to yield Work Order ID {}: {}",
-                self.work_order_id, e
-            );
-            ServiceError::DatabaseError(format!("Failed to yield Work Order: {}", e))
+            error!("Failed to yield Work Order ID {}: {}", work_order_id, e);
+            ServiceError::db_error(e)
         })
     }
 

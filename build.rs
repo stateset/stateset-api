@@ -23,10 +23,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if proto_files.is_empty() {
-        println!("cargo:warning=No .proto files found in {}", proto_dir.display());
+        println!(
+            "cargo:warning=No .proto files found in {}",
+            proto_dir.display()
+        );
     } else {
         tonic_build::configure().compile_protos(&proto_files, &["proto"])?;
-        println!("cargo:warning=Successfully compiled {} proto files", proto_files.len());
+        println!(
+            "cargo:warning=Successfully compiled {} proto files",
+            proto_files.len()
+        );
     }
 
     println!("cargo:warning=Proto compilation completed");

@@ -1,5 +1,5 @@
 use crate::{
-    errors::ApiError,
+    errors::{ApiError, ServiceError},
     services::commerce::agentic_checkout::{
         CheckoutSession, CheckoutSessionCompleteRequest, CheckoutSessionCreateRequest,
         CheckoutSessionUpdateRequest, CheckoutSessionWithOrder,
@@ -13,22 +13,33 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use std::sync::Arc;
 use tracing::error;
 
 /// Creates the router for agentic checkout endpoints
-pub fn agentic_checkout_routes() -> Router<Arc<AppState>> {
+pub fn agentic_checkout_routes() -> Router<AppState> {
     Router::new()
         .route("/checkout_sessions", post(create_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id", get(get_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id", post(update_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id/complete", post(complete_checkout_session))
-        .route("/checkout_sessions/:checkout_session_id/cancel", post(cancel_checkout_session))
+        .route(
+            "/checkout_sessions/:checkout_session_id",
+            get(get_checkout_session),
+        )
+        .route(
+            "/checkout_sessions/:checkout_session_id",
+            post(update_checkout_session),
+        )
+        .route(
+            "/checkout_sessions/:checkout_session_id/complete",
+            post(complete_checkout_session),
+        )
+        .route(
+            "/checkout_sessions/:checkout_session_id/cancel",
+            post(cancel_checkout_session),
+        )
 }
 
 /// Create a checkout session
 async fn create_checkout_session(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CheckoutSessionCreateRequest>,
 ) -> Result<Response, ApiError> {
@@ -62,21 +73,24 @@ async fn create_checkout_session(
         response = response.header("Request-Id", request_id);
     }
 
-    let body = serde_json::to_string(&session)
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Serialization error: {}", e),
-        })?;
+    let body = serde_json::to_string(&session).map_err(|e| {
+        ApiError::ServiceError(ServiceError::InternalError(format!(
+            "Serialization error: {}",
+            e
+        )))
+    })?;
 
-    Ok(response
-        .body(body.into())
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Response build error: {}", e),
-        })?)
+    Ok(response.body(body.into()).map_err(|e| {
+        ApiError::ServiceError(ServiceError::InternalError(format!(
+            "Response build error: {}",
+            e
+        )))
+    })?)
 }
 
 /// Get checkout session
 async fn get_checkout_session(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
 ) -> Result<Json<CheckoutSession>, ApiError> {
     let session = state
@@ -85,7 +99,10 @@ async fn get_checkout_session(
         .get_session(&checkout_session_id)
         .await
         .map_err(|e| match e {
-            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!("Checkout session {} not found", checkout_session_id)),
+            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!(
+                "Checkout session {} not found",
+                checkout_session_id
+            )),
             _ => map_service_error(e),
         })?;
 
@@ -94,7 +111,7 @@ async fn get_checkout_session(
 
 /// Update checkout session
 async fn update_checkout_session(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
     Json(payload): Json<CheckoutSessionUpdateRequest>,
 ) -> Result<Json<CheckoutSession>, ApiError> {
@@ -104,7 +121,10 @@ async fn update_checkout_session(
         .update_session(&checkout_session_id, payload)
         .await
         .map_err(|e| match e {
-            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!("Checkout session {} not found", checkout_session_id)),
+            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!(
+                "Checkout session {} not found",
+                checkout_session_id
+            )),
             crate::errors::ServiceError::InvalidOperation(msg) => ApiError::BadRequest {
                 message: msg,
                 error_code: Some("INVALID_REQUEST".to_string()),
@@ -117,7 +137,7 @@ async fn update_checkout_session(
 
 /// Complete checkout session
 async fn complete_checkout_session(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
     Json(payload): Json<CheckoutSessionCompleteRequest>,
 ) -> Result<Json<CheckoutSessionWithOrder>, ApiError> {
@@ -127,7 +147,10 @@ async fn complete_checkout_session(
         .complete_session(&checkout_session_id, payload)
         .await
         .map_err(|e| match e {
-            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!("Checkout session {} not found", checkout_session_id)),
+            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!(
+                "Checkout session {} not found",
+                checkout_session_id
+            )),
             crate::errors::ServiceError::InvalidOperation(msg) => ApiError::BadRequest {
                 message: msg,
                 error_code: Some("INVALID_REQUEST".to_string()),
@@ -140,7 +163,7 @@ async fn complete_checkout_session(
 
 /// Cancel checkout session
 async fn cancel_checkout_session(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
 ) -> Result<Response, ApiError> {
     let session = state
@@ -149,27 +172,33 @@ async fn cancel_checkout_session(
         .cancel_session(&checkout_session_id)
         .await
         .map_err(|e| match e {
-            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!("Checkout session {} not found", checkout_session_id)),
+            crate::errors::ServiceError::NotFound(_) => ApiError::NotFound(format!(
+                "Checkout session {} not found",
+                checkout_session_id
+            )),
             crate::errors::ServiceError::InvalidOperation(msg) => {
                 // If already completed/canceled, return 405
-                return ApiError::MethodNotAllowed {
-                    message: msg,
-                };
-            },
+                return ApiError::MethodNotAllowed { message: msg };
+            }
             _ => map_service_error(e),
         })?;
 
-    let body = serde_json::to_string(&session)
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Serialization error: {}", e),
-        })?;
+    let body = serde_json::to_string(&session).map_err(|e| {
+        ApiError::ServiceError(ServiceError::InternalError(format!(
+            "Serialization error: {}",
+            e
+        )))
+    })?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(body.into())
-        .map_err(|e| ApiError::InternalServerError {
-            message: format!("Response build error: {}", e),
+        .map_err(|e| {
+            ApiError::ServiceError(ServiceError::InternalError(format!(
+                "Response build error: {}",
+                e
+            )))
         })?)
 }
 
@@ -185,8 +214,6 @@ fn map_service_error(error: crate::errors::ServiceError) -> ApiError {
             message: msg,
             error_code: Some("PROCESSING_ERROR".to_string()),
         },
-        _ => ApiError::InternalServerError {
-            message: "Internal server error".to_string(),
-        },
+        _ => ApiError::InternalServerError,
     }
-} 
+}

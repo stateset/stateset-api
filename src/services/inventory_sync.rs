@@ -1,17 +1,17 @@
-use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, TransactionTrait,
-    QueryFilter, ColumnTrait, DbErr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
+    QueryFilter, TransactionTrait,
 };
+use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
     entities::{
         inventory_balance::{self, Entity as InventoryBalanceEntity},
-        item_master::{self, Entity as ItemMasterEntity},
         inventory_transaction::{self, Entity as InventoryTransactionEntity},
+        item_master::{self, Entity as ItemMasterEntity},
     },
     errors::ServiceError,
     events::{Event, EventSender},
@@ -45,7 +45,8 @@ impl ToString for TransactionType {
             Self::Transfer => "TRANSFER",
             Self::Reservation => "RESERVATION",
             Self::ReleaseReservation => "RELEASE_RESERVATION",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -75,7 +76,7 @@ impl InventorySyncService {
         let db = &*self.db;
         let txn = db.begin().await.map_err(|e| {
             error!("Failed to begin transaction: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         // Find or create inventory balance record
@@ -86,75 +87,69 @@ impl InventorySyncService {
             .await
             .map_err(|e| {
                 error!("Failed to fetch inventory balance: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         let updated_balance = match balance {
             Some(existing) => {
                 // Update existing balance
                 let new_quantity = match transaction_type {
-                    TransactionType::SalesOrder | 
-                    TransactionType::ManufacturingConsumption |
-                    TransactionType::PurchaseReturn => {
+                    TransactionType::SalesOrder
+                    | TransactionType::ManufacturingConsumption
+                    | TransactionType::PurchaseReturn => {
                         existing.quantity_on_hand - quantity_change.abs()
-                    },
-                    TransactionType::PurchaseReceipt |
-                    TransactionType::ManufacturingProduction |
-                    TransactionType::SalesReturn => {
+                    }
+                    TransactionType::PurchaseReceipt
+                    | TransactionType::ManufacturingProduction
+                    | TransactionType::SalesReturn => {
                         existing.quantity_on_hand + quantity_change.abs()
-                    },
-                    TransactionType::Adjustment => {
-                        existing.quantity_on_hand + quantity_change
-                    },
+                    }
+                    TransactionType::Adjustment => existing.quantity_on_hand + quantity_change,
                     TransactionType::Transfer => {
                         // Transfer handled separately with source and destination
                         existing.quantity_on_hand + quantity_change
-                    },
+                    }
                     TransactionType::Reservation => {
                         // Increase allocated, don't change on_hand
-                        return self.update_allocation(
-                            existing, 
-                            quantity_change.abs(), 
-                            true, 
-                            &txn
-                        ).await;
-                    },
+                        return self
+                            .update_allocation(existing, quantity_change.abs(), true, &txn)
+                            .await;
+                    }
                     TransactionType::ReleaseReservation => {
                         // Decrease allocated, don't change on_hand
-                        return self.update_allocation(
-                            existing, 
-                            quantity_change.abs(), 
-                            false, 
-                            &txn
-                        ).await;
-                    },
+                        return self
+                            .update_allocation(existing, quantity_change.abs(), false, &txn)
+                            .await;
+                    }
                 };
 
                 // Check for negative inventory
                 if new_quantity < Decimal::ZERO {
                     error!("Insufficient inventory: item_id={}, location_id={}, available={}, requested={}", 
                         item_id, location_id, existing.quantity_on_hand, quantity_change);
-                    return Err(ServiceError::InsufficientStock(
-                        format!("Insufficient inventory for item {} at location {}", item_id, location_id)
-                    ));
+                    return Err(ServiceError::InsufficientStock(format!(
+                        "Insufficient inventory for item {} at location {}",
+                        item_id, location_id
+                    )));
                 }
 
                 let mut active: inventory_balance::ActiveModel = existing.into();
                 active.quantity_on_hand = Set(new_quantity);
                 active.quantity_available = Set(new_quantity - active.quantity_allocated.as_ref());
                 active.updated_at = Set(Utc::now().into());
-                
+
                 active.update(&txn).await.map_err(|e| {
                     error!("Failed to update inventory balance: {}", e);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?
-            },
+            }
             None => {
                 // Create new balance record
                 if quantity_change < Decimal::ZERO {
-                    return Err(ServiceError::InsufficientStock(
-                        format!("Cannot create negative inventory for item {} at location {}", item_id, location_id)
-                    ));
+                    return Err(ServiceError::InsufficientStock(format!(
+                        "Cannot create negative inventory for item {} at location {}",
+                        item_id, location_id
+                    )));
                 }
 
                 let new_balance = inventory_balance::ActiveModel {
@@ -170,7 +165,7 @@ impl InventorySyncService {
 
                 new_balance.insert(&txn).await.map_err(|e| {
                     error!("Failed to create inventory balance: {}", e);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?
             }
         };
@@ -184,25 +179,30 @@ impl InventorySyncService {
             reference_id,
             reference_type,
             &txn,
-        ).await?;
+        )
+        .await?;
 
         txn.commit().await.map_err(|e| {
             error!("Failed to commit transaction: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         // Send inventory update event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::InventoryUpdated {
-                item_id,
-                location_id,
-                new_quantity: updated_balance.quantity_on_hand,
-                available_quantity: updated_balance.quantity_available,
-            }).await;
+            let _ = sender
+                .send(Event::InventoryUpdated {
+                    item_id,
+                    location_id,
+                    new_quantity: updated_balance.quantity_on_hand,
+                    available_quantity: updated_balance.quantity_available,
+                })
+                .await;
         }
 
-        info!("Inventory balance updated: item_id={}, location_id={}, new_quantity={}", 
-            item_id, location_id, updated_balance.quantity_on_hand);
+        info!(
+            "Inventory balance updated: item_id={}, location_id={}, new_quantity={}",
+            item_id, location_id, updated_balance.quantity_on_hand
+        );
 
         Ok(updated_balance)
     }
@@ -223,14 +223,14 @@ impl InventorySyncService {
 
         if new_allocated < Decimal::ZERO {
             return Err(ServiceError::InvalidOperation(
-                "Cannot release more than allocated quantity".to_string()
+                "Cannot release more than allocated quantity".to_string(),
             ));
         }
 
         let new_available = balance.quantity_on_hand - new_allocated;
         if new_available < Decimal::ZERO {
             return Err(ServiceError::InsufficientStock(
-                "Insufficient available inventory for reservation".to_string()
+                "Insufficient available inventory for reservation".to_string(),
             ));
         }
 
@@ -238,10 +238,10 @@ impl InventorySyncService {
         active.quantity_allocated = Set(new_allocated);
         active.quantity_available = Set(new_available);
         active.updated_at = Set(Utc::now().into());
-        
+
         active.update(txn).await.map_err(|e| {
             error!("Failed to update allocation: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -257,7 +257,7 @@ impl InventorySyncService {
         txn: &sea_orm::DatabaseTransaction,
     ) -> Result<(), ServiceError> {
         use uuid::Uuid;
-        
+
         // For now, create a simple transaction log entry
         // This would need to be adjusted based on your actual inventory_transaction entity structure
         let transaction = inventory_transaction::ActiveModel {
@@ -267,7 +267,7 @@ impl InventorySyncService {
             r#type: Set(transaction_type),
             quantity: Set(quantity.trunc().to_string().parse::<i32>().unwrap_or(0)),
             previous_quantity: Set(0), // Would need to fetch actual previous quantity
-            new_quantity: Set(0), // Would need to calculate new total
+            new_quantity: Set(0),      // Would need to calculate new total
             reference_id: Set(reference_id.map(|_| Uuid::new_v4())),
             reference_type: Set(reference_type),
             reason: Set(None),
@@ -278,7 +278,7 @@ impl InventorySyncService {
 
         transaction.insert(txn).await.map_err(|e| {
             error!("Failed to create inventory transaction: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(())
@@ -302,7 +302,8 @@ impl InventorySyncService {
             TransactionType::Transfer,
             reference_id,
             Some("TRANSFER_OUT".to_string()),
-        ).await?;
+        )
+        .await?;
 
         // Add to destination location
         self.update_inventory_balance(
@@ -312,10 +313,13 @@ impl InventorySyncService {
             TransactionType::Transfer,
             reference_id,
             Some("TRANSFER_IN".to_string()),
-        ).await?;
+        )
+        .await?;
 
-        info!("Inventory transferred: item_id={}, from={}, to={}, quantity={}", 
-            item_id, from_location, to_location, quantity);
+        info!(
+            "Inventory transferred: item_id={}, from={}, to={}, quantity={}",
+            item_id, from_location, to_location, quantity
+        );
 
         Ok(())
     }
@@ -328,7 +332,7 @@ impl InventorySyncService {
         location_id: i32,
     ) -> Result<Option<inventory_balance::Model>, ServiceError> {
         let db = &*self.db;
-        
+
         InventoryBalanceEntity::find()
             .filter(inventory_balance::Column::InventoryItemId.eq(item_id))
             .filter(inventory_balance::Column::LocationId.eq(location_id))
@@ -336,30 +340,25 @@ impl InventorySyncService {
             .await
             .map_err(|e| {
                 error!("Failed to fetch inventory balance: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 
     /// Gets total inventory across all locations for an item
     #[instrument(skip(self))]
-    pub async fn get_total_inventory(
-        &self,
-        item_id: i64,
-    ) -> Result<Decimal, ServiceError> {
+    pub async fn get_total_inventory(&self, item_id: i64) -> Result<Decimal, ServiceError> {
         let db = &*self.db;
-        
+
         let balances = InventoryBalanceEntity::find()
             .filter(inventory_balance::Column::InventoryItemId.eq(item_id))
             .all(db)
             .await
             .map_err(|e| {
                 error!("Failed to fetch inventory balances: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
-        let total = balances.iter()
-            .map(|b| b.quantity_on_hand)
-            .sum();
+        let total = balances.iter().map(|b| b.quantity_on_hand).sum();
 
         Ok(total)
     }
@@ -373,7 +372,7 @@ impl InventorySyncService {
         required_quantity: Decimal,
     ) -> Result<bool, ServiceError> {
         let balance = self.get_inventory_balance(item_id, location_id).await?;
-        
+
         match balance {
             Some(b) => Ok(b.quantity_available >= required_quantity),
             None => Ok(false),

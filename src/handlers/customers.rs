@@ -16,13 +16,12 @@ use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RegisterCustomerRequest {
-    
     pub email: String,
-    
+
     pub first_name: String,
-    
+
     pub last_name: String,
-    
+
     pub password: String,
     pub phone: Option<String>,
     pub accepts_marketing: Option<bool>,
@@ -36,9 +35,8 @@ pub struct CustomerLoginRequest {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateCustomerRequest {
-    
     pub first_name: Option<String>,
-    
+
     pub last_name: Option<String>,
     pub phone: Option<String>,
     pub accepts_marketing: Option<bool>,
@@ -46,21 +44,20 @@ pub struct UpdateCustomerRequest {
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AddAddressRequest {
-    
     pub first_name: String,
-    
+
     pub last_name: String,
     pub company: Option<String>,
-    
+
     pub address_line_1: String,
     pub address_line_2: Option<String>,
-    
+
     pub city: String,
-    
+
     pub province: String,
-    
+
     pub country_code: String,
-    
+
     pub postal_code: String,
     pub phone: Option<String>,
     pub is_default_shipping: Option<bool>,
@@ -139,7 +136,11 @@ async fn update_customer(
         accepts_marketing: request.accepts_marketing,
     };
 
-    let customer = state.services.customer.update_customer(customer_id, input).await?;
+    let customer = state
+        .services
+        .customer
+        .update_customer(customer_id, input)
+        .await?;
     Ok(Json(customer))
 }
 
@@ -172,7 +173,11 @@ async fn add_customer_address(
         is_default_billing: request.is_default_billing,
     };
 
-    let address = state.services.customer.add_address(customer_id, input).await?;
+    let address = state
+        .services
+        .customer
+        .add_address(customer_id, input)
+        .await?;
     Ok((StatusCode::CREATED, Json(address)))
 }
 

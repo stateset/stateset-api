@@ -1,19 +1,20 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
 use async_trait::async_trait;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use validator::{Validate, ValidationError};
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
 /// Work Order Note entity model.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
 #[sea_orm(table_name = "work_order_notes")]
 pub struct Model {
-    #[sea_orm(primary_key)]
-    pub id: i32,
+    #[sea_orm(primary_key, auto_increment = false, column_type = "Uuid")]
+    pub id: Uuid,
 
-    pub work_order_id: i32,
+    #[sea_orm(column_type = "Uuid")]
+    pub work_order_id: Uuid,
 
     #[validate(length(
         min = 1,
@@ -47,37 +48,28 @@ impl Related<crate::models::work_order::Entity> for Entity {
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C: ConnectionTrait>(
-        self,
+        mut self,
         _db: &C,
         insert: bool,
     ) -> Result<Self, DbErr> {
-        let mut active_model = self;
-        if insert {
-            active_model.set_id_if_needed();
+        if insert && self.id.is_not_set() {
+            self.id = Set(Uuid::new_v4());
         }
-        Ok(active_model)
-    }
-}
-
-impl ActiveModel {
-    fn set_id_if_needed(&mut self) {
-        if self.id.is_not_set() {
-            // i32 primary key: let the database assign it
-        }
+        Ok(self)
     }
 }
 
 impl Model {
     /// Creates a new work order note.
     pub fn new(
-        work_order_id: i32,
+        work_order_id: Uuid,
         note: String,
         created_by: Option<String>,
     ) -> Result<Self, ValidationError> {
         let now = Utc::now();
 
         let work_order_note = Self {
-            id: 0, // This will be set by the database
+            id: Uuid::new_v4(),
             work_order_id,
             note,
             created_at: now,
@@ -85,7 +77,9 @@ impl Model {
         };
 
         // Validate the new work order note
-        work_order_note.validate().map_err(|_| ValidationError::new("Work order note validation failed"))?;
+        work_order_note
+            .validate()
+            .map_err(|_| ValidationError::new("Work order note validation failed"))?;
 
         Ok(work_order_note)
     }

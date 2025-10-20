@@ -48,7 +48,9 @@ impl CheckoutService {
             .ok_or_else(|| ServiceError::NotFound(format!("Cart {} not found", cart_id)))?;
 
         if cart.status != cart::CartStatus::Active {
-            return Err(ServiceError::InvalidOperation("Cart is not active".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Cart is not active".to_string(),
+            ));
         }
 
         // Verify cart has items
@@ -119,11 +121,12 @@ impl CheckoutService {
         method: ShippingMethod,
     ) -> Result<ShippingRate, ServiceError> {
         // Calculate shipping rate based on method and address
-        let rate = self.calculate_shipping_rate(&method, session.shipping_address.as_ref().unwrap())?;
-        
+        let rate =
+            self.calculate_shipping_rate(&method, session.shipping_address.as_ref().unwrap())?;
+
         session.shipping_method = Some(method);
         session.step = CheckoutStep::Payment;
-        
+
         Ok(rate)
     }
 
@@ -137,18 +140,23 @@ impl CheckoutService {
         let txn = self.db.begin().await?;
 
         // Validate session is ready
-        if session.customer_email.is_none() 
-            || session.shipping_address.is_none() 
-            || session.shipping_method.is_none() {
-            return Err(ServiceError::InvalidOperation("Checkout session incomplete".to_string()));
+        if session.customer_email.is_none()
+            || session.shipping_address.is_none()
+            || session.shipping_method.is_none()
+        {
+            return Err(ServiceError::InvalidOperation(
+                "Checkout session incomplete".to_string(),
+            ));
         }
 
         // Calculate totals
         let subtotal = session.cart.subtotal;
-        let shipping_total = self.calculate_shipping_rate(
-            session.shipping_method.as_ref().unwrap(),
-            session.shipping_address.as_ref().unwrap(),
-        )?.amount;
+        let shipping_total = self
+            .calculate_shipping_rate(
+                session.shipping_method.as_ref().unwrap(),
+                session.shipping_address.as_ref().unwrap(),
+            )?
+            .amount;
         let tax_total = self.calculate_tax(subtotal, session.shipping_address.as_ref().unwrap())?;
         let total = subtotal + shipping_total + tax_total;
 
@@ -165,10 +173,18 @@ impl CheckoutService {
             payment_status: Set("pending".to_string()),
             fulfillment_status: Set("unfulfilled".to_string()),
             payment_method: Set(Some("card".to_string())),
-                            shipping_method: Set(session.shipping_method.as_ref().map(|m| format!("{:?}", m))),
+            shipping_method: Set(session.shipping_method.as_ref().map(|m| format!("{:?}", m))),
             tracking_number: Set(None),
-            shipping_address: Set(Some(serde_json::to_value(&session.shipping_address).unwrap().to_string())),
-            billing_address: Set(Some(serde_json::to_value(&session.billing_address).unwrap().to_string())),
+            shipping_address: Set(Some(
+                serde_json::to_value(&session.shipping_address)
+                    .unwrap()
+                    .to_string(),
+            )),
+            billing_address: Set(Some(
+                serde_json::to_value(&session.billing_address)
+                    .unwrap()
+                    .to_string(),
+            )),
             is_archived: Set(false),
             created_at: Set(Utc::now()),
             updated_at: Set(Some(Utc::now())),
@@ -184,8 +200,19 @@ impl CheckoutService {
                 id: Set(Uuid::new_v4()),
                 order_id: Set(order_id),
                 product_id: Set(cart_item.variant_id), // Using variant_id as product_id
-                sku: Set(format!("SKU-{}", cart_item.variant_id.to_string()[..8].to_uppercase())),
-                name: Set(format!("Product {}", cart_item.variant_id.to_string().chars().take(8).collect::<String>())),
+                sku: Set(format!(
+                    "SKU-{}",
+                    cart_item.variant_id.to_string()[..8].to_uppercase()
+                )),
+                name: Set(format!(
+                    "Product {}",
+                    cart_item
+                        .variant_id
+                        .to_string()
+                        .chars()
+                        .take(8)
+                        .collect::<String>()
+                )),
                 quantity: Set(cart_item.quantity),
                 unit_price: Set(cart_item.unit_price),
                 total_price: Set(cart_item.line_total),
@@ -218,16 +245,21 @@ impl CheckoutService {
             })
             .await;
 
-        self.event_sender
-            .send(Event::OrderCreated(order_id))
-            .await;
+        self.event_sender.send(Event::OrderCreated(order_id)).await;
 
-        info!("Checkout completed: order {} created from cart {}", order_id, session.cart_id);
+        info!(
+            "Checkout completed: order {} created from cart {}",
+            order_id, session.cart_id
+        );
         Ok(order)
     }
 
     /// Calculate shipping rate
-    fn calculate_shipping_rate(&self, method: &ShippingMethod, address: &Address) -> Result<ShippingRate, ServiceError> {
+    fn calculate_shipping_rate(
+        &self,
+        method: &ShippingMethod,
+        address: &Address,
+    ) -> Result<ShippingRate, ServiceError> {
         // Simplified shipping calculation
         let base_rate = match method {
             ShippingMethod::Standard => Decimal::from(10),
@@ -254,10 +286,17 @@ impl CheckoutService {
     }
 
     /// Process payment
-    async fn process_payment(&self, payment_info: &PaymentInfo, amount: Decimal) -> Result<PaymentResult, ServiceError> {
+    async fn process_payment(
+        &self,
+        payment_info: &PaymentInfo,
+        amount: Decimal,
+    ) -> Result<PaymentResult, ServiceError> {
         // This would integrate with payment gateway
-        info!("Processing payment of {} via {:?}", amount, payment_info.method);
-        
+        info!(
+            "Processing payment of {} via {:?}",
+            amount, payment_info.method
+        );
+
         // Simulate payment processing
         Ok(PaymentResult {
             transaction_id: Uuid::new_v4().to_string(),

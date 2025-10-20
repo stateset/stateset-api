@@ -82,7 +82,7 @@ impl Command for SetInventoryLevelsCommand {
                 INVENTORY_LEVELS_SET_FAILURES.inc();
                 let msg = format!("Failed to check inventory level: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
 
         let inventory_level = match inventory_level {
@@ -99,7 +99,7 @@ impl Command for SetInventoryLevelsCommand {
                     INVENTORY_LEVELS_SET_FAILURES.inc();
                     let msg = format!("Failed to update inventory level: {}", e);
                     error!("{}", msg);
-                    ServiceError::DatabaseError(msg)
+                    ServiceError::db_error(msg)
                 })?
             }
             None => {
@@ -128,7 +128,7 @@ impl Command for SetInventoryLevelsCommand {
                     INVENTORY_LEVELS_SET_FAILURES.inc();
                     let msg = format!("Failed to create inventory level: {}", e);
                     error!("{}", msg);
-                    ServiceError::DatabaseError(msg)
+                    ServiceError::db_error(msg)
                 })?
             }
         };

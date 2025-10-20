@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::future::{join_all, BoxFuture};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use rust_decimal::Decimal;
 // use bigdecimal::BigDecimal;
 
 pub mod outbox;
@@ -25,7 +25,7 @@ pub enum EventData {
         timestamp: DateTime<Utc>,
         refund_amount: Option<f64>,
     },
-    
+
     /// Generic event data
     Generic {
         message: String,
@@ -67,11 +67,14 @@ pub enum Event {
         old_status: String,
         new_status: String,
     },
-    
+
     // Inventory events
-    InventoryUpdatedLegacy { item_id: Uuid, quantity: i32 },
-    InventoryAllocated { 
-        item_id: Uuid, 
+    InventoryUpdatedLegacy {
+        item_id: Uuid,
+        quantity: i32,
+    },
+    InventoryAllocated {
+        item_id: Uuid,
         quantity: i32,
         reference_id: Uuid,
         reference_type: String,
@@ -79,7 +82,10 @@ pub enum Event {
         allocations: Vec<Uuid>,
         fully_allocated: bool,
     },
-    InventoryDeallocated { item_id: Uuid, quantity: i32 },
+    InventoryDeallocated {
+        item_id: Uuid,
+        quantity: i32,
+    },
     InventoryAdjusted {
         warehouse_id: Uuid,
         product_id: Uuid,
@@ -109,37 +115,37 @@ pub enum Event {
         requested_quantity: i32,
         reserved_quantity: i32,
     },
-    
+
     // Return events
     ReturnCreated(Uuid),
     ReturnUpdated(Uuid),
     ReturnApproved(Uuid),
     ReturnRejected(Uuid),
-    
+
     // Payment events
     PaymentAuthorized(Uuid),
     PaymentCaptured(Uuid),
     PaymentRefunded(Uuid),
     PaymentFailed(Uuid),
     PaymentVoided(Uuid),
-    
+
     // Shipment events
     ShipmentCreated(Uuid),
     ShipmentUpdated(Uuid),
     ShipmentDelivered(Uuid),
     ShipmentCancelled(Uuid),
-    
+
     // ASN events
     ASNDeleted {
         asn_id: Uuid,
         asn_number: String,
     },
-    
+
     // Warranty events
     WarrantyCreated(Uuid),
     WarrantyClaimed(Uuid),
     WarrantyExpired(Uuid),
-    
+
     // Work order events
     WorkOrderCreatedLegacy(Uuid),
     WorkOrderUpdated(Uuid),
@@ -149,41 +155,65 @@ pub enum Event {
         product_id: Uuid,
         average_cost: rust_decimal::Decimal,
     },
-    
+
     // COGS events
     MonthlyCOGSCalculated(String, rust_decimal::Decimal),
     COGSCalculated {
         work_order_id: Uuid,
         total_cogs: rust_decimal::Decimal,
     },
-    
+
     // BOM events
     BOMCreated(i32),
     BOMDeleted(i32),
     BOMDuplicated(i32),
-    ComponentAddedToBOM { bom_id: Uuid, component_id: Uuid },
-    
+    ComponentAddedToBOM {
+        bom_id: Uuid,
+        component_id: Uuid,
+    },
+
     // Commerce events
     ProductCreated(Uuid),
     ProductUpdated(Uuid),
     ProductDeleted(Uuid),
-    VariantCreated { product_id: Uuid, variant_id: Uuid },
-    VariantUpdated { product_id: Uuid, variant_id: Uuid },
+    VariantCreated {
+        product_id: Uuid,
+        variant_id: Uuid,
+    },
+    VariantUpdated {
+        product_id: Uuid,
+        variant_id: Uuid,
+    },
     CartCreated(Uuid),
     CartUpdated(Uuid),
-    CartItemAdded { cart_id: Uuid, variant_id: Uuid },
-    CartItemUpdated { cart_id: Uuid, item_id: Uuid },
-    CartItemRemoved { cart_id: Uuid, item_id: Uuid },
+    CartItemAdded {
+        cart_id: Uuid,
+        variant_id: Uuid,
+    },
+    CartItemUpdated {
+        cart_id: Uuid,
+        item_id: Uuid,
+    },
+    CartItemRemoved {
+        cart_id: Uuid,
+        item_id: Uuid,
+    },
     CartCleared(Uuid),
-    
+
     // Checkout events
-    CheckoutStarted { cart_id: Uuid, session_id: Uuid },
-    CheckoutCompleted { session_id: Uuid, order_id: Uuid },
-    
+    CheckoutStarted {
+        cart_id: Uuid,
+        session_id: Uuid,
+    },
+    CheckoutCompleted {
+        session_id: Uuid,
+        order_id: Uuid,
+    },
+
     // Customer events
     CustomerCreated(Uuid),
     CustomerUpdated(Uuid),
-    
+
     // ASN (Advanced Shipping Notice) events
     ASNCreated(Uuid),
     ASNUpdated(Uuid),
@@ -193,16 +223,16 @@ pub enum Event {
     ASNOnHold(Uuid),
     ASNReleasedFromHold(Uuid),
     ASNItemAdded(Uuid),
-    ASNItemsUpdated(Uuid),
+    ASNItemsUpdated(Uuid, Vec<Uuid>),
     ASNCancellationNotificationRequested(Uuid),
-    
+
     // Generic event for custom messages
     Generic {
         message: String,
         timestamp: DateTime<Utc>,
         metadata: serde_json::Value,
     },
-    
+
     // Additional order events
     OrderItemAdded(Uuid, Uuid),
     OrderNoteAdded(Uuid, Uuid),
@@ -211,29 +241,31 @@ pub enum Event {
     OrderOnHold(Uuid),
     ShippingMethodUpdated(Uuid),
     OrdersMerged(Vec<Uuid>, Uuid),
-    
+
     // Promotion events
     PromotionCreated(Uuid),
     PromotionDeactivated(Uuid),
-    
+
     // Purchase Order events
     PurchaseOrderCreated(Uuid),
-    
+    PurchaseOrderApproved(Uuid),
+    PurchaseOrderCancelled(Uuid),
+
     // Additional return events
     ReturnRefunded(Uuid),
     ReturnDeleted(Uuid),
     ReturnReopened(Uuid),
-    
+
     // Additional shipment events
     OrderShipped(Uuid),
     ShipmentOnHold(Uuid),
     ShipmentRescheduled(Uuid, DateTime<Utc>),
     ShipmentTracked(Uuid),
     CarrierAssignedToShipment(Uuid, String),
-    
+
     // Weighted Average COGS event
     WeightedAverageCOGSCalculated(Uuid, Decimal),
-    
+
     // Manufacturing and inventory sync events
     InventoryUpdated {
         item_id: i64,
@@ -364,7 +396,10 @@ pub async fn process_events(mut rx: mpsc::Receiver<Event>) {
                     reference_id,
                     &reference_type,
                     &warehouse_id.to_string(),
-                    &allocations.iter().map(|uuid| serde_json::json!(uuid.to_string())).collect::<Vec<_>>(),
+                    &allocations
+                        .iter()
+                        .map(|uuid| serde_json::json!(uuid.to_string()))
+                        .collect::<Vec<_>>(),
                     fully_allocated,
                 )
                 .await
@@ -381,9 +416,13 @@ pub async fn process_events(mut rx: mpsc::Receiver<Event>) {
                 requested_quantity,
                 allocated_quantity,
             } => {
-                if let Err(e) =
-                    handle_partial_allocation_warning(reference_id, &reference_type, requested_quantity, allocated_quantity)
-                        .await
+                if let Err(e) = handle_partial_allocation_warning(
+                    reference_id,
+                    &reference_type,
+                    requested_quantity,
+                    allocated_quantity,
+                )
+                .await
                 {
                     error!(
                         "Failed to handle partial allocation warning: reference_id={}, error={}",
@@ -511,7 +550,9 @@ async fn handle_inventory_adjustment(
         "CYCLE_COUNT" => {
             info!(
                 "Cycle count adjustment: {} units of product {} in warehouse {}",
-                (new_quantity - old_quantity), product_id, warehouse_id
+                (new_quantity - old_quantity),
+                product_id,
+                warehouse_id
             );
             // Could update accuracy metrics
         }
@@ -547,11 +588,7 @@ async fn handle_inventory_allocated(
 
     // Log details about each allocation
     for (index, allocation) in allocations.iter().enumerate() {
-        info!(
-            "Allocation {}: data={:?}",
-            index,
-            allocation
-        );
+        info!("Allocation {}: data={:?}", index, allocation);
     }
 
     if fully_allocated {
