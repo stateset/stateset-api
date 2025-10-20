@@ -9,17 +9,17 @@ use validator::Validate;
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     pub shipment_id: Uuid,
-    
+
     pub event_type: String,
-    
+
     pub location: Option<String>,
-    
+
     pub description: Option<String>,
-    
+
     pub timestamp: DateTime<Utc>,
-    
+
     pub created_at: DateTime<Utc>,
 }
 

@@ -13,15 +13,15 @@ pub struct Model {
     pub order_id: Uuid,
     #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub amount: Decimal,
-    #[sea_orm(column_type = "Text")] 
+    #[sea_orm(column_type = "Text")]
     pub currency: String,
-    #[sea_orm(column_type = "Text")] 
+    #[sea_orm(column_type = "Text")]
     pub payment_method: String,
     pub payment_method_id: Option<String>,
     pub status: String,
     pub description: Option<String>,
     pub transaction_id: Option<String>,
-    #[sea_orm(column_type = "Json")] 
+    #[sea_orm(column_type = "Json")]
     pub gateway_response: Option<serde_json::Value>,
     #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub refunded_amount: Decimal,

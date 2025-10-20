@@ -1,14 +1,14 @@
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
-use sea_orm::QueryOrder;
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
+use sea_orm::QueryOrder;
 use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
-use validator::{Validate, ValidationError};
 use uuid::Uuid;
-use async_trait::async_trait;
+use validator::{Validate, ValidationError};
 
 /// Custom validator for non-negative decimal values
 fn validate_non_negative_decimal(value: &Decimal) -> Result<(), ValidationError> {
@@ -184,11 +184,7 @@ impl Related<super::suppliers::Entity> for Entity {
 /// Active model behavior for database hooks
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -245,7 +241,9 @@ impl Model {
             created_at: now,
             updated_at: now,
         };
-        cogs_entry.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        cogs_entry
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(cogs_entry)
     }
 
@@ -276,11 +274,15 @@ impl Model {
         self.customer_segment = customer_segment;
 
         // Recalculate dependent values
-        self.calculate_gross_profit().map_err(|_| ValidationError::new("Failed to calculate gross profit"))?;
-        self.calculate_gross_margin_percentage().map_err(|_| ValidationError::new("Failed to calculate gross margin"))?;
-        self.calculate_cogs_percentage().map_err(|_| ValidationError::new("Failed to calculate COGS percentage"))?;
+        self.calculate_gross_profit()
+            .map_err(|_| ValidationError::new("Failed to calculate gross profit"))?;
+        self.calculate_gross_margin_percentage()
+            .map_err(|_| ValidationError::new("Failed to calculate gross margin"))?;
+        self.calculate_cogs_percentage()
+            .map_err(|_| ValidationError::new("Failed to calculate COGS percentage"))?;
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(self)
     }
 
@@ -352,14 +354,16 @@ impl Model {
             let _ = self.calculate_cogs_percentage();
         }
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
     /// Save the COGS entry to database
     pub async fn save(&self, db: &DatabaseConnection) -> Result<Model, CogsError> {
         // Validate before saving
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
 
         let model: ActiveModel = self.clone().into();
         let result = match self.id {
@@ -546,7 +550,9 @@ impl CogsEntryBuilder {
             let _ = entry.calculate_cogs_percentage();
         }
 
-        entry.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        entry
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(entry)
     }
 }

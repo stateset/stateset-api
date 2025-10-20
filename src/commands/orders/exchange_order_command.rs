@@ -117,7 +117,7 @@ impl ExchangeOrderCommand {
         })
         .await
         .map_err(|e| match e {
-            TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+            TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
             TransactionError::Transaction(service_err) => service_err,
         })
     }
@@ -141,7 +141,7 @@ impl ExchangeOrderCommand {
                     self.order_id, e
                 );
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
         }
         Ok(())
@@ -163,7 +163,7 @@ impl ExchangeOrderCommand {
                     self.order_id, e
                 );
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
         }
         Ok(())
@@ -180,7 +180,7 @@ impl ExchangeOrderCommand {
                 ORDER_EXCHANGE_FAILURES.inc();
                 let msg = format!("Failed to find order {}: {}", self.order_id, e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 ORDER_EXCHANGE_FAILURES.inc();
@@ -196,7 +196,7 @@ impl ExchangeOrderCommand {
         order.update(txn).await.map_err(|e| {
             let msg = format!("Failed to update Order {}: {}", self.order_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
     }
 

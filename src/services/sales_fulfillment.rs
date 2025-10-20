@@ -1,23 +1,23 @@
-use std::sync::Arc;
-use chrono::{Utc, NaiveDate};
+use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, TransactionTrait,
-    QueryFilter, ColumnTrait, ModelTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
+    QueryFilter, TransactionTrait,
 };
+use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
     entities::{
-        sales_order_header::{self, Entity as SalesOrderHeaderEntity},
-        sales_order_line::{self, Entity as SalesOrderLineEntity},
-        order_fulfillments::{self, Entity as OrderFulfillmentEntity},
         inventory_balance::{self, Entity as InventoryBalanceEntity},
         item_master::{self, Entity as ItemMasterEntity},
+        order_fulfillments::{self, Entity as OrderFulfillmentEntity},
+        sales_order_header::{self, Entity as SalesOrderHeaderEntity},
+        sales_order_line::{self, Entity as SalesOrderLineEntity},
     },
     errors::ServiceError,
-    services::inventory_sync::{InventorySyncService, TransactionType},
     events::{Event, EventSender},
+    services::inventory_sync::{InventorySyncService, TransactionType},
 };
 
 /// Sales order fulfillment service for shipping orders and updating inventory
@@ -48,15 +48,18 @@ impl SalesFulfillmentService {
         header_id: i64,
     ) -> Result<FulfillmentValidation, ServiceError> {
         let db = &*self.db;
-        
+
         // Get order header
         let header = SalesOrderHeaderEntity::find_by_id(header_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Sales order {} not found", header_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Sales order {} not found", header_id))
+            })?;
 
-        let location_id = header.location_id
+        let location_id = header
+            .location_id
             .ok_or_else(|| ServiceError::InvalidOperation("Order has no location".to_string()))?;
 
         // Get order lines
@@ -64,7 +67,7 @@ impl SalesFulfillmentService {
             .filter(sales_order_line::Column::HeaderId.eq(header_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut can_fulfill = true;
         let mut shortages = Vec::new();
@@ -73,24 +76,27 @@ impl SalesFulfillmentService {
 
         for line in lines {
             total_items += 1;
-            
-            if let (Some(item_id), Some(quantity)) = (line.inventory_item_id, line.ordered_quantity) {
+
+            if let (Some(item_id), Some(quantity)) = (line.inventory_item_id, line.ordered_quantity)
+            {
                 let line_location = line.location_id.unwrap_or(location_id);
-                
+
                 // Check availability
-                let available = self.inventory_sync
+                let available = self
+                    .inventory_sync
                     .check_availability(item_id, line_location, quantity)
                     .await?;
-                
+
                 if available {
                     available_items += 1;
                 } else {
                     can_fulfill = false;
-                    
+
                     // Get current balance to report shortage
-                    if let Some(balance) = self.inventory_sync
+                    if let Some(balance) = self
+                        .inventory_sync
                         .get_inventory_balance(item_id, line_location)
-                        .await? 
+                        .await?
                     {
                         shortages.push(LineShortage {
                             line_id: line.line_id,
@@ -122,21 +128,21 @@ impl SalesFulfillmentService {
 
     /// Allocates inventory for an order (reserves it)
     #[instrument(skip(self))]
-    pub async fn allocate_order_inventory(
-        &self,
-        header_id: i64,
-    ) -> Result<(), ServiceError> {
+    pub async fn allocate_order_inventory(&self, header_id: i64) -> Result<(), ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Get order header
         let header = SalesOrderHeaderEntity::find_by_id(header_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Sales order {} not found", header_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Sales order {} not found", header_id))
+            })?;
 
-        let location_id = header.location_id
+        let location_id = header
+            .location_id
             .ok_or_else(|| ServiceError::InvalidOperation("Order has no location".to_string()))?;
 
         // Get order lines
@@ -144,13 +150,14 @@ impl SalesFulfillmentService {
             .filter(sales_order_line::Column::HeaderId.eq(header_id))
             .all(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Allocate inventory for each line
         for line in lines {
-            if let (Some(item_id), Some(quantity)) = (line.inventory_item_id, line.ordered_quantity) {
+            if let (Some(item_id), Some(quantity)) = (line.inventory_item_id, line.ordered_quantity)
+            {
                 let line_location = line.location_id.unwrap_or(location_id);
-                
+
                 self.inventory_sync
                     .update_inventory_balance(
                         item_id,
@@ -168,9 +175,12 @@ impl SalesFulfillmentService {
         let mut active: sales_order_header::ActiveModel = header.into();
         active.status_code = Set(Some("ALLOCATED".to_string()));
         active.updated_at = Set(Utc::now().into());
-        active.update(&txn).await.map_err(|e| ServiceError::DatabaseError(e))?;
+        active
+            .update(&txn)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         info!("Inventory allocated for sales order {}", header_id);
 
@@ -187,23 +197,27 @@ impl SalesFulfillmentService {
         shipped_date: NaiveDate,
     ) -> Result<order_fulfillments::Model, ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Get order line
         let line = SalesOrderLineEntity::find_by_id(line_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Sales order line {} not found", line_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Sales order line {} not found", line_id))
+            })?;
 
         // Verify line belongs to the header
         if line.header_id != Some(header_id) {
-            return Err(ServiceError::InvalidOperation(
-                format!("Line {} does not belong to order {}", line_id, header_id)
-            ));
+            return Err(ServiceError::InvalidOperation(format!(
+                "Line {} does not belong to order {}",
+                line_id, header_id
+            )));
         }
 
-        let item_id = line.inventory_item_id
+        let item_id = line
+            .inventory_item_id
             .ok_or_else(|| ServiceError::InvalidOperation("Order line has no item".to_string()))?;
         let ordered_quantity = line.ordered_quantity.unwrap_or(Decimal::ZERO);
 
@@ -211,10 +225,14 @@ impl SalesFulfillmentService {
         let header = SalesOrderHeaderEntity::find_by_id(header_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Sales order {} not found", header_id)))?;
-        
-        let location_id = line.location_id.or(header.location_id)
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Sales order {} not found", header_id))
+            })?;
+
+        let location_id = line
+            .location_id
+            .or(header.location_id)
             .ok_or_else(|| ServiceError::InvalidOperation("No location specified".to_string()))?;
 
         // Check if already fulfilled
@@ -222,9 +240,10 @@ impl SalesFulfillmentService {
             .filter(order_fulfillments::Column::SalesOrderLineId.eq(line_id))
             .all(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        let total_fulfilled: Decimal = existing_fulfillments.iter()
+        let total_fulfilled: Decimal = existing_fulfillments
+            .iter()
             .filter_map(|f| {
                 // Parse quantity from a field if it exists in your entity
                 // For now, assuming full quantity per fulfillment
@@ -252,7 +271,7 @@ impl SalesFulfillmentService {
 
         let created = fulfillment.insert(&txn).await.map_err(|e| {
             error!("Failed to create fulfillment: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         // Deduct inventory
@@ -287,25 +306,32 @@ impl SalesFulfillmentService {
             active_line.line_status = Set(Some("PARTIALLY_SHIPPED".to_string()));
         }
         active_line.updated_at = Set(Utc::now().into());
-        active_line.update(&txn).await.map_err(|e| ServiceError::DatabaseError(e))?;
+        active_line
+            .update(&txn)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Check if entire order is fulfilled
         self.update_order_status(&txn, header_id).await?;
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::SalesOrderFulfilled {
-                order_id: header_id,
-                line_id,
-                item_id,
-                quantity: shipped_quantity,
-            }).await;
+            let _ = sender
+                .send(Event::SalesOrderFulfilled {
+                    order_id: header_id,
+                    line_id,
+                    item_id,
+                    quantity: shipped_quantity,
+                })
+                .await;
         }
 
-        info!("Sales order line {} fulfilled: {} units of item {}", 
-            line_id, shipped_quantity, item_id);
+        info!(
+            "Sales order line {} fulfilled: {} units of item {}",
+            line_id, shipped_quantity, item_id
+        );
 
         Ok(created)
     }
@@ -320,7 +346,7 @@ impl SalesFulfillmentService {
             .filter(sales_order_line::Column::HeaderId.eq(header_id))
             .all(txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut all_shipped = true;
         let mut any_shipped = false;
@@ -331,7 +357,7 @@ impl SalesFulfillmentService {
                 Some("PARTIALLY_SHIPPED") => {
                     any_shipped = true;
                     all_shipped = false;
-                },
+                }
                 _ => all_shipped = false,
             }
         }
@@ -347,13 +373,18 @@ impl SalesFulfillmentService {
         let header = SalesOrderHeaderEntity::find_by_id(header_id)
             .one(txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Sales order {} not found", header_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Sales order {} not found", header_id))
+            })?;
 
         let mut active: sales_order_header::ActiveModel = header.into();
         active.status_code = Set(Some(new_status.to_string()));
         active.updated_at = Set(Utc::now().into());
-        active.update(txn).await.map_err(|e| ServiceError::DatabaseError(e))?;
+        active
+            .update(txn)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(())
     }
@@ -368,25 +399,31 @@ impl SalesFulfillmentService {
         reason: String,
     ) -> Result<(), ServiceError> {
         let db = &*self.db;
-        
+
         // Get fulfillment
         let fulfillment = OrderFulfillmentEntity::find_by_id(fulfillment_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Fulfillment {} not found", fulfillment_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Fulfillment {} not found", fulfillment_id))
+            })?;
 
-        let line_id = fulfillment.sales_order_line_id
+        let line_id = fulfillment
+            .sales_order_line_id
             .ok_or_else(|| ServiceError::InvalidOperation("Fulfillment has no line".to_string()))?;
 
         // Get order line
         let line = SalesOrderLineEntity::find_by_id(line_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Sales order line {} not found", line_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Sales order line {} not found", line_id))
+            })?;
 
-        let item_id = line.inventory_item_id
+        let item_id = line
+            .inventory_item_id
             .ok_or_else(|| ServiceError::InvalidOperation("Order line has no item".to_string()))?;
 
         // Add inventory back
@@ -403,16 +440,20 @@ impl SalesFulfillmentService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::SalesOrderReturned {
-                fulfillment_id,
-                item_id,
-                quantity: return_quantity,
-                reason,
-            }).await;
+            let _ = sender
+                .send(Event::SalesOrderReturned {
+                    fulfillment_id,
+                    item_id,
+                    quantity: return_quantity,
+                    reason,
+                })
+                .await;
         }
 
-        info!("Sales return processed: {} units of item {} returned", 
-            return_quantity, item_id);
+        info!(
+            "Sales return processed: {} units of item {} returned",
+            return_quantity, item_id
+        );
 
         Ok(())
     }
@@ -424,13 +465,13 @@ impl SalesFulfillmentService {
         header_id: i64,
     ) -> Result<OrderFulfillmentStatus, ServiceError> {
         let db = &*self.db;
-        
+
         // Get order lines
         let lines = SalesOrderLineEntity::find()
             .filter(sales_order_line::Column::HeaderId.eq(header_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut total_lines = 0;
         let mut shipped_lines = 0;
@@ -441,7 +482,7 @@ impl SalesFulfillmentService {
             match line.line_status.as_deref() {
                 Some("SHIPPED") => shipped_lines += 1,
                 Some("PARTIALLY_SHIPPED") => partially_shipped_lines += 1,
-                _ => {},
+                _ => {}
             }
         }
 

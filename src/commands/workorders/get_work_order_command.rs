@@ -1,10 +1,10 @@
-use uuid::Uuid;
 use async_trait::async_trait;
+use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
+use uuid::Uuid;
 use validator::Validate;
-use sea_orm::EntityTrait;
 
 use crate::{
     commands::Command,
@@ -22,7 +22,7 @@ pub struct GetWorkOrderCommand {
 #[async_trait]
 impl Command for GetWorkOrderCommand {
     type Result = work_order_entity::Model;
-    
+
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
         &self,
@@ -33,18 +33,18 @@ impl Command for GetWorkOrderCommand {
         let work_order = work_order_entity::Entity::find_by_id(self.work_order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 ServiceError::NotFound(format!("Work order {} not found", self.work_order_id))
             })?;
-        
+
         info!("Fetched work order {}", self.work_order_id);
-        
+
         event_sender
             .send(Event::WorkOrderUpdated(work_order.id))
             .await
             .map_err(ServiceError::EventError)?;
-        
+
         Ok(work_order)
     }
 }

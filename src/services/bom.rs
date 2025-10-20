@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, TransactionTrait,
-    QueryFilter, ColumnTrait, DbErr, ModelTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
+    ModelTrait, QueryFilter, TransactionTrait,
 };
+use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
@@ -39,7 +39,7 @@ impl BomService {
         revision: Option<String>,
     ) -> Result<bom_header::Model, ServiceError> {
         let db = &*self.db;
-        
+
         let bom = bom_header::ActiveModel {
             bom_id: Set(0), // Auto-generated
             bom_name: Set(bom_name),
@@ -53,10 +53,13 @@ impl BomService {
 
         let created = bom.insert(db).await.map_err(|e| {
             error!("Failed to create BOM: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
-        info!("BOM created: id={}, name={}", created.bom_id, created.bom_name);
+        info!(
+            "BOM created: id={}, name={}",
+            created.bom_id, created.bom_name
+        );
         Ok(created)
     }
 
@@ -71,20 +74,22 @@ impl BomService {
         operation_seq_num: Option<i32>,
     ) -> Result<bom_line::Model, ServiceError> {
         let db = &*self.db;
-        
+
         // Verify BOM exists
         let bom = BomHeaderEntity::find_by_id(bom_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound(format!("BOM {} not found", bom_id)))?;
 
         // Verify component item exists
         let component = ItemMasterEntity::find_by_id(component_item_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Item {} not found", component_item_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Item {} not found", component_item_id))
+            })?;
 
         let bom_line = bom_line::ActiveModel {
             bom_line_id: Set(0), // Auto-generated
@@ -99,12 +104,14 @@ impl BomService {
 
         let created = bom_line.insert(db).await.map_err(|e| {
             error!("Failed to add BOM component: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
-        info!("BOM component added: bom_id={}, component_id={}, quantity={}", 
-            bom_id, component_item_id, quantity_per_assembly);
-        
+        info!(
+            "BOM component added: bom_id={}, component_id={}, quantity={}",
+            bom_id, component_item_id, quantity_per_assembly
+        );
+
         Ok(created)
     }
 
@@ -115,14 +122,14 @@ impl BomService {
         bom_id: i64,
     ) -> Result<Vec<bom_line::Model>, ServiceError> {
         let db = &*self.db;
-        
+
         BomLineEntity::find()
             .filter(bom_line::Column::BomId.eq(bom_id))
             .all(db)
             .await
             .map_err(|e| {
                 error!("Failed to fetch BOM components: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 
@@ -134,18 +141,18 @@ impl BomService {
         production_quantity: Decimal,
     ) -> Result<Vec<ComponentRequirement>, ServiceError> {
         let components = self.get_bom_components(bom_id).await?;
-        
+
         let requirements: Vec<ComponentRequirement> = components
             .into_iter()
             .filter_map(|component| {
-                component.component_item_id.map(|item_id| {
-                    ComponentRequirement {
+                component
+                    .component_item_id
+                    .map(|item_id| ComponentRequirement {
                         item_id,
-                        required_quantity: component.quantity_per_assembly
-                            .unwrap_or(Decimal::ZERO) * production_quantity,
+                        required_quantity: component.quantity_per_assembly.unwrap_or(Decimal::ZERO)
+                            * production_quantity,
                         uom_code: component.uom_code,
-                    }
-                })
+                    })
             })
             .collect();
 
@@ -161,39 +168,40 @@ impl BomService {
         level: i32,
     ) -> Result<Vec<ExplodedComponent>, ServiceError> {
         let db = &*self.db;
-        
+
         // Find BOM for this item
         let bom = BomHeaderEntity::find()
             .filter(bom_header::Column::ItemId.eq(item_id))
             .filter(bom_header::Column::StatusCode.eq("ACTIVE"))
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut exploded_components = Vec::new();
 
         if let Some(bom) = bom {
             let components = self.get_bom_components(bom.bom_id).await?;
-            
+
             for component in components {
                 if let Some(component_item_id) = component.component_item_id {
-                    let component_quantity = component.quantity_per_assembly
-                        .unwrap_or(Decimal::ZERO) * quantity;
-                    
+                    let component_quantity =
+                        component.quantity_per_assembly.unwrap_or(Decimal::ZERO) * quantity;
+
                     exploded_components.push(ExplodedComponent {
                         item_id: component_item_id,
                         quantity: component_quantity,
                         level,
                         uom_code: component.uom_code,
                     });
-                    
+
                     // Recursively explode sub-assemblies
                     let sub_components = Box::pin(self.explode_bom(
-                        component_item_id, 
-                        component_quantity, 
-                        level + 1
-                    )).await?;
-                    
+                        component_item_id,
+                        component_quantity,
+                        level + 1,
+                    ))
+                    .await?;
+
                     exploded_components.extend(sub_components);
                 }
             }
@@ -210,20 +218,24 @@ impl BomService {
         production_quantity: Decimal,
         location_id: i32,
     ) -> Result<ComponentAvailability, ServiceError> {
-        let requirements = self.calculate_component_requirements(bom_id, production_quantity).await?;
+        let requirements = self
+            .calculate_component_requirements(bom_id, production_quantity)
+            .await?;
         let mut all_available = true;
         let mut shortages = Vec::new();
 
         for req in &requirements {
-            let available = self.inventory_sync
+            let available = self
+                .inventory_sync
                 .check_availability(req.item_id, location_id, req.required_quantity)
                 .await?;
-            
+
             if !available {
                 all_available = false;
-                if let Some(balance) = self.inventory_sync
+                if let Some(balance) = self
+                    .inventory_sync
                     .get_inventory_balance(req.item_id, location_id)
-                    .await? 
+                    .await?
                 {
                     shortages.push(ComponentShortage {
                         item_id: req.item_id,
@@ -258,23 +270,24 @@ impl BomService {
         work_order_id: i64,
     ) -> Result<(), ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Validate availability first
-        let availability = self.validate_component_availability(
-            bom_id, 
-            production_quantity, 
-            location_id
-        ).await?;
+        let availability = self
+            .validate_component_availability(bom_id, production_quantity, location_id)
+            .await?;
 
         if !availability.can_produce {
-            return Err(ServiceError::InsufficientStock(
-                format!("Insufficient components for production. Shortages: {:?}", availability.shortages)
-            ));
+            return Err(ServiceError::InsufficientStock(format!(
+                "Insufficient components for production. Shortages: {:?}",
+                availability.shortages
+            )));
         }
 
         // Get component requirements
-        let requirements = self.calculate_component_requirements(bom_id, production_quantity).await?;
+        let requirements = self
+            .calculate_component_requirements(bom_id, production_quantity)
+            .await?;
 
         // Consume each component
         for req in requirements {
@@ -290,10 +303,12 @@ impl BomService {
                 .await?;
         }
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
-        info!("Components consumed for production: bom_id={}, quantity={}, work_order_id={}", 
-            bom_id, production_quantity, work_order_id);
+        info!(
+            "Components consumed for production: bom_id={}, quantity={}, work_order_id={}",
+            bom_id, production_quantity, work_order_id
+        );
 
         Ok(())
     }

@@ -50,7 +50,7 @@ impl DeactivatePromotionCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find promotion ID {}: {:?}", self.promotion_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Promotion ID {} not found", self.promotion_id);
@@ -66,7 +66,7 @@ impl DeactivatePromotionCommand {
                 "Failed to deactivate promotion ID {}: {:?}",
                 self.promotion_id, e
             );
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

@@ -1,7 +1,7 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
@@ -23,10 +23,10 @@ pub enum CheckoutStatus {
 pub struct Model {
     #[sea_orm(primary_key, column_type = "Uuid")]
     pub id: Uuid,
-    
+
     #[sea_orm(column_type = "Uuid")]
     pub cart_id: Uuid,
-    
+
     pub status: CheckoutStatus,
     pub payment_method: Option<String>,
     pub shipping_address: Option<String>,

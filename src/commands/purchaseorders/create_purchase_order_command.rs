@@ -11,13 +11,13 @@ use crate::{
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use rust_decimal::Decimal;
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 use validator::Validate;
-use rust_decimal::Decimal;
 
 lazy_static! {
     static ref PO_CREATIONS: IntCounter = IntCounter::new(
@@ -120,10 +120,17 @@ impl Command for CreatePurchaseOrderCommand {
             status: saved_po.status.to_string(),
             po_number: saved_po.po_number,
             created_at: saved_po.created_at,
-            expected_delivery_date: saved_po.expected_delivery_date
-                .map(|d| DateTime::<Utc>::from_naive_utc_and_offset(d.and_hms_opt(0, 0, 0).unwrap(), Utc))
+            expected_delivery_date: saved_po
+                .expected_delivery_date
+                .map(|d| {
+                    DateTime::<Utc>::from_naive_utc_and_offset(d.and_hms_opt(0, 0, 0).unwrap(), Utc)
+                })
                 .unwrap_or_else(|| Utc::now()),
-            total_amount: saved_po.total_amount.to_string().parse::<f64>().unwrap_or(0.0),
+            total_amount: saved_po
+                .total_amount
+                .to_string()
+                .parse::<f64>()
+                .unwrap_or(0.0),
             currency: self.currency.clone(),
             items: self.items.clone(),
         })
@@ -153,49 +160,66 @@ impl CreatePurchaseOrderCommand {
         &self,
         db: &DatabaseConnection,
     ) -> Result<purchase_order_entity::Model, ServiceError> {
-        db.transaction::<_, purchase_order_entity::Model, ServiceError>(|txn| {
-            Box::pin(async move {
-                let po_number = self.generate_po_number().await;
-                let total_amount = self.calculate_total_amount();
+        let po_number = self.generate_po_number().await;
+        let total_amount = self.calculate_total_amount();
+        let supplier_id = self.supplier_id;
+        let expected_delivery_date = self.expected_delivery_date.date_naive();
+        let currency = self.currency.clone();
+        let items = self.items.clone();
 
+        db.transaction::<_, purchase_order_entity::Model, ServiceError>(move |txn| {
+            let items = items.clone();
+            Box::pin(async move {
                 let new_po = purchase_order_entity::ActiveModel {
-                    po_number: Set(po_number),
-                    supplier_id: Set(self.supplier_id),
+                    po_number: Set(po_number.clone()),
+                    supplier_id: Set(supplier_id),
                     status: Set(PurchaseOrderStatus::Draft),
                     order_date: Set(Utc::now()),
-                    expected_delivery_date: Set(Some(self.expected_delivery_date.date_naive())),
+                    expected_delivery_date: Set(Some(expected_delivery_date)),
                     total_amount: Set(Decimal::from_f64_retain(total_amount).unwrap_or_default()),
-                    currency: Set(self.currency.clone()),
+                    currency: Set(currency.clone()),
                     created_at: Set(Utc::now()),
                     created_by: Set(Uuid::new_v4()), // TODO: Get from user context
                     ..Default::default()
                 };
 
                 let saved_po = new_po.insert(txn).await.map_err(|e| {
-                    let msg = format!("Failed to create purchase order: {}", e);
+                    let msg = format!(
+                        "Failed to create purchase order {} for supplier {}: {}",
+                        po_number, supplier_id, e
+                    );
                     error!("{}", msg);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?;
 
-                for item in &self.items {
-                    let item_total = Decimal::from_f64_retain(item.quantity as f64 * item.unit_price).unwrap_or_default();
-                    let tax_amount = item_total * Decimal::from_f64_retain(item.tax_rate.unwrap_or(0.0)).unwrap_or_default();
-                    
+                for item in &items {
+                    let item_total =
+                        Decimal::from_f64_retain(item.quantity as f64 * item.unit_price)
+                            .unwrap_or_default();
+                    let tax_amount = item_total
+                        * Decimal::from_f64_retain(item.tax_rate.unwrap_or(0.0))
+                            .unwrap_or_default();
+
                     let new_item = purchase_order_item_entity::ActiveModel {
                         purchase_order_id: Set(saved_po.id),
                         sku: Set(item.product_id.to_string()), // Using product_id as SKU
                         product_name: Set(format!("Product {}", item.product_id)), // TODO: Get from product service
                         quantity_ordered: Set(item.quantity),
                         quantity_received: Set(0),
-                        unit_cost: Set(Decimal::from_f64_retain(item.unit_price).unwrap_or_default()),
+                        unit_cost: Set(
+                            Decimal::from_f64_retain(item.unit_price).unwrap_or_default()
+                        ),
                         total_cost: Set(item_total + tax_amount),
                         created_at: Set(Utc::now()),
                         ..Default::default()
                     };
                     new_item.insert(txn).await.map_err(|e| {
-                        let msg = format!("Failed to create purchase order item: {}", e);
+                        let msg = format!(
+                            "Failed to create purchase order item for PO {} (product {}): {}",
+                            po_number, item.product_id, e
+                        );
                         error!("{}", msg);
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?;
                 }
 
@@ -204,7 +228,7 @@ impl CreatePurchaseOrderCommand {
         })
         .await
         .map_err(|e| match e {
-            TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+            TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
             TransactionError::Transaction(service_err) => service_err,
         })
     }

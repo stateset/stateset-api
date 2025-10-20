@@ -135,7 +135,7 @@ impl BillOfMaterialsService {
             .map_err(|e| {
                 let msg = format!("Failed to get bill of materials: {}", e);
                 error!(bom_id = %bom_id, error = %e, "Database error when fetching BOM");
-                ServiceError::DatabaseError(sea_orm::DbErr::Custom(msg))
+                ServiceError::db_error(sea_orm::DbErr::Custom(msg))
             })?;
 
         Ok(bom)
@@ -151,7 +151,7 @@ impl BillOfMaterialsService {
         let boms = billofmaterials::Entity::find()
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(boms)
     }
@@ -167,7 +167,7 @@ impl BillOfMaterialsService {
         let bom = billofmaterials::Entity::find()
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(bom)
     }

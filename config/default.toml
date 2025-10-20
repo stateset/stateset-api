@@ -7,7 +7,7 @@
 database_url = "sqlite://stateset.db?mode=rwc"
 redis_url = "redis://localhost:6379"
 
-# JWT configuration  
+# JWT configuration
 jwt_secret = "CHANGE_THIS_SECRET_IN_PRODUCTION"  # Generate with: openssl rand -base64 32
 jwt_expiration = 3600
 refresh_token_expiration = 604800
@@ -19,7 +19,8 @@ port = 8080
 # Environment
 environment = "development"
 log_level = "info"
-log_json = false
+# Auto-migration
+auto_migrate = true
 
 # Cache configuration
 [cache]
@@ -29,6 +30,3 @@ capacity = 1000
 cleanup_interval_secs = 60
 default_ttl_secs = 300
 debug = false
-
-# Auto-migration
-auto_migrate = true 

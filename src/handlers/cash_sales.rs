@@ -7,7 +7,6 @@ use axum::{
 use rust_decimal::Decimal;
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -25,7 +24,7 @@ pub struct CreateCashSaleRequest {
 }
 
 async fn create_cash_sale(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateCashSaleRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     validate_input(&payload)?;
@@ -38,6 +37,6 @@ async fn create_cash_sale(
     Ok(created_response(json!({"id": id})))
 }
 
-pub fn cash_sale_routes() -> Router {
+pub fn cash_sale_routes() -> Router<AppState> {
     Router::new().route("/", post(create_cash_sale))
 }

@@ -1,6 +1,7 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::message_queue::MessageQueue;
 use crate::{
+    auth::Claims,
     commands::workorders::{
         assign_work_order_command::AssignWorkOrderCommand,
         // cancel_work_order_command::CancelWorkOrderCommand,
@@ -16,7 +17,6 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
     models::work_order,
-    auth::Claims,
 };
 use anyhow::Result;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -63,7 +63,6 @@ impl WorkOrderService {
 
     /// Creates a new work order
     #[instrument(skip(self))]
-
     // /// Starts a work order
     // #[instrument(skip(self))]
     // // pub async fn start_work_order(
@@ -134,7 +133,7 @@ impl WorkOrderService {
         let work_order = work_order::Entity::find_by_id(*work_order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(work_order)
     }
@@ -150,7 +149,7 @@ impl WorkOrderService {
             .filter(work_order::Column::AssignedTo.eq(*user_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(work_orders)
     }
@@ -170,7 +169,7 @@ impl WorkOrderService {
             .filter(filter.clone())
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))? as u64;
+            .map_err(|e| ServiceError::db_error(e))? as u64;
 
         let work_orders = work_order::Entity::find()
             .filter(filter)
@@ -179,7 +178,7 @@ impl WorkOrderService {
             .limit(page_size)
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((work_orders, total))
     }
@@ -197,7 +196,7 @@ impl WorkOrderService {
             .filter(work_order::Column::DueDate.lte(end_date))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(work_orders)
     }

@@ -1,23 +1,21 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sea_orm::{*, Set, TransactionTrait};
+use sea_orm::{Set, TransactionTrait, *};
 use stateset_api::{
     db::create_db_pool,
     entities::{
         inventory_balance::{self, Entity as InventoryBalance},
+        inventory_location::{self, Entity as InventoryLocation},
         inventory_transaction::{self, Entity as InventoryTransaction},
         item_master::{self, Entity as ItemMaster},
-        sales_order_header::{self, Entity as SalesOrderHeader},
-        sales_order_line::{self, Entity as SalesOrderLine},
         purchase_order_headers::{self, Entity as PurchaseOrderHeader},
         purchase_order_lines::{self, Entity as PurchaseOrderLine},
-        inventory_location::{self, Entity as InventoryLocation},
+        sales_order_header::{self, Entity as SalesOrderHeader},
+        sales_order_line::{self, Entity as SalesOrderLine},
     },
     events::EventSender,
     services::inventory_adjustment_service::{
-        InventoryAdjustmentService, 
-        SalesOrderAdjustmentType,
-        PurchaseOrderReceiptLine,
+        InventoryAdjustmentService, PurchaseOrderReceiptLine, SalesOrderAdjustmentType,
     },
 };
 use std::sync::Arc;
@@ -29,103 +27,108 @@ async fn test_inventory_adjustments_with_item_master() {
     // Setup database connection
     let db_pool = Arc::new(create_db_pool().await.expect("Failed to create DB pool"));
     let db = db_pool.as_ref();
-    
+
     // Setup event sender
     let (tx, _rx) = mpsc::channel(100);
     let event_sender = Arc::new(EventSender::new(tx));
-    
+
     // Create inventory adjustment service
     let service = InventoryAdjustmentService::new(db_pool.clone(), event_sender.clone());
-    
+
     // Start transaction for test isolation
     let txn = db.begin().await.expect("Failed to begin transaction");
-    
+
     // Step 1: Create test data - Item Master
     println!("Creating item master records...");
     let item1 = create_test_item(&txn, "LAPTOP-001", "Dell Laptop XPS 13").await;
     let item2 = create_test_item(&txn, "MOUSE-001", "Logitech MX Master 3").await;
     let item3 = create_test_item(&txn, "KEYBOARD-001", "Mechanical Keyboard RGB").await;
-    
+
     // Step 2: Create warehouse locations
     println!("Creating warehouse locations...");
     let location1 = create_test_location(&txn, "MAIN-WH", "Main Warehouse").await;
     let location2 = create_test_location(&txn, "SECONDARY-WH", "Secondary Warehouse").await;
-    
+
     // Step 3: Initialize inventory balances
     println!("Initializing inventory balances...");
     create_initial_inventory(&txn, item1.inventory_item_id, location1.location_id, 100).await;
     create_initial_inventory(&txn, item2.inventory_item_id, location1.location_id, 500).await;
     create_initial_inventory(&txn, item3.inventory_item_id, location1.location_id, 200).await;
-    
+
     // Step 4: Test Sales Order Allocation
     println!("\n=== Testing Sales Order Allocation ===");
     let sales_order = create_test_sales_order(&txn).await;
     let so_line1 = create_sales_order_line(
-        &txn, 
-        sales_order.header_id, 
-        item1.inventory_item_id, 
-        location1.location_id, 
-        2
-    ).await;
+        &txn,
+        sales_order.header_id,
+        item1.inventory_item_id,
+        location1.location_id,
+        2,
+    )
+    .await;
     let so_line2 = create_sales_order_line(
-        &txn, 
-        sales_order.header_id, 
-        item2.inventory_item_id, 
-        location1.location_id, 
-        10
-    ).await;
-    
+        &txn,
+        sales_order.header_id,
+        item2.inventory_item_id,
+        location1.location_id,
+        10,
+    )
+    .await;
+
     // Allocate inventory for sales order
     let allocation_results = service
         .adjust_for_sales_order(sales_order.header_id, SalesOrderAdjustmentType::Allocate)
         .await
         .expect("Failed to allocate inventory");
-    
+
     println!("Allocation Results:");
     for result in &allocation_results {
-        println!("  Item {}: Allocated {} units", result.item_id, result.quantity_adjusted);
-        println!("    New Available: {}, Allocated: {}", result.new_available, result.new_allocated);
+        println!(
+            "  Item {}: Allocated {} units",
+            result.item_id, result.quantity_adjusted
+        );
+        println!(
+            "    New Available: {}, Allocated: {}",
+            result.new_available, result.new_allocated
+        );
     }
-    
+
     // Verify allocation
-    let inv1_after_alloc = get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
+    let inv1_after_alloc =
+        get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
     assert_eq!(inv1_after_alloc.quantity_available, Decimal::from(98));
     assert_eq!(inv1_after_alloc.quantity_allocated, Decimal::from(2));
-    
+
     // Step 5: Test Sales Order Shipment
     println!("\n=== Testing Sales Order Shipment ===");
     let shipment_results = service
         .adjust_for_sales_order(sales_order.header_id, SalesOrderAdjustmentType::Ship)
         .await
         .expect("Failed to ship inventory");
-    
+
     println!("Shipment Results:");
     for result in &shipment_results {
-        println!("  Item {}: Shipped {} units", result.item_id, result.quantity_adjusted);
+        println!(
+            "  Item {}: Shipped {} units",
+            result.item_id, result.quantity_adjusted
+        );
         println!("    New On-Hand: {}", result.new_on_hand);
     }
-    
+
     // Verify shipment
-    let inv1_after_ship = get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
+    let inv1_after_ship =
+        get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
     assert_eq!(inv1_after_ship.quantity_on_hand, Decimal::from(98));
     assert_eq!(inv1_after_ship.quantity_allocated, Decimal::from(0));
-    
+
     // Step 6: Test Purchase Order Receipt
     println!("\n=== Testing Purchase Order Receipt ===");
     let po = create_test_purchase_order(&txn).await;
-    let po_line1 = create_purchase_order_line(
-        &txn, 
-        po.po_header_id, 
-        item1.inventory_item_id, 
-        50
-    ).await;
-    let po_line2 = create_purchase_order_line(
-        &txn, 
-        po.po_header_id, 
-        item3.inventory_item_id, 
-        100
-    ).await;
-    
+    let po_line1 =
+        create_purchase_order_line(&txn, po.po_header_id, item1.inventory_item_id, 50).await;
+    let po_line2 =
+        create_purchase_order_line(&txn, po.po_header_id, item3.inventory_item_id, 100).await;
+
     let receipt_lines = vec![
         PurchaseOrderReceiptLine {
             po_line_id: po_line1.po_line_id,
@@ -138,69 +141,81 @@ async fn test_inventory_adjustments_with_item_master() {
             location_id: location1.location_id,
         },
     ];
-    
+
     let receipt_results = service
         .adjust_for_purchase_order_receipt(po.po_header_id, receipt_lines)
         .await
         .expect("Failed to receive inventory");
-    
+
     println!("Receipt Results:");
     for result in &receipt_results {
-        println!("  Item {}: Received {} units", result.item_id, result.quantity_adjusted);
+        println!(
+            "  Item {}: Received {} units",
+            result.item_id, result.quantity_adjusted
+        );
         println!("    New On-Hand: {}", result.new_on_hand);
     }
-    
+
     // Verify receipt
-    let inv1_after_receipt = get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
+    let inv1_after_receipt =
+        get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
     assert_eq!(inv1_after_receipt.quantity_on_hand, Decimal::from(148)); // 98 + 50
     assert_eq!(inv1_after_receipt.quantity_available, Decimal::from(148));
-    
+
     // Step 7: Test Order Cancellation (Deallocation)
     println!("\n=== Testing Order Cancellation ===");
     let cancel_order = create_test_sales_order(&txn).await;
     let cancel_line = create_sales_order_line(
-        &txn, 
-        cancel_order.header_id, 
-        item2.inventory_item_id, 
-        location1.location_id, 
-        5
-    ).await;
-    
+        &txn,
+        cancel_order.header_id,
+        item2.inventory_item_id,
+        location1.location_id,
+        5,
+    )
+    .await;
+
     // First allocate
     service
         .adjust_for_sales_order(cancel_order.header_id, SalesOrderAdjustmentType::Allocate)
         .await
         .expect("Failed to allocate for cancellation test");
-    
+
     // Then cancel
     let cancel_results = service
         .adjust_for_sales_order(cancel_order.header_id, SalesOrderAdjustmentType::Cancel)
         .await
         .expect("Failed to cancel order");
-    
+
     println!("Cancellation Results:");
     for result in &cancel_results {
-        println!("  Item {}: Deallocated {} units", result.item_id, result.quantity_adjusted);
+        println!(
+            "  Item {}: Deallocated {} units",
+            result.item_id, result.quantity_adjusted
+        );
         println!("    New Available: {}", result.new_available);
     }
-    
+
     // Step 8: Test Return Processing
     println!("\n=== Testing Return Processing ===");
     let return_results = service
         .adjust_for_sales_order(sales_order.header_id, SalesOrderAdjustmentType::Return)
         .await
         .expect("Failed to process return");
-    
+
     println!("Return Results:");
     for result in &return_results {
-        println!("  Item {}: Returned {} units", result.item_id, result.quantity_adjusted);
+        println!(
+            "  Item {}: Returned {} units",
+            result.item_id, result.quantity_adjusted
+        );
         println!("    New On-Hand: {}", result.new_on_hand);
     }
-    
+
     // Verify return
-    let inv1_after_return = get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
+    let inv1_after_return =
+        get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
     assert_eq!(inv1_after_return.quantity_on_hand, Decimal::from(150)); // 148 + 2 returned
-    
+
     // Step 9: Query and display transaction history
     println!("\n=== Transaction History ===");
     let transactions = InventoryTransaction::find()
@@ -209,20 +224,25 @@ async fn test_inventory_adjustments_with_item_master() {
         .all(&txn)
         .await
         .expect("Failed to query transactions");
-    
+
     for trans in transactions {
-        println!("Transaction: {} - Type: {}, Qty: {}, Reference: {:?}", 
-            trans.id, trans.r#type, trans.quantity, trans.reference_type);
+        println!(
+            "Transaction: {} - Type: {}, Qty: {}, Reference: {:?}",
+            trans.id, trans.r#type, trans.quantity, trans.reference_type
+        );
     }
-    
+
     // Step 10: Generate inventory summary report
     println!("\n=== Inventory Summary Report ===");
     println!("Item Master | Location | On-Hand | Available | Allocated");
     println!("---------------------------------------------------------");
-    
+
     for item in [item1, item2, item3] {
-        if let Ok(balance) = get_inventory_balance(&txn, item.inventory_item_id, location1.location_id).await {
-            println!("{} | {} | {} | {} | {}", 
+        if let Ok(balance) =
+            get_inventory_balance(&txn, item.inventory_item_id, location1.location_id).await
+        {
+            println!(
+                "{} | {} | {} | {} | {}",
                 item.item_number,
                 location1.location_code,
                 balance.quantity_on_hand,
@@ -231,10 +251,12 @@ async fn test_inventory_adjustments_with_item_master() {
             );
         }
     }
-    
+
     // Rollback transaction (test cleanup)
-    txn.rollback().await.expect("Failed to rollback transaction");
-    
+    txn.rollback()
+        .await
+        .expect("Failed to rollback transaction");
+
     println!("\n✅ All inventory adjustment tests passed successfully!");
 }
 
@@ -257,7 +279,7 @@ async fn create_test_item(
         updated_at: Set(Utc::now()),
         ..Default::default()
     };
-    
+
     item.insert(db).await.expect("Failed to create item master")
 }
 
@@ -274,8 +296,11 @@ async fn create_test_location(
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    
-    location.insert(db).await.expect("Failed to create location")
+
+    location
+        .insert(db)
+        .await
+        .expect("Failed to create location")
 }
 
 async fn create_initial_inventory(
@@ -294,8 +319,11 @@ async fn create_initial_inventory(
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    
-    inventory.insert(db).await.expect("Failed to create initial inventory");
+
+    inventory
+        .insert(db)
+        .await
+        .expect("Failed to create initial inventory");
 }
 
 async fn create_test_sales_order(db: &DatabaseTransaction) -> sales_order_header::Model {
@@ -308,8 +336,11 @@ async fn create_test_sales_order(db: &DatabaseTransaction) -> sales_order_header
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    
-    order.insert(db).await.expect("Failed to create sales order")
+
+    order
+        .insert(db)
+        .await
+        .expect("Failed to create sales order")
 }
 
 async fn create_sales_order_line(
@@ -331,8 +362,10 @@ async fn create_sales_order_line(
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    
-    line.insert(db).await.expect("Failed to create sales order line")
+
+    line.insert(db)
+        .await
+        .expect("Failed to create sales order line")
 }
 
 async fn create_test_purchase_order(db: &DatabaseTransaction) -> purchase_order_headers::Model {
@@ -345,8 +378,10 @@ async fn create_test_purchase_order(db: &DatabaseTransaction) -> purchase_order_
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    
-    po.insert(db).await.expect("Failed to create purchase order")
+
+    po.insert(db)
+        .await
+        .expect("Failed to create purchase order")
 }
 
 async fn create_purchase_order_line(
@@ -365,8 +400,10 @@ async fn create_purchase_order_line(
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
-    
-    line.insert(db).await.expect("Failed to create purchase order line")
+
+    line.insert(db)
+        .await
+        .expect("Failed to create purchase order line")
 }
 
 async fn get_inventory_balance(

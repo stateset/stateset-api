@@ -63,14 +63,14 @@ impl Command for GenerateInventoryTurnoverCommand {
             .await
             .map_err(|e| {
                 error!("Failed to sum sales quantity: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .unwrap_or(0);
 
         // Average on hand inventory across all products
         let levels = InventoryLevel::find().all(db).await.map_err(|e| {
             error!("Failed to fetch inventory levels: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
         let avg_inventory = if levels.is_empty() {
             0.0

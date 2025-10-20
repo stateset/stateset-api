@@ -4,9 +4,7 @@ use crate::{
     db::DbPool,
     events::EventSender,
     services::{
-        inventory::InventoryService,
-        orders::OrderService,
-        order_status::OrderStatusService,
+        inventory::InventoryService, order_status::OrderStatusService, orders::OrderService,
     },
 };
 
@@ -75,7 +73,7 @@ impl ServiceContainer {
     /// Creates a new service container with all services initialized
     pub fn new(factory: &ServiceFactory) -> Self {
         let (inventory, orders, order_status) = factory.create_all();
-        
+
         Self {
             inventory: Arc::new(inventory),
             orders: Arc::new(orders),

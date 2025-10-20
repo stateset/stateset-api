@@ -55,7 +55,7 @@ impl DeleteOrderCommand {
             .map_err(|e| {
                 let msg = format!("Failed to delete order {}: {}", self.order_id, e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         Ok(res.rows_affected > 0)
     }

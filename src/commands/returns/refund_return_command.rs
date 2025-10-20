@@ -8,7 +8,7 @@ use crate::{
         return_entity::{self, Entity as Return},
     },
 };
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -53,10 +53,9 @@ impl Command for RefundReturnCommand {
             .await?;
 
         Ok(RefundReturnResult {
-            id: Uuid::parse_str(&refunded_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+            id: refunded_return.id,
             status: refunded_return.status,
             refund_amount: self.refund_amount,
-            refund_reason: self.refund_reason.clone(),
         })
     }
 }
@@ -72,7 +71,7 @@ impl RefundReturnCommand {
             .map_err(|e| {
                 let msg = format!("Failed to find return request: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return {} not found", self.return_id);
@@ -81,12 +80,12 @@ impl RefundReturnCommand {
             })?;
 
         let mut return_request: return_entity::ActiveModel = return_request.into();
-        return_request.status = Set(ReturnStatus::Refunded);
+        return_request.status = Set(ReturnStatus::Refunded.as_str().to_owned());
 
         let refunded_return = return_request.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return {}: {}", self.return_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         // Assume refund processing logic is here

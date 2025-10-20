@@ -1,18 +1,14 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
     events::{Event, EventSender},
 };
-use crate::{
-    db::DbPool,
-    errors::ServiceError,
-    models::{shipment, Shipment},
-};
+use crate::{db::DbPool, errors::ServiceError, models::shipment};
 use async_trait::async_trait;
 use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -57,11 +53,11 @@ impl VerifyShipmentAddressCommand {
                     "Failed to find shipment with ID {}: {}",
                     self.shipment_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to find shipment: {}", e))
+                ServiceError::db_error(format!("Failed to find shipment: {}", e))
             })?
             .ok_or_else(|| {
                 error!("Shipment with ID {} not found", self.shipment_id);
-                ServiceError::NotFound
+                ServiceError::NotFound(format!("Shipment with ID {} not found", self.shipment_id))
             })
     }
 
@@ -85,18 +81,16 @@ impl VerifyShipmentAddressCommand {
         shipment: &shipment::Model,
         is_valid: bool,
     ) -> Result<(), ServiceError> {
-        let event = if is_valid {
-            Event::AddressVerified(self.shipment_id)
-        } else {
-            Event::AddressVerificationFailed(self.shipment_id)
-        };
-
-        event_sender.send(event).await.map_err(|e| {
-            error!(
-                "Failed to send address verification event for shipment ID {}: {}",
-                self.shipment_id, e
-            );
-            ServiceError::EventError(e.to_string())
-        })
+        let _ = is_valid;
+        event_sender
+            .send(Event::ShipmentUpdated(self.shipment_id))
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to send shipment update event for shipment ID {}: {}",
+                    self.shipment_id, e
+                );
+                ServiceError::EventError(e.to_string())
+            })
     }
 }

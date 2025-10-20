@@ -1,11 +1,11 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{Set, ActiveValue};
+use sea_orm::{ActiveValue, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use validator::{Validate, ValidationError};
-use async_trait::async_trait;
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
 /// Bill of Materials main entity
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]
@@ -49,11 +49,7 @@ pub enum Relation {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -167,7 +163,9 @@ impl Model {
             updated_at: now,
             valid: true,
         };
-        bill_of_materials.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        bill_of_materials
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(bill_of_materials)
     }
 
@@ -177,7 +175,9 @@ impl Model {
         db: &DatabaseConnection,
         line_item: crate::models::bom_line_item::Model,
     ) -> Result<crate::models::bom_line_item::Model, Box<dyn std::error::Error>> {
-        line_item.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        line_item
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
 
         let mut active_model: crate::models::bom_line_item::ActiveModel = line_item.into();
         active_model.bill_of_materials_id = Set(self.id);

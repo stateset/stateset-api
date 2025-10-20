@@ -44,7 +44,7 @@ impl Command for UpdateWorkOrderCommand {
                 "Transaction failed for updating Work Order ID {}: {}",
                 self.work_order_id, e
             );
-            ServiceError::DatabaseError(format!("Failed to update Work Order: {}", e.to_string()))
+            ServiceError::db_error(format!("Failed to update Work Order: {}", e.to_string()))
         })?;
         self.log_and_trigger_event(event_sender, &updated_work_order)
             .await?;
@@ -62,7 +62,7 @@ impl UpdateWorkOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find Work Order ID {}: {}", self.work_order_id, e);
-                ServiceError::DatabaseError(format!("Failed to find Work Order: {}", e))
+                ServiceError::db_error(format!("Failed to find Work Order: {}", e))
             })?
             .ok_or_else(|| {
                 error!("Work Order ID {} not found", self.work_order_id);
@@ -100,7 +100,7 @@ impl UpdateWorkOrderCommand {
                 "Failed to update Work Order ID {}: {}",
                 self.work_order_id, e
             );
-            ServiceError::DatabaseError(format!("Failed to update Work Order: {}", e.to_string()))
+            ServiceError::db_error(format!("Failed to update Work Order: {}", e.to_string()))
         })
     }
 

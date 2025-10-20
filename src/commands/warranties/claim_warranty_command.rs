@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{Counter, IntCounter};
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -68,7 +68,7 @@ impl Command for ClaimWarrantyCommand {
                 WARRANTY_CLAIM_FAILURES.inc();
                 let msg = format!("Failed to find warranty: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 WARRANTY_CLAIM_FAILURES.inc();
@@ -123,7 +123,7 @@ impl Command for ClaimWarrantyCommand {
             WARRANTY_CLAIM_FAILURES.inc();
             let msg = format!("Failed to create warranty claim: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         // Send warranty claim event

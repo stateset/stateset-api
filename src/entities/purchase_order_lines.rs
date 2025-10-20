@@ -70,4 +70,4 @@ impl Related<super::po_receipt_lines::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {} 
+impl ActiveModelBehavior for ActiveModel {}

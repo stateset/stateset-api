@@ -37,7 +37,7 @@ impl Command for DeleteBOMCommand {
             .map_err(|e| {
                 error!("Transaction failed for deleting BOM ID {}: {}", self.bom_id, e);
                 match e {
-                    TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                    TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                     TransactionError::Transaction(service_err) => service_err,
                 }
             })?;
@@ -57,7 +57,7 @@ impl DeleteBOMCommand {
             .await
             .map_err(|e| {
                 error!("Failed to delete BOM components for BOM ID {}: {}", self.bom_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         // Delete the BOM itself
@@ -66,7 +66,7 @@ impl DeleteBOMCommand {
             .await
             .map_err(|e| {
                 error!("Failed to delete BOM ID {}: {}", self.bom_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(())

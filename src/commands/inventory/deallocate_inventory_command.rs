@@ -146,7 +146,7 @@ impl DeallocateInventoryCommand {
         .map_err(|e| {
             error!("Transaction failed for inventory deallocation: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })
@@ -179,7 +179,7 @@ impl DeallocateInventoryCommand {
                         )
                         .all(txn)
                         .await
-                        .map_err(|e| ServiceError::DatabaseError(e))?
+                        .map_err(|e| ServiceError::db_error(e))?
                 } else {
                     // Process specific deallocation requests
                     let mut allocations = Vec::new();
@@ -210,7 +210,7 @@ impl DeallocateInventoryCommand {
                         }
                         // Removed LotNumber and LocationId filters as they don't exist in the model
                         let mut found_allocations = query.all(txn).await
-                            .map_err(|e| ServiceError::DatabaseError(e))?;
+                            .map_err(|e| ServiceError::db_error(e))?;
                         allocations.append(&mut found_allocations);
                     }
                     allocations
@@ -244,7 +244,7 @@ impl DeallocateInventoryCommand {
                         )
                         .one(txn)
                         .await
-                        .map_err(|e| ServiceError::DatabaseError(e))?
+                        .map_err(|e| ServiceError::db_error(e))?
                         .ok_or_else(|| {
                             ServiceError::NotFound(format!(
                                 "Inventory level not found for product {} in warehouse {}",
@@ -268,20 +268,20 @@ impl DeallocateInventoryCommand {
                         alloc.quantity_allocated = Set(remaining_quantity);
                         alloc.updated_at = Set(Utc::now());
                         alloc.update(txn).await
-                            .map_err(|e| ServiceError::DatabaseError(e))?;
+                            .map_err(|e| ServiceError::db_error(e))?;
                     } else {
                         let mut alloc: inventory_allocation_entity::ActiveModel = allocation.into();
                         alloc.status = Set(AllocationStatus::Cancelled);
                         alloc.updated_at = Set(Utc::now());
                         alloc.update(txn).await
-                            .map_err(|e| ServiceError::DatabaseError(e))?;
+                            .map_err(|e| ServiceError::db_error(e))?;
                     }
                     // Update inventory allocated quantity
                     let mut inv: inventory_level_entity::ActiveModel = inventory.clone().into();
                     inv.allocated_quantity = Set(inventory.allocated_quantity - deallocation_quantity);
                     inv.updated_at = Set(Utc::now());
                     inv.update(txn).await
-                        .map_err(|e| ServiceError::DatabaseError(e))?;
+                        .map_err(|e| ServiceError::db_error(e))?;
                     deallocation_results.push(DeallocationResult {
                         allocation_id,
                         warehouse_id: allocation_warehouse_id.to_string(),

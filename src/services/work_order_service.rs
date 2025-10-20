@@ -56,7 +56,7 @@ impl WorkOrderService {
             .await
             .map_err(|e| {
                 error!("Database error when fetching work order {}: {}", id, e);
-                ServiceError::DatabaseError(format!("Failed to fetch work order: {}", e))
+                ServiceError::db_error(format!("Failed to fetch work order: {}", e))
             })?;
         
         Ok(work_order)
@@ -139,7 +139,7 @@ impl WorkOrderService {
             .await
             .map_err(|e| {
                 error!("Database error when fetching work orders by assignee {}: {}", user_id, e);
-                ServiceError::DatabaseError(format!("Failed to fetch work orders by assignee: {}", e))
+                ServiceError::db_error(format!("Failed to fetch work orders by assignee: {}", e))
             })?;
         
         Ok(work_orders)
@@ -167,7 +167,7 @@ impl WorkOrderService {
             .await
             .map_err(|e| {
                 error!("Database error when counting work orders by status {}: {}", status, e);
-                ServiceError::DatabaseError(format!("Failed to count work orders by status: {}", e))
+                ServiceError::db_error(format!("Failed to count work orders by status: {}", e))
             })? as u64;
         let work_orders = WorkOrder::find()
             .filter(Column::Status.eq(parsed_status))
@@ -178,7 +178,7 @@ impl WorkOrderService {
             .await
             .map_err(|e| {
                 error!("Database error when fetching work orders by status {}: {}", status, e);
-                ServiceError::DatabaseError(format!("Failed to fetch work orders by status: {}", e))
+                ServiceError::db_error(format!("Failed to fetch work orders by status: {}", e))
             })?;
         Ok((work_orders, total))
     }
@@ -206,7 +206,7 @@ impl WorkOrderService {
             .await
             .map_err(|e| {
                 error!("Database error when fetching work orders by schedule: {}", e);
-                ServiceError::DatabaseError(format!("Failed to fetch work orders by schedule: {}", e))
+                ServiceError::db_error(format!("Failed to fetch work orders by schedule: {}", e))
             })?;
         
         Ok(work_orders)
@@ -236,7 +236,7 @@ impl WorkOrderService {
                 .await
                 .map_err(|e| {
                     error!("Database error when counting work orders by status {}: {}", status, e);
-                    ServiceError::DatabaseError(format!("Failed to count work orders by status: {}", e))
+                    ServiceError::db_error(format!("Failed to count work orders by status: {}", e))
                 })?;
             
             results.push((status, count));

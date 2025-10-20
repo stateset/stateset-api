@@ -1,4 +1,3 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
     events::{Event, EventSender},
@@ -6,13 +5,14 @@ use crate::{
 use crate::{
     db::DbPool,
     errors::ServiceError,
-    models::{shipment, Shipment, ShipmentStatus},
+    models::shipment::{self, ShipmentStatus},
 };
 use async_trait::async_trait;
 use sea_orm::{entity::*, query::*, ActiveValue, ColumnTrait, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -23,7 +23,7 @@ pub struct HoldShipmentCommand {
 
 #[async_trait::async_trait]
 impl Command for HoldShipmentCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
@@ -46,7 +46,7 @@ impl HoldShipmentCommand {
     async fn hold_shipment(
         &self,
         db: &sea_orm::DatabaseConnection,
-    ) -> Result<Shipment, ServiceError> {
+    ) -> Result<shipment::Model, ServiceError> {
         let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
             .one(db)
             .await
@@ -55,11 +55,11 @@ impl HoldShipmentCommand {
                     "Failed to fetch shipment with ID {}: {}",
                     self.shipment_id, e
                 );
-                ServiceError::DatabaseError(format!("Failed to fetch shipment: {}", e))
+                ServiceError::db_error(format!("Failed to fetch shipment: {}", e))
             })?
             .ok_or_else(|| {
                 error!("Shipment with ID {} not found", self.shipment_id);
-                ServiceError::NotFound
+                ServiceError::NotFound(format!("Shipment with ID {} not found", self.shipment_id))
             })?
             .into();
 
@@ -67,14 +67,14 @@ impl HoldShipmentCommand {
 
         shipment.update(db).await.map_err(|e| {
             error!("Failed to hold shipment ID {}: {}", self.shipment_id, e);
-            ServiceError::DatabaseError(format!("Failed to hold shipment: {}", e))
+            ServiceError::db_error(format!("Failed to hold shipment: {}", e))
         })
     }
 
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &Shipment,
+        shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment ID: {} placed on hold. Reason: {}",

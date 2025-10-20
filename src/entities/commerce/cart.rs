@@ -75,4 +75,4 @@ pub enum CartStatus {
     Abandoned,
     #[sea_orm(string_value = "expired")]
     Expired,
-} 
+}

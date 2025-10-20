@@ -2,17 +2,17 @@ use crate::errors::ServiceError;
 use crate::services::inventory::InventoryService;
 use axum::{
     extract::{Json, Path, Query, State},
+    http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
     Router,
-    http::StatusCode,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use serde_json::json;
-use uuid::Uuid;
 use std::sync::Arc;
+use utoipa::ToSchema;
+use uuid::Uuid;
 
 // Trait for inventory handler state that provides access to inventory service
 pub trait InventoryHandlerState: Clone + Send + Sync + 'static {
@@ -94,13 +94,18 @@ pub struct InventoryFilters {
 }
 
 /// Create the inventory router
-pub fn inventory_router<S>() -> Router<S> 
-where 
+pub fn inventory_router<S>() -> Router<S>
+where
     S: InventoryHandlerState,
 {
     Router::new()
         .route("/", get(list_inventory::<S>).post(create_inventory::<S>))
-        .route("/{id}", get(get_inventory::<S>).put(update_inventory::<S>).delete(delete_inventory::<S>))
+        .route(
+            "/{id}",
+            get(get_inventory::<S>)
+                .put(update_inventory::<S>)
+                .delete(delete_inventory::<S>),
+        )
         .route("/adjust", post(adjust_inventory::<S>))
         .route("/allocate", post(allocate_inventory::<S>))
         .route("/reserve", post(reserve_inventory::<S>))
@@ -135,8 +140,8 @@ where
 pub async fn list_inventory<S>(
     State(state): State<S>,
     Query(filters): Query<InventoryFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let inventory_service = state.inventory_service();
@@ -144,9 +149,7 @@ where
     let limit = filters.limit.unwrap_or(50) as u64;
 
     // Get inventory items from database with pagination
-    let (db_items, total) = inventory_service
-        .list_inventory(page as u64, limit)
-        .await?;
+    let (db_items, total) = inventory_service.list_inventory(page as u64, limit).await?;
 
     // Convert database models to API response format
     let mut inventory_items: Vec<InventoryItem> = db_items
@@ -155,12 +158,19 @@ where
             id: item.id,
             product_id: item.sku, // Using SKU as product_id
             location_id: item.warehouse.to_string(),
-            quantity: item.available + item.allocated_quantity.unwrap_or(0) + item.reserved_quantity.unwrap_or(0),
+            quantity: item.available
+                + item.allocated_quantity.unwrap_or(0)
+                + item.reserved_quantity.unwrap_or(0),
             allocated_quantity: item.allocated_quantity.unwrap_or(0),
             reserved_quantity: item.reserved_quantity.unwrap_or(0),
             available_quantity: item.available,
-            unit_cost: item.unit_cost.map(|cost| cost.to_string().parse().unwrap_or(0.0)),
-            last_updated: item.last_movement_date.map(|d| d.and_utc()).unwrap_or_else(|| Utc::now()),
+            unit_cost: item
+                .unit_cost
+                .map(|cost| cost.to_string().parse().unwrap_or(0.0)),
+            last_updated: item
+                .last_movement_date
+                .map(|d| d.and_utc())
+                .unwrap_or_else(|| Utc::now()),
             created_at: item.arrival_date.and_hms_opt(0, 0, 0).unwrap().and_utc(),
         })
         .collect();
@@ -211,8 +221,8 @@ where
 pub async fn create_inventory<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let inventory_item = InventoryItem {
@@ -253,8 +263,8 @@ where
 pub async fn get_inventory<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let inventory_item = InventoryItem {
@@ -298,8 +308,8 @@ pub async fn update_inventory<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let inventory_item = InventoryItem {
@@ -338,8 +348,8 @@ where
 pub async fn delete_inventory<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let _ = id; // placeholder until wired to DB
@@ -350,8 +360,8 @@ where
 async fn adjust_inventory<S>(
     State(_state): State<S>,
     Json(payload): Json<AdjustInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let adjustment = InventoryAdjustment {
@@ -372,8 +382,8 @@ where
 async fn allocate_inventory<S>(
     State(_state): State<S>,
     Json(payload): Json<AllocateInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let response = json!({
@@ -392,8 +402,8 @@ where
 pub async fn reserve_inventory<S>(
     State(_state): State<S>,
     Json(payload): Json<ReserveInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let response = json!({
@@ -413,8 +423,8 @@ where
 pub async fn release_inventory<S>(
     State(_state): State<S>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let response = json!({
@@ -429,22 +439,20 @@ where
 async fn list_adjustments<S>(
     State(_state): State<S>,
     Query(_filters): Query<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let adjustments = vec![
-        InventoryAdjustment {
-            id: "adj_001".to_string(),
-            inventory_item_id: "inv_001".to_string(),
-            adjustment_type: "increase".to_string(),
-            quantity_change: 50,
-            reason: "Stock replenishment".to_string(),
-            reference_number: Some("PO-2024-001".to_string()),
-            created_by: "user_001".to_string(),
-            created_at: Utc::now() - chrono::Duration::hours(2),
-        }
-    ];
+    let adjustments = vec![InventoryAdjustment {
+        id: "adj_001".to_string(),
+        inventory_item_id: "inv_001".to_string(),
+        adjustment_type: "increase".to_string(),
+        quantity_change: 50,
+        reason: "Stock replenishment".to_string(),
+        reference_number: Some("PO-2024-001".to_string()),
+        created_by: "user_001".to_string(),
+        created_at: Utc::now() - chrono::Duration::hours(2),
+    }];
 
     let response = json!({
         "adjustments": adjustments,
@@ -472,12 +480,12 @@ where
 pub async fn get_low_stock_items<S>(
     State(_state): State<S>,
     Query(filters): Query<InventoryFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: InventoryHandlerState,
 {
     let threshold = 10; // Define low stock threshold
-    
+
     // Sample low stock items
     let low_stock_items = vec![
         InventoryItem {
@@ -503,7 +511,7 @@ where
             unit_cost: Some(22.50),
             last_updated: Utc::now(),
             created_at: Utc::now() - chrono::Duration::days(20),
-        }
+        },
     ];
 
     let response = json!({

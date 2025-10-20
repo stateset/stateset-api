@@ -32,4 +32,4 @@ impl Related<super::purchase_order_lines::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {} 
+impl ActiveModelBehavior for ActiveModel {}

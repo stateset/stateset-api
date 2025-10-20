@@ -65,7 +65,7 @@ impl Command for ReturnOrderCommand {
                         .map_err(|e| {
                             ORDER_RETURN_FAILURES.inc();
                             error!("Failed to find order with ID {}: {}", self.order_id, e);
-                            ServiceError::DatabaseError(e)
+                            ServiceError::db_error(e)
                         })?
                         .ok_or_else(|| {
                             ORDER_RETURN_FAILURES.inc();
@@ -85,7 +85,7 @@ impl Command for ReturnOrderCommand {
                             "Failed to update order status to Returned for order ID {}: {}",
                             self.order_id, e
                         );
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?;
 
                     // Insert return items
@@ -112,7 +112,7 @@ impl Command for ReturnOrderCommand {
                                 "Failed to insert return item for order ID {}: {}",
                                 self.order_id, e
                             );
-                            ServiceError::DatabaseError(e)
+                            ServiceError::db_error(e)
                         })?;
                     }
 
@@ -128,7 +128,7 @@ impl Command for ReturnOrderCommand {
                             "Failed to insert return note for order ID {}: {}",
                             self.order_id, e
                         );
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?;
 
                     Ok(updated_order)

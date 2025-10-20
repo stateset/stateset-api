@@ -64,7 +64,7 @@ impl ProductService {
             .map_err(|e| {
                 let msg = format!("Failed to check for existing product: {}", e);
                 error!(%msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
             
         if existing_product.is_some() {
@@ -106,7 +106,7 @@ impl ProductService {
         let result = product.insert(db).await.map_err(|e| {
             let msg = format!("Failed to create product: {}", e);
             error!(%msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
         
         // Publish event
@@ -133,7 +133,7 @@ impl ProductService {
             .map_err(|e| {
                 let msg = format!("Failed to get product: {}", e);
                 error!(product_id = %id, error = %e, "Database error when fetching product");
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
             
         Ok(product)
@@ -151,7 +151,7 @@ impl ProductService {
             .map_err(|e| {
                 let msg = format!("Failed to get product by SKU: {}", e);
                 error!(sku = %sku, error = %e, "Database error when fetching product by SKU");
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?;
             
         Ok(product)
@@ -200,14 +200,14 @@ impl ProductService {
         let total = paginator.num_items().await.map_err(|e| {
             let msg = format!("Failed to count products: {}", e);
             error!(error = %e, "Database error when counting products");
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
         
         // Get the requested page
         let products = paginator.fetch_page(page - 1).await.map_err(|e| {
             let msg = format!("Failed to fetch products: {}", e);
             error!(page = %page, limit = %limit, error = %e, "Database error when fetching products");
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
         
         Ok((products, total))
@@ -248,7 +248,7 @@ impl ProductService {
             .map_err(|e| {
                 let msg = format!("Failed to find product: {}", e);
                 error!(product_id = %id, error = %e, "Database error when finding product");
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Product with ID {} not found", id);
@@ -345,7 +345,7 @@ impl ProductService {
         let updated_product = product.update(db).await.map_err(|e| {
             let msg = format!("Failed to update product: {}", e);
             error!(product_id = %id, error = %e, "Database error when updating product");
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
         
         // Publish event
@@ -373,7 +373,7 @@ impl ProductService {
             .map_err(|e| {
                 let msg = format!("Failed to find product: {}", e);
                 error!(product_id = %id, error = %e, "Database error when finding product");
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Product with ID {} not found", id);
@@ -385,7 +385,7 @@ impl ProductService {
         product.delete(db).await.map_err(|e| {
             let msg = format!("Failed to delete product: {}", e);
             error!(product_id = %id, error = %e, "Database error when deleting product");
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
         
         // Publish event

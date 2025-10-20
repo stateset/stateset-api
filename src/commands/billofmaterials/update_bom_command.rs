@@ -72,7 +72,7 @@ impl UpdateBOMCommand {
 
         update_data.update(txn).await.map_err(|e| {
             error!("Failed to update BOM ID {}: {}", self.bom_id, e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

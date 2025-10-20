@@ -59,7 +59,7 @@ impl ApplyPromotionToOrderCommand {
                     "Failed to fetch promotion ID {}: {:?}",
                     self.promotion_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 warn!("Promotion ID {} not found", self.promotion_id);
@@ -87,7 +87,7 @@ impl ApplyPromotionToOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find Order ID {}: {:?}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Order ID {} not found", self.order_id);
@@ -101,7 +101,7 @@ impl ApplyPromotionToOrderCommand {
         // Update the order
         let updated_order = active_model.update(db).await.map_err(|e| {
             error!("Failed to update order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(updated_order)

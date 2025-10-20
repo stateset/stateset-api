@@ -36,7 +36,7 @@ pub struct AppState {
 #[tokio::main]
 async fn main() {
     println!("🚀 Starting StateSet API Server...");
-    
+
     // Initialize state
     let state = AppState {
         orders: Arc::new(Mutex::new(Vec::new())),
@@ -55,7 +55,7 @@ async fn main() {
             },
         ])),
     };
-    
+
     // Build the router
     let app = Router::new()
         .route("/", get(root))
@@ -64,7 +64,7 @@ async fn main() {
         .route("/api/v1/inventory", get(list_inventory))
         .layer(CorsLayer::permissive())
         .with_state(state);
-    
+
     // Start server
     let addr = "0.0.0.0:8080";
     println!("📡 Server running on http://{}", addr);
@@ -74,7 +74,7 @@ async fn main() {
     println!("   GET  /api/v1/orders      - List orders");
     println!("   POST /api/v1/orders      - Create order");
     println!("   GET  /api/v1/inventory   - List inventory");
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
@@ -109,14 +109,16 @@ async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<Order>, StatusCode> {
-    let customer_name = payload.get("customer_name")
+    let customer_name = payload
+        .get("customer_name")
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown Customer");
-    
-    let total_amount = payload.get("total_amount")
+
+    let total_amount = payload
+        .get("total_amount")
         .and_then(|v| v.as_f64())
         .unwrap_or(0.0);
-    
+
     let order = Order {
         id: format!("order_{}", chrono::Utc::now().timestamp()),
         customer_name: customer_name.to_string(),
@@ -124,10 +126,10 @@ async fn create_order(
         status: "pending".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     };
-    
+
     let mut orders = state.orders.lock().await;
     orders.push(order.clone());
-    
+
     Ok(Json(order))
 }
 
