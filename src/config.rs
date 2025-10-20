@@ -371,10 +371,9 @@ pub fn init_tracing(level: &str, json: bool) {
             .install_batch(opentelemetry_sdk::runtime::Tokio)
             .expect("failed to install OTLP pipeline");
 
-        let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
         let base = tracing_subscriber::registry()
-            .with(EnvFilter::new(filter_directive.clone()))
-            .with(otel_layer);
+            .with(tracing_opentelemetry::layer().with_tracer(tracer))
+            .with(EnvFilter::new(filter_directive.clone()));
 
         if json {
             let _ = base.with(fmt::layer().json()).try_init();

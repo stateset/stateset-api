@@ -510,13 +510,6 @@ pub mod prelude {
     pub use crate::versioning::*;
 }
 
-// Implement InventoryHandlerState trait for AppState
-impl InventoryHandlerState for AppState {
-    fn inventory_service(&self) -> &services::inventory::InventoryService {
-        &self.inventory_service
-    }
-}
-
 // Note: AppState automatically implements ReturnsAppState, ShipmentsAppState,
 // WarrantiesAppState, and WorkOrdersAppState through blanket implementations
 // in the respective handler modules

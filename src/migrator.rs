@@ -30,8 +30,13 @@ mod m20230101_000001_create_orders_table {
     use sea_orm::DbBackend;
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000001_create_orders_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -167,8 +172,13 @@ mod m20230101_000002_create_order_items_table {
     use sea_orm::DbBackend;
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000002_create_order_items_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -276,8 +286,13 @@ mod m20230101_000002_create_order_items_table {
 mod m20230101_000003_create_customers_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000003_create_customers_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -327,8 +342,13 @@ mod m20230101_000003_create_customers_table {
 mod m20230101_000004_create_products_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000004_create_products_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -375,8 +395,13 @@ mod m20230101_000004_create_products_table {
 mod m20230101_000005_create_inventory_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000005_create_inventory_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -433,8 +458,13 @@ mod m20230101_000005_create_inventory_table {
 mod m20230101_000006_create_returns_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000006_create_returns_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -479,8 +509,13 @@ mod m20230101_000006_create_returns_table {
 mod m20230101_000007_create_shipments_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000007_create_shipments_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -536,8 +571,13 @@ mod m20230101_000007_create_shipments_table {
 mod m20230101_000008_create_bill_of_materials_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000008_create_bill_of_materials_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -640,8 +680,13 @@ mod m20230101_000008_create_bill_of_materials_table {
 mod m20230101_000009_create_work_orders_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000009_create_work_orders_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -716,8 +761,13 @@ mod m20230101_000009_create_work_orders_table {
 mod m20230101_000010_create_users_table {
     use sea_orm_migration::prelude::*;
 
-    #[derive(DeriveMigrationName)]
     pub struct Migration;
+
+    impl MigrationName for Migration {
+        fn name(&self) -> &str {
+            "m20230101_000010_create_users_table"
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {

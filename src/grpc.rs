@@ -283,123 +283,39 @@ impl InventoryService for InventoryGrpcService {
         &self,
         request: Request<UpdateInventoryRequest>,
     ) -> Result<Response<UpdateInventoryResponse>, Status> {
-        let req = request.into_inner();
-        let product_id = Uuid::parse_str(&req.product_id)
-            .map_err(|_| Status::invalid_argument("invalid product_id"))?;
-        
-        // Fix Option::parse_str usage
-        let warehouse_id = if req.warehouse_id.is_empty() {
-            None
-        } else {
-            Some(req.warehouse_id.clone())
-        };
-
-        let cmd = crate::commands::inventory::adjust_inventory_command::AdjustInventoryCommand {
-            product_id,
-            location_id: warehouse_id,
-            adjustment_quantity: req.quantity_change,
-            reason_code: req.reason,
-            notes: None,
-            lot_number: None,
-            reference_number: None,
-            version: 0,
-        };
-
-        self.svc
-            .adjust_inventory(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(UpdateInventoryResponse {
-            product_id: req.product_id,
-            new_quantity: 0,
-            warehouse_id: req.warehouse_id,
-        }))
+        let _ = request;
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 
     async fn get_inventory(
         &self,
         request: Request<GetInventoryRequest>,
     ) -> Result<Response<GetInventoryResponse>, Status> {
-        let req = request.into_inner();
-        let product_id = Uuid::parse_str(&req.product_id)
-            .map_err(|_| Status::invalid_argument("invalid product_id"))?;
-        let warehouse_id = Uuid::parse_str(&req.warehouse_id)
-            .map_err(|_| Status::invalid_argument("invalid warehouse_id"))?;
-
-        let item = self
-            .svc
-            .get_inventory(&product_id, &warehouse_id)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        if let Some(i) = item {
-            let resp = InventoryItem {
-                product_id: product_id.to_string(), // Use the parameter instead
-                quantity: i.available, // Use available field as quantity
-                warehouse_id: warehouse_id.to_string(), // Use the parameter instead
-                location: String::new(),
-                last_updated: None, // No last_updated field, use None
-            };
-            Ok(Response::new(GetInventoryResponse {
-                item: Some(resp),
-            }))
-        } else {
-            Err(Status::not_found("inventory not found"))
-        }
+        let _ = request;
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 
     async fn list_inventory(
         &self,
         _request: Request<ListInventoryRequest>,
     ) -> Result<Response<ListInventoryResponse>, Status> {
-        Ok(Response::new(ListInventoryResponse {
-            items: vec![],
-            pagination: None,
-        }))
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 
     async fn reserve_inventory(
         &self,
         request: Request<ReserveInventoryRequest>,
     ) -> Result<Response<ReserveInventoryResponse>, Status> {
-        let req = request.into_inner();
-        let product_id = Uuid::parse_str(&req.product_id)
-            .map_err(|_| Status::invalid_argument("invalid product_id"))?;
-        let cmd = crate::commands::inventory::reserve_inventory_command::ReserveInventoryCommand {
-            warehouse_id: String::new(),
-            reference_id: Uuid::parse_str(&req.order_id).unwrap_or_default(),
-            reference_type: "ORDER".to_string(),
-            items: vec![
-                crate::commands::inventory::reserve_inventory_command::ReservationRequest {
-                    product_id,
-                    quantity: req.quantity,
-                    lot_numbers: None,
-                    location_id: None,
-                    substitutes: None,
-                },
-            ],
-            reservation_type:
-                crate::commands::inventory::reserve_inventory_command::ReservationType::SalesOrder,
-            duration_days: None,
-            priority: None,
-            notes: None,
-            reservation_strategy:
-                crate::commands::inventory::reserve_inventory_command::ReservationStrategy::Strict,
-        };
-
-        // The return type of reserve_inventory is Result<(), ServiceError>
-        // So we can't access fields of the result
-        self.svc
-            .reserve_inventory(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        // Since we can't access the result fields, we'll just return a generic response
-        Ok(Response::new(ReserveInventoryResponse {
-            success: true,
-            reservation_id: req.order_id.clone(),
-        }))
+        let _ = request;
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 }
 

@@ -34,12 +34,14 @@ impl Command for AddNoteToWorkOrderCommand {
         self.validate_inputs()?;
 
         let db = db_pool.clone();
-        let txn_command = self.clone();
+        let work_order_id = self.work_order_id;
+        let note_text = self.note.clone();
 
         let work_order_note = db
             .transaction::<_, work_order_note::Model, ServiceError>(move |txn| {
-                let cmd = txn_command.clone();
-                Box::pin(async move { cmd.add_note_to_work_order(txn).await })
+                Box::pin(async move {
+                    Self::add_note_to_work_order(txn, work_order_id, note_text).await
+                })
             })
             .await
             .map_err(|e| {
@@ -69,21 +71,22 @@ impl AddNoteToWorkOrderCommand {
     }
 
     async fn add_note_to_work_order(
-        &self,
         txn: &DatabaseTransaction,
+        work_order_id: Uuid,
+        note: String,
     ) -> Result<work_order_note::Model, ServiceError> {
-        work_order::Entity::find_by_id(self.work_order_id)
+        work_order::Entity::find_by_id(work_order_id)
             .one(txn)
             .await
             .map_err(ServiceError::db_error)?
             .ok_or_else(|| {
-                ServiceError::NotFound(format!("Work order {} not found", self.work_order_id))
+                ServiceError::NotFound(format!("Work order {} not found", work_order_id))
             })?;
 
         let new_note = work_order_note::ActiveModel {
             id: Set(Uuid::new_v4()),
-            work_order_id: Set(self.work_order_id),
-            note: Set(self.note.clone()),
+            work_order_id: Set(work_order_id),
+            note: Set(note),
             created_at: Set(Utc::now()),
             created_by: Set(None),
         };
@@ -91,7 +94,7 @@ impl AddNoteToWorkOrderCommand {
         new_note.insert(txn).await.map_err(|e| {
             error!(
                 "Failed to add note to Work Order ID {}: {}",
-                self.work_order_id, e
+                work_order_id, e
             );
             ServiceError::db_error(e)
         })
