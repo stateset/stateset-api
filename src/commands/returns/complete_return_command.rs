@@ -6,16 +6,15 @@ use crate::{
     models::{
         r#return::ReturnStatus,
         return_entity::{self, Entity as Return, Model as ReturnEntity},
-        return_note_entity::{self, Entity as ReturnNote},
         return_history_entity::{self, Entity as ReturnHistory},
+        return_note_entity::{self, Entity as ReturnNote},
     },
 };
 use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
-    entity::*,
-    query::*,
-    DatabaseConnection, DatabaseTransaction, Set, TransactionError, TransactionTrait,
+    entity::*, query::*, DatabaseConnection, DatabaseTransaction, Set, TransactionError,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -85,25 +84,51 @@ impl crate::commands::Command for CompleteReturnCommand {
                     let return_request = Self::validate_return_state_static(return_id, txn).await?;
 
                     // Update return status to completed
-                    let updated_return = Self::complete_return_static(return_id, metadata.as_ref(), txn, &return_request).await?;
+                    let updated_return = Self::complete_return_static(
+                        return_id,
+                        metadata.as_ref(),
+                        txn,
+                        &return_request,
+                    )
+                    .await?;
 
                     // Add completion note if provided
                     if let Some(note) = &notes {
-                        Self::add_completion_note_static(return_id, completed_by.as_ref(), txn, note).await?;
+                        Self::add_completion_note_static(
+                            return_id,
+                            completed_by.as_ref(),
+                            txn,
+                            note,
+                        )
+                        .await?;
                     }
 
                     // Create history record
-                    Self::create_history_record_static(return_id, completed_by.as_ref(), notes.as_ref(), txn, &return_request).await?;
+                    Self::create_history_record_static(
+                        return_id,
+                        completed_by.as_ref(),
+                        notes.as_ref(),
+                        txn,
+                        &return_request,
+                    )
+                    .await?;
 
                     // Enqueue outbox within the same transaction
                     let payload = serde_json::json!({
                         "return_id": return_id.to_string(),
                         "completed_by": completed_by,
                     });
-                    let _ = crate::events::outbox::enqueue(txn, "return", Some(return_id), "ReturnCompleted", &payload).await;
+                    let _ = crate::events::outbox::enqueue(
+                        txn,
+                        "return",
+                        Some(return_id),
+                        "ReturnCompleted",
+                        &payload,
+                    )
+                    .await;
 
                     Ok(CompleteReturnResult {
-                        id: Uuid::parse_str(&updated_return.id).unwrap_or_else(|_| Uuid::new_v4()),
+                        id: updated_return.id,
                         object: "return".to_string(),
                         completed: true,
                         completed_at: updated_return
@@ -125,7 +150,7 @@ impl crate::commands::Command for CompleteReturnCommand {
             Err(e) => {
                 error!("Failed to complete return: {}", e);
                 match e {
-                    TransactionError::Connection(db_err) => Err(ServiceError::DatabaseError(db_err)),
+                    TransactionError::Connection(db_err) => Err(ServiceError::db_error(db_err)),
                     TransactionError::Transaction(service_err) => Err(service_err),
                 }
             }
@@ -144,7 +169,7 @@ impl CompleteReturnCommand {
             .map_err(|e| {
                 let msg = format!("Database error when finding return: {}", e);
                 tracing::error!(error = %e, return_id = %return_id, "{}", msg);
-                ServiceError::DatabaseError(msg)
+                ServiceError::db_error(msg)
             })?
             .ok_or_else(|| {
                 let msg = format!("Return with ID {} not found", return_id);
@@ -195,7 +220,7 @@ impl CompleteReturnCommand {
         let updated_return = return_active.update(db).await.map_err(|e| {
             let msg = format!("Failed to update return status to Completed: {}", e);
             tracing::error!(error = %e, "{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
 
         tracing::debug!("Return status updated to Completed");
@@ -222,7 +247,7 @@ impl CompleteReturnCommand {
 
         ReturnNote::insert(note).exec(txn).await.map_err(|e| {
             error!("Failed to add completion note: {}", e);
-            ServiceError::DatabaseError(format!("Failed to add completion note: {}", e))
+            ServiceError::db_error(format!("Failed to add completion note: {}", e))
         })?;
 
         Ok(())
@@ -247,11 +272,14 @@ impl CompleteReturnCommand {
             ..Default::default()
         };
 
-        ReturnHistory::insert(history).exec(txn).await.map_err(|e| {
-            let msg = format!("Failed to create history record: {}", e);
-            tracing::error!(error = %e, return_id = %return_id, "{}", msg);
-            ServiceError::DatabaseError(msg)
-        })?;
+        ReturnHistory::insert(history)
+            .exec(txn)
+            .await
+            .map_err(|e| {
+                let msg = format!("Failed to create history record: {}", e);
+                tracing::error!(error = %e, return_id = %return_id, "{}", msg);
+                ServiceError::db_error(msg)
+            })?;
 
         tracing::debug!(return_id = %return_id, "Created history record for completion");
         Ok(())

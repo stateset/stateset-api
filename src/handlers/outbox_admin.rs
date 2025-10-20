@@ -1,11 +1,16 @@
-use axum::{extract::{Path, State}, routing::{get, post}, Json, Router};
-use sea_orm::{DatabaseConnection, DbBackend, Statement};
+use axum::{
+    extract::{Path, State},
+    routing::{get, post},
+    Json, Router,
+};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::Serialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{errors::ServiceError, AppState};
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct OutboxItem {
     pub id: Uuid,
     pub aggregate_type: String,
@@ -45,7 +50,7 @@ async fn list_outbox(State(state): State<AppState>) -> Result<Json<Vec<OutboxIte
     let rows = db
         .query_all(Statement::from_string(DbBackend::Postgres, sql.to_string()))
         .await
-        .map_err(ServiceError::DatabaseError)?;
+        .map_err(ServiceError::db_error)?;
 
     let mut items = Vec::new();
     for row in rows {
@@ -55,10 +60,26 @@ async fn list_outbox(State(state): State<AppState>) -> Result<Json<Vec<OutboxIte
         let event_type: String = row.try_get("", "event_type").unwrap_or_default();
         let status: String = row.try_get("", "status").unwrap_or_default();
         let attempts: i32 = row.try_get("", "attempts").unwrap_or(0);
-        let available_at: String = row.try_get("", "available_at").map(|d: chrono::DateTime<chrono::Utc>| d.to_rfc3339()).unwrap_or_default();
-        let created_at: String = row.try_get("", "created_at").map(|d: chrono::DateTime<chrono::Utc>| d.to_rfc3339()).unwrap_or_default();
+        let available_at: String = row
+            .try_get("", "available_at")
+            .map(|d: chrono::DateTime<chrono::Utc>| d.to_rfc3339())
+            .unwrap_or_default();
+        let created_at: String = row
+            .try_get("", "created_at")
+            .map(|d: chrono::DateTime<chrono::Utc>| d.to_rfc3339())
+            .unwrap_or_default();
         let error_message: Option<String> = row.try_get("", "error_message").ok();
-        items.push(OutboxItem { id, aggregate_type, aggregate_id, event_type, status, attempts, available_at, created_at, error_message });
+        items.push(OutboxItem {
+            id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            status,
+            attempts,
+            available_at,
+            created_at,
+            error_message,
+        });
     }
 
     Ok(Json(items))
@@ -84,9 +105,13 @@ async fn retry_outbox(
     let db: &DatabaseConnection = &state.db;
     let sql = r#"UPDATE outbox_events SET status='pending', available_at = NOW(), updated_at = NOW(), error_message = NULL WHERE id = $1"#;
     let res = db
-        .execute(Statement::from_sql_and_values(DbBackend::Postgres, sql, vec![id.into()]))
+        .execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            vec![id.into()],
+        ))
         .await
-        .map_err(ServiceError::DatabaseError)?;
+        .map_err(ServiceError::db_error)?;
     if res.rows_affected() == 0 {
         return Err(ServiceError::NotFound(format!("outbox {} not found", id)));
     }

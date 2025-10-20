@@ -1,17 +1,17 @@
 use crate::models::cycle_count_line_item::{
     CycleCountError as LineItemCycleCountError, LineItemStatus,
 };
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
-use sea_orm::{DatabaseConnection, Set};
 use sea_orm::QueryOrder;
+use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
-use async_trait::async_trait;
 
 /// Cycle count status enumeration
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
@@ -172,11 +172,7 @@ impl Related<super::cycle_count_line_item::Entity> for Entity {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -220,7 +216,9 @@ impl Model {
             created_by: None,
         };
 
-        cycle_count.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        cycle_count
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(cycle_count)
     }
 
@@ -245,7 +243,8 @@ impl Model {
         self.assigned_user = Some(user);
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -292,7 +291,8 @@ impl Model {
         self.notes = reason;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -301,7 +301,8 @@ impl Model {
         self.notes = Some(notes);
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 
@@ -331,7 +332,8 @@ impl Model {
     /// Save this cycle count to the database
     pub async fn save(&self, db: &DatabaseConnection) -> Result<Model, CycleCountError> {
         // Validate before saving
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
 
         let model: ActiveModel = self.clone().into();
         let result = if self.number.is_none() {

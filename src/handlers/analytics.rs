@@ -1,18 +1,10 @@
-use axum::{
-    extract::Query,
-    response::Json,
-    http::StatusCode,
-};
-use serde::{Deserialize, Serialize};
+use axum::{extract::Query, http::StatusCode, response::Json};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{
-    errors::ServiceError,
-    services::analytics::AnalyticsService,
-    AppState, ApiResponse,
-};
+use crate::{errors::ServiceError, services::analytics::AnalyticsService, ApiResponse, AppState};
 
 /// Query parameters for sales trends
 #[derive(Debug, Deserialize)]
@@ -67,9 +59,11 @@ pub async fn get_sales_trends(
 ) -> Result<Json<ApiResponse<Vec<(String, Decimal)>>>, ServiceError> {
     let analytics_service = AnalyticsService::new(state.db);
     let days = params.days.unwrap_or(30);
-    
+
     if days <= 0 || days > 365 {
-        return Err(ServiceError::ValidationError("Days must be between 1 and 365".to_string()));
+        return Err(ServiceError::ValidationError(
+            "Days must be between 1 and 365".to_string(),
+        ));
     }
 
     let trends = analytics_service.get_sales_trends(days).await?;

@@ -36,7 +36,7 @@ impl AuditBOMCommand {
             .map_err(|e| {
                 let msg = format!("Failed to audit BOM: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("BOM ID {} not found during audit", self.bom_id);

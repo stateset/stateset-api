@@ -87,7 +87,12 @@ impl InMemoryCache {
         }
     }
 
-    pub async fn set(&self, key: &str, value: &str, ttl: Option<Duration>) -> Result<(), CacheError> {
+    pub async fn set(
+        &self,
+        key: &str,
+        value: &str,
+        ttl: Option<Duration>,
+    ) -> Result<(), CacheError> {
         let mut store = self.store.write().unwrap();
         store.insert(key.to_string(), CacheEntry::new(value.to_string(), ttl));
         Ok(())

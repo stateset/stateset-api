@@ -11,7 +11,7 @@ use crate::{
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -63,7 +63,7 @@ impl Command for HoldASNCommand {
 
         Ok(HoldASNResult {
             id: updated_asn.id,
-            status: updated_asn.status,
+            status: updated_asn.status.to_string(),
             version: updated_asn.version,
             hold_reason: self.reason.clone(),
         })
@@ -78,57 +78,49 @@ impl HoldASNCommand {
         let asn_id = self.asn_id;
         let version = self.version;
         let reason = self.reason.clone();
-        
-        let result = db.transaction::<_, asn_entity::Model, DbErr>(|txn| {
-            Box::pin(async move {
-                let asn = ASN::find_by_id(asn_id)
-                    .one(txn)
-                    .await
-                    ?
-                    .ok_or_else(|| {
+
+        let result = db
+            .transaction::<_, asn_entity::Model, DbErr>(|txn| {
+                Box::pin(async move {
+                    let asn = ASN::find_by_id(asn_id).one(txn).await?.ok_or_else(|| {
                         DbErr::RecordNotFound(format!("ASN {} not found", asn_id))
                     })?;
 
-                if asn.version != version {
-                    return Err(DbErr::Custom("Concurrent modification".to_string()));
-                }
+                    if asn.version != version {
+                        return Err(DbErr::Custom("Concurrent modification".to_string()));
+                    }
 
-                if asn.status == ASNStatus::Completed
-                    || asn.status == ASNStatus::Cancelled
-                {
-                    return Err(DbErr::Custom("Cannot hold completed or cancelled ASN".to_string()));
-                }
+                    if asn.status == ASNStatus::Completed || asn.status == ASNStatus::Cancelled {
+                        return Err(DbErr::Custom(
+                            "Cannot hold completed or cancelled ASN".to_string(),
+                        ));
+                    }
 
-                let mut asn: asn_entity::ActiveModel = asn.into();
-                asn.status = Set(ASNStatus::OnHold);
-                asn.version = Set(version + 1);
-                asn.updated_at = Set(Utc::now());
+                    let mut asn: asn_entity::ActiveModel = asn.into();
+                    asn.status = Set(ASNStatus::OnHold);
+                    asn.version = Set(version + 1);
+                    asn.updated_at = Set(Utc::now());
 
-                let updated = asn
-                    .update(txn)
-                    .await
-                    ?;
+                    let updated = asn.update(txn).await?;
 
-                let note = asn_note_entity::ActiveModel {
-                    asn_id: Set(asn_id),
-                    note_type: Set(asn_note_entity::ASNNoteType::System),
-                    note_text: Set(reason),
-                    created_at: Set(Utc::now()),
-                    created_by: Set(None),
-                    ..Default::default()
-                };
-                note.insert(txn)
-                    .await
-                    ?;
+                    let note = asn_note_entity::ActiveModel {
+                        asn_id: Set(asn_id),
+                        note_type: Set(asn_note_entity::ASNNoteType::System),
+                        note_text: Set(reason),
+                        created_at: Set(Utc::now()),
+                        created_by: Set(None),
+                        ..Default::default()
+                    };
+                    note.insert(txn).await?;
 
-                Ok(updated)
+                    Ok(updated)
+                })
             })
-        })
-        .await;
-        
+            .await;
+
         result.map_err(|e| match e {
-            sea_orm::TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
-            sea_orm::TransactionError::Transaction(db_err) => ServiceError::DatabaseError(db_err),
+            sea_orm::TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
+            sea_orm::TransactionError::Transaction(db_err) => ServiceError::db_error(db_err),
         })
     }
 

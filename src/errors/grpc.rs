@@ -14,18 +14,14 @@ impl IntoGrpcStatus for ServiceError {
             ServiceError::NotFound(msg) | ServiceError::NotFoundError(msg) => {
                 Status::not_found(msg)
             }
-            ServiceError::ValidationError(msg) | ServiceError::InvalidStatus(msg) => {
-                Status::invalid_argument(msg)
-            }
-            ServiceError::AuthError(msg) | ServiceError::JwtError(msg) | ServiceError::Unauthorized(msg) => {
-                Status::unauthenticated(msg)
-            }
-            ServiceError::Forbidden(msg) => {
-                Status::permission_denied(msg)
-            }
-            ServiceError::Conflict(msg) => {
-                Status::already_exists(msg)
-            }
+            ServiceError::ValidationError(msg)
+            | ServiceError::InvalidStatus(msg)
+            | ServiceError::InvalidInput(msg) => Status::invalid_argument(msg),
+            ServiceError::AuthError(msg)
+            | ServiceError::JwtError(msg)
+            | ServiceError::Unauthorized(msg) => Status::unauthenticated(msg),
+            ServiceError::Forbidden(msg) => Status::permission_denied(msg),
+            ServiceError::Conflict(msg) => Status::already_exists(msg),
             ServiceError::InsufficientStock(msg) => {
                 Status::failed_precondition(format!("Insufficient stock: {}", msg))
             }
@@ -60,9 +56,7 @@ impl IntoGrpcStatus for ServiceError {
             ServiceError::BadRequest(msg) | ServiceError::InvalidOperation(msg) => {
                 Status::invalid_argument(msg)
             }
-            ServiceError::RateLimitExceeded => {
-                Status::resource_exhausted("Rate limit exceeded")
-            }
+            ServiceError::RateLimitExceeded => Status::resource_exhausted("Rate limit exceeded"),
             ServiceError::CircuitBreakerOpen => {
                 Status::unavailable("Service temporarily unavailable")
             }
@@ -70,9 +64,10 @@ impl IntoGrpcStatus for ServiceError {
                 error!("Migration error: {}", msg);
                 Status::internal("Database migration failed")
             }
-            ServiceError::ConcurrentModification(id) => {
-                Status::aborted(format!("Concurrent modification detected for resource: {}", id))
-            }
+            ServiceError::ConcurrentModification(id) => Status::aborted(format!(
+                "Concurrent modification detected for resource: {}",
+                id
+            )),
             ServiceError::EventError(msg) => {
                 error!("Event processing error: {}", msg);
                 Status::internal("Event processing failed")
@@ -83,9 +78,7 @@ impl IntoGrpcStatus for ServiceError {
             ServiceError::InventoryError(msg) => {
                 Status::failed_precondition(format!("Inventory error: {}", msg))
             }
-            ServiceError::InternalServerError => {
-                Status::internal("Internal server error")
-            }
+            ServiceError::InternalServerError => Status::internal("Internal server error"),
             ServiceError::Other(err) => {
                 error!("Other error: {}", err);
                 Status::internal("An unexpected error occurred")

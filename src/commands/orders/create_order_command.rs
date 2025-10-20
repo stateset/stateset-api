@@ -6,21 +6,20 @@ use crate::{
     models::{
         order_entity::{self, Entity as Order},
         order_item_entity::{self, Entity as OrderItemEntity},
-        OrderStatus,
-        OrderItemStatus,
+        OrderItemStatus, OrderStatus,
     },
 };
 use bigdecimal::BigDecimal;
-use std::str::FromStr;
-use validator::Validate;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use prometheus::{Counter, IntCounter};
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
+use validator::Validate;
 
 lazy_static! {
     static ref ORDER_CREATIONS: IntCounter =
@@ -40,8 +39,7 @@ pub struct CreateOrderCommand {
     pub items: Vec<CreateOrderItem>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
-#[derive(Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct CreateOrderItem {
     pub product_id: Uuid,
     #[validate(range(min = 1))]
@@ -101,10 +99,14 @@ impl CreateOrderCommand {
         &self,
         db: &DatabaseConnection,
     ) -> Result<order_entity::Model, ServiceError> {
-        db.transaction::<_, order_entity::Model, ServiceError>(|txn| {
+        let customer_id = self.customer_id;
+        let items = self.items.clone();
+
+        db.transaction::<_, order_entity::Model, ServiceError>(move |txn| {
+            let items = items.clone();
             Box::pin(async move {
                 let new_order = order_entity::ActiveModel {
-                    customer_id: Set(self.customer_id),
+                    customer_id: Set(customer_id),
                     status: Set(OrderStatus::Pending),
                     created_at: Set(Utc::now()),
                     updated_at: Set(Utc::now()),
@@ -112,12 +114,12 @@ impl CreateOrderCommand {
                 };
 
                 let saved_order = new_order.insert(txn).await.map_err(|e| {
-                    let msg = format!("Failed to create order: {}", e);
+                    let msg = format!("Failed to create order for customer {}: {}", customer_id, e);
                     error!("{}", msg);
-                    ServiceError::DatabaseError(e)
+                    ServiceError::db_error(e)
                 })?;
 
-                for item in &self.items {
+                for item in &items {
                     let new_item = order_item_entity::ActiveModel {
                         id: Set(Uuid::new_v4()),
                         order_id: Set(saved_order.id),
@@ -126,7 +128,11 @@ impl CreateOrderCommand {
                         product_sku: Set(item.product_sku.clone().unwrap_or_default()),
                         quantity: Set(item.quantity),
                         unit_price: Set(f64::from_str(&item.unit_price.to_string()).unwrap_or(0.0)),
-                        total_price: Set(f64::from_str(&(item.unit_price.clone() * BigDecimal::from(item.quantity)).to_string()).unwrap_or(0.0)),
+                        total_price: Set(f64::from_str(
+                            &(item.unit_price.clone() * BigDecimal::from(item.quantity))
+                                .to_string(),
+                        )
+                        .unwrap_or(0.0)),
                         discount_amount: Set(0.0),
                         tax_amount: Set(0.0),
                         status: Set(OrderItemStatus::Pending),
@@ -136,9 +142,12 @@ impl CreateOrderCommand {
                         ..Default::default()
                     };
                     new_item.insert(txn).await.map_err(|e| {
-                        let msg = format!("Failed to create order item: {}", e);
+                        let msg = format!(
+                            "Failed to create order item for order {}: {}",
+                            saved_order.id, e
+                        );
                         error!("{}", msg);
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?;
                 }
 
@@ -147,7 +156,7 @@ impl CreateOrderCommand {
         })
         .await
         .map_err(|e| match e {
-            TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+            TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
             TransactionError::Transaction(service_err) => service_err,
         })
     }

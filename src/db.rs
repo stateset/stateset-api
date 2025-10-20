@@ -1,14 +1,13 @@
 pub mod query_builder;
 
-use crate::errors::{AppError, ServiceError};
 use crate::config::AppConfig;
+use crate::errors::{AppError, ServiceError};
 use anyhow::Context;
 use futures::future::BoxFuture;
 use metrics::{counter, gauge, histogram};
 use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
-    EntityTrait, FromQueryResult, Statement,
-    TransactionTrait, ConnectionTrait,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend,
+    DbErr, EntityTrait, FromQueryResult, Statement, TransactionTrait,
 };
 use sea_orm_migration::MigratorTrait;
 use std::future::Future;
@@ -193,7 +192,7 @@ impl DatabaseAccess {
             .map_err(|e| {
                 error!("Database error executing raw SQL: {}", e);
                 counter!("stateset_db.query.error", 1);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| ServiceError::NotFoundError("No data found".to_string()))?;
 
@@ -203,7 +202,7 @@ impl DatabaseAccess {
 
         T::from_query_result(&result, "").map_err(|e| {
             error!("Failed to convert query result: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -267,7 +266,7 @@ impl DatabaseAccess {
         let result = f(db).await.map_err(|e| {
             error!(operation = %operation, error = %e, "Database operation failed");
             counter!("stateset_db.operation.error", 1, "operation" => operation.to_string());
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         });
 
         let elapsed = start.elapsed();
@@ -341,10 +340,7 @@ pub async fn check_connection(pool: &DbPool) -> Result<(), AppError> {
     debug!("Checking database connection");
     let start = std::time::Instant::now();
 
-    let result = pool
-        .ping()
-        .await
-        .map_err(|e| AppError::DatabaseError(e));
+    let result = pool.ping().await.map_err(|e| AppError::DatabaseError(e));
 
     let elapsed = start.elapsed();
     match &result {
@@ -368,9 +364,7 @@ pub async fn check_connection(pool: &DbPool) -> Result<(), AppError> {
 pub async fn close_pool(pool: DbPool) -> Result<(), AppError> {
     info!("Closing database connection pool");
 
-    pool.close()
-        .await
-        .map_err(|e| AppError::DatabaseError(e))
+    pool.close().await.map_err(|e| AppError::DatabaseError(e))
 }
 
 #[cfg(test)]

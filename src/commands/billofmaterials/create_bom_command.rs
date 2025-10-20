@@ -64,7 +64,7 @@ impl CreateBOMCommand {
                     "Failed to create BOM for product ID {}: {}",
                     self.product_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 

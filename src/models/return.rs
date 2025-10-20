@@ -211,7 +211,9 @@ impl Model {
             total_refunded: Decimal::new(0, 2),
             tracking_number: None,
         };
-        return_request.validate().map_err(|_| ValidationError::new("Return validation failed"))?;
+        return_request
+            .validate()
+            .map_err(|_| ValidationError::new("Return validation failed"))?;
         Ok(return_request)
     }
 
@@ -264,7 +266,10 @@ impl Model {
 impl ReturnStatus {
     /// Checks if the status is final and cannot be changed.
     pub fn is_final(&self) -> bool {
-        matches!(self, ReturnStatus::Rejected | ReturnStatus::Refunded | ReturnStatus::Cancelled)
+        matches!(
+            self,
+            ReturnStatus::Rejected | ReturnStatus::Refunded | ReturnStatus::Cancelled
+        )
     }
 
     /// Returns the status as a string.
@@ -373,7 +378,7 @@ mod tests {
         );
     }
 
-    // NOTE: This test is disabled because MockDatabase and MockExecResult 
+    // NOTE: This test is disabled because MockDatabase and MockExecResult
     // are no longer available in SeaORM 1.0.0
     // #[tokio::test]
     // async fn test_return_relationships() {

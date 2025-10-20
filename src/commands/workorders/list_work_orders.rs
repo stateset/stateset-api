@@ -1,10 +1,10 @@
-use uuid::Uuid;
 use async_trait::async_trait;
+use futures::TryFutureExt;
+use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
-use sea_orm::EntityTrait;
-use futures::TryFutureExt;
+use uuid::Uuid;
 
 use crate::{
     commands::Command,
@@ -28,7 +28,7 @@ impl Command for ListWorkOrdersCommand {
         let orders = work_order_entity::Entity::find()
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
         info!("Listed {} work orders", orders.len());
         event_sender
             .send(Event::with_data("work_orders_listed".to_string()))

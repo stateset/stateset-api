@@ -64,7 +64,7 @@ impl Command for RemoveItemFromOrderCommand {
                     self.item_id, self.order_id, e
                 );
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         if delete_result.rows_affected == 0 {

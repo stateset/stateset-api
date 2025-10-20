@@ -39,19 +39,21 @@ impl AgenticCheckoutService {
     ) -> Result<CheckoutSession, ServiceError> {
         // Validate items exist and calculate totals
         let line_items = self.build_line_items(&request.items).await?;
-        
+
         let session_id = Uuid::new_v4();
         let currency = "USD".to_string();
-        
+
         // Calculate totals
-        let totals = self.calculate_totals(&line_items, request.fulfillment_address.as_ref(), None)?;
-        
+        let totals =
+            self.calculate_totals(&line_items, request.fulfillment_address.as_ref(), None)?;
+
         // Determine fulfillment options
-        let fulfillment_options = self.get_fulfillment_options(request.fulfillment_address.as_ref())?;
-        
+        let fulfillment_options =
+            self.get_fulfillment_options(request.fulfillment_address.as_ref())?;
+
         // Determine status
         let status = self.determine_status(&request, &line_items, None);
-        
+
         let session = CheckoutSession {
             id: session_id.to_string(),
             buyer: request.buyer,
@@ -97,17 +99,23 @@ impl AgenticCheckoutService {
     #[instrument(skip(self))]
     pub async fn get_session(&self, session_id: &str) -> Result<CheckoutSession, ServiceError> {
         let cache_key = format!("checkout_session:{}", session_id);
-        
-        let cached = self.cache.get(&cache_key).await
+
+        let cached = self
+            .cache
+            .get(&cache_key)
+            .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
-        
+
         match cached {
             Some(data) => {
                 let session: CheckoutSession = serde_json::from_str(&data)
-                    .map_err(|e| ServiceError::ParseError(e.to_string()))?;
+                    .map_err(|e| ServiceError::SerializationError(e.to_string()))?;
                 Ok(session)
-            },
-            None => Err(ServiceError::NotFound(format!("Checkout session {} not found", session_id))),
+            }
+            None => Err(ServiceError::NotFound(format!(
+                "Checkout session {} not found",
+                session_id
+            ))),
         }
     }
 
@@ -123,7 +131,7 @@ impl AgenticCheckoutService {
         // Check if already completed or canceled
         if session.status == "completed" || session.status == "canceled" {
             return Err(ServiceError::InvalidOperation(
-                "Cannot update completed or canceled session".to_string()
+                "Cannot update completed or canceled session".to_string(),
             ));
         }
 
@@ -139,18 +147,19 @@ impl AgenticCheckoutService {
         if let Some(address) = request.fulfillment_address {
             session.fulfillment_address = Some(address);
             // Recalculate fulfillment options
-            session.fulfillment_options = self.get_fulfillment_options(session.fulfillment_address.as_ref())?;
+            session.fulfillment_options =
+                self.get_fulfillment_options(session.fulfillment_address.as_ref())?;
         }
 
         if let Some(option_id) = request.fulfillment_option_id {
             // Validate option exists
-            if !session.fulfillment_options.iter().any(|opt| {
-                match opt {
-                    FulfillmentOption::Shipping(s) => s.id == option_id,
-                    FulfillmentOption::Digital(d) => d.id == option_id,
-                }
+            if !session.fulfillment_options.iter().any(|opt| match opt {
+                FulfillmentOption::Shipping(s) => s.id == option_id,
+                FulfillmentOption::Digital(d) => d.id == option_id,
             }) {
-                return Err(ServiceError::InvalidInput("Invalid fulfillment option".to_string()));
+                return Err(ServiceError::InvalidInput(
+                    "Invalid fulfillment option".to_string(),
+                ));
             }
             session.fulfillment_option_id = Some(option_id);
         }
@@ -183,10 +192,14 @@ impl AgenticCheckoutService {
 
         // Check if already completed or canceled
         if session.status == "completed" {
-            return Err(ServiceError::InvalidOperation("Session already completed".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Session already completed".to_string(),
+            ));
         }
         if session.status == "canceled" {
-            return Err(ServiceError::InvalidOperation("Session is canceled".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Session is canceled".to_string(),
+            ));
         }
 
         // Update buyer if provided
@@ -196,13 +209,19 @@ impl AgenticCheckoutService {
 
         // Validate session is ready
         if session.buyer.is_none() {
-            return Err(ServiceError::InvalidOperation("Buyer information required".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Buyer information required".to_string(),
+            ));
         }
         if session.fulfillment_address.is_none() {
-            return Err(ServiceError::InvalidOperation("Fulfillment address required".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Fulfillment address required".to_string(),
+            ));
         }
         if session.fulfillment_option_id.is_none() {
-            return Err(ServiceError::InvalidOperation("Fulfillment option required".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Fulfillment option required".to_string(),
+            ));
         }
 
         // Process payment
@@ -224,10 +243,7 @@ impl AgenticCheckoutService {
 
         info!("Completed checkout session: {}", session.id);
 
-        Ok(CheckoutSessionWithOrder {
-            session,
-            order,
-        })
+        Ok(CheckoutSessionWithOrder { session, order })
     }
 
     /// Cancel checkout session
@@ -236,10 +252,14 @@ impl AgenticCheckoutService {
         let mut session = self.get_session(session_id).await?;
 
         if session.status == "completed" {
-            return Err(ServiceError::InvalidOperation("Cannot cancel completed session".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Cannot cancel completed session".to_string(),
+            ));
         }
         if session.status == "canceled" {
-            return Err(ServiceError::InvalidOperation("Session already canceled".to_string()));
+            return Err(ServiceError::InvalidOperation(
+                "Session already canceled".to_string(),
+            ));
         }
 
         session.status = "canceled".to_string();
@@ -344,7 +364,10 @@ impl AgenticCheckoutService {
         Ok(totals)
     }
 
-    fn get_fulfillment_options(&self, address: Option<&Address>) -> Result<Vec<FulfillmentOption>, ServiceError> {
+    fn get_fulfillment_options(
+        &self,
+        address: Option<&Address>,
+    ) -> Result<Vec<FulfillmentOption>, ServiceError> {
         let mut options = Vec::new();
 
         if address.is_some() {
@@ -358,8 +381,8 @@ impl AgenticCheckoutService {
                 earliest_delivery_time: None,
                 latest_delivery_time: None,
                 subtotal: "1000".to_string(), // $10.00
-                tax: "88".to_string(), // $0.88
-                total: "1088".to_string(), // $10.88
+                tax: "88".to_string(),        // $0.88
+                total: "1088".to_string(),    // $10.88
             }));
 
             options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
@@ -371,8 +394,8 @@ impl AgenticCheckoutService {
                 earliest_delivery_time: None,
                 latest_delivery_time: None,
                 subtotal: "2500".to_string(), // $25.00
-                tax: "219".to_string(), // $2.19
-                total: "2719".to_string(), // $27.19
+                tax: "219".to_string(),       // $2.19
+                total: "2719".to_string(),    // $27.19
             }));
         }
 
@@ -386,9 +409,10 @@ impl AgenticCheckoutService {
         _fulfillment_option_id: Option<&str>,
     ) -> String {
         // Check if ready for payment
-        if request.buyer.is_some() 
-            && request.fulfillment_address.is_some() 
-            && !_line_items.is_empty() {
+        if request.buyer.is_some()
+            && request.fulfillment_address.is_some()
+            && !_line_items.is_empty()
+        {
             "ready_for_payment".to_string()
         } else {
             "not_ready_for_payment".to_string()
@@ -399,7 +423,8 @@ impl AgenticCheckoutService {
         if session.buyer.is_some()
             && session.fulfillment_address.is_some()
             && session.fulfillment_option_id.is_some()
-            && !session.line_items.is_empty() {
+            && !session.line_items.is_empty()
+        {
             "ready_for_payment".to_string()
         } else {
             "not_ready_for_payment".to_string()
@@ -408,17 +433,23 @@ impl AgenticCheckoutService {
 
     async fn process_payment(&self, payment_data: &PaymentData) -> Result<(), ServiceError> {
         // Simulate payment processing with Stripe
-        info!("Processing payment with provider: {}", payment_data.provider);
-        
+        info!(
+            "Processing payment with provider: {}",
+            payment_data.provider
+        );
+
         // In real implementation, call Stripe API with payment_data.token
         // For now, simulate success
-        
+
         Ok(())
     }
 
-    async fn create_order_from_session(&self, session: &CheckoutSession) -> Result<Order, ServiceError> {
+    async fn create_order_from_session(
+        &self,
+        session: &CheckoutSession,
+    ) -> Result<Order, ServiceError> {
         let order_id = Uuid::new_v4();
-        
+
         Ok(Order {
             id: order_id.to_string(),
             checkout_session_id: session.id.clone(),
@@ -430,10 +461,12 @@ impl AgenticCheckoutService {
         let cache_key = format!("checkout_session:{}", session.id);
         let data = serde_json::to_string(session)
             .map_err(|e| ServiceError::SerializationError(e.to_string()))?;
-        
-        self.cache.set(&cache_key, &data, Some(Duration::from_secs(3600))).await
+
+        self.cache
+            .set(&cache_key, &data, Some(Duration::from_secs(3600)))
+            .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
-        
+
         Ok(())
     }
 }
@@ -640,4 +673,4 @@ pub struct CheckoutSessionCompleteRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buyer: Option<Buyer>,
     pub payment_data: PaymentData,
-} 
+}

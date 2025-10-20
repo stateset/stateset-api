@@ -109,7 +109,7 @@ impl Command for TransferInventoryCommand {
                         .await
                         .map_err(|e| {
                             INVENTORY_TRANSFER_FAILURES.inc();
-                            ServiceError::DatabaseError(e)
+                            ServiceError::db_error(e)
                         })?
                         .ok_or_else(|| {
                             INVENTORY_TRANSFER_FAILURES.inc();
@@ -144,7 +144,7 @@ impl Command for TransferInventoryCommand {
                     source_inventory.update(txn).await.map_err(|e| {
                         let msg = format!("Failed to update source inventory: {}", e);
                         error!("{}", msg);
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?;
 
                     // 3. Check if destination inventory exists
@@ -155,7 +155,7 @@ impl Command for TransferInventoryCommand {
                         .await
                         .map_err(|e| {
                             INVENTORY_TRANSFER_FAILURES.inc();
-                            ServiceError::DatabaseError(e)
+                            ServiceError::db_error(e)
                         })?;
 
                     match dest_inventory {
@@ -169,7 +169,7 @@ impl Command for TransferInventoryCommand {
                             dest_inventory.update(txn).await.map_err(|e| {
                                 let msg = format!("Failed to update destination inventory: {}", e);
                                 error!("{}", msg);
-                                ServiceError::DatabaseError(e)
+                                ServiceError::db_error(e)
                             })?;
                         }
                         None => {
@@ -196,7 +196,7 @@ impl Command for TransferInventoryCommand {
                             new_inventory.insert(txn).await.map_err(|e| {
                                 let msg = format!("Failed to create destination inventory: {}", e);
                                 error!("{}", msg);
-                                ServiceError::DatabaseError(e)
+                                ServiceError::db_error(e)
                             })?;
                         }
                     }
@@ -214,7 +214,7 @@ impl Command for TransferInventoryCommand {
             Err(e) => {
                 INVENTORY_TRANSFER_FAILURES.inc();
                 return match e {
-                    TransactionError::Connection(db_err) => Err(ServiceError::DatabaseError(db_err)),
+                    TransactionError::Connection(db_err) => Err(ServiceError::db_error(db_err)),
                     TransactionError::Transaction(service_err) => Err(service_err),
                 };
             }

@@ -121,7 +121,9 @@ impl Model {
             tracking_number: None,
             warehouse_received_date: None,
         };
-        warranty.validate().map_err(|_| ValidationError::new("Warranty validation failed"))?;
+        warranty
+            .validate()
+            .map_err(|_| ValidationError::new("Warranty validation failed"))?;
         Ok(warranty)
     }
 
@@ -139,7 +141,9 @@ impl Model {
     ) -> Result<(), ValidationError> {
         // Here you would typically save the line item to the database
         // For this example, we'll just validate the line item
-        line_item.validate().map_err(|_| ValidationError::new("Line item validation failed"))?;
+        line_item
+            .validate()
+            .map_err(|_| ValidationError::new("Line item validation failed"))?;
         Ok(())
     }
 }

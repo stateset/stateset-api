@@ -1,11 +1,11 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::env;
+use std::env as std_env;
 use std::path::Path;
 use thiserror::Error;
 use tracing::{error, info};
 use validator::{Validate, ValidationError};
-use std::env as std_env;
 
 /// Default values for configuration
 const DEFAULT_LOG_LEVEL: &str = "info";
@@ -88,7 +88,7 @@ pub struct AppConfig {
     /// Server port (1024-65535)
     #[serde(default = "default_port")]
     pub port: u16,
-    
+
     /// gRPC server port (optional, defaults to port + 1)
     pub grpc_port: Option<u16>,
 
@@ -224,6 +224,9 @@ impl AppConfig {
             rate_limit_api_key_policies: None,
             rate_limit_user_policies: None,
             rate_limit_path_policies: None,
+            payment_provider: None,
+            payment_webhook_secret: None,
+            payment_webhook_tolerance_secs: None,
         };
         config.db_url = config.database_url.clone();
         config
@@ -291,15 +294,31 @@ fn default_cleanup_interval() -> u64 {
     DEFAULT_CLEANUP_INTERVAL
 }
 
-fn default_db_max_connections() -> u32 { 16 }
-fn default_db_min_connections() -> u32 { 2 }
-fn default_db_connect_timeout_secs() -> u64 { 30 }
-fn default_db_idle_timeout_secs() -> u64 { 600 }
-fn default_db_acquire_timeout_secs() -> u64 { 8 }
+fn default_db_max_connections() -> u32 {
+    16
+}
+fn default_db_min_connections() -> u32 {
+    2
+}
+fn default_db_connect_timeout_secs() -> u64 {
+    30
+}
+fn default_db_idle_timeout_secs() -> u64 {
+    600
+}
+fn default_db_acquire_timeout_secs() -> u64 {
+    8
+}
 
-fn default_rate_limit_requests() -> u32 { DEFAULT_RATE_LIMIT_REQUESTS }
-fn default_rate_limit_window_secs() -> u64 { DEFAULT_RATE_LIMIT_WINDOW_SECS }
-fn default_true_bool() -> bool { true }
+fn default_rate_limit_requests() -> u32 {
+    DEFAULT_RATE_LIMIT_REQUESTS
+}
+fn default_rate_limit_window_secs() -> u64 {
+    DEFAULT_RATE_LIMIT_WINDOW_SECS
+}
+fn default_true_bool() -> bool {
+    true
+}
 
 /// Validates log level values
 fn validate_log_level(level: &str) -> Result<(), ValidationError> {
@@ -315,45 +334,59 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
 
 /// Initializes tracing using the provided log level as the default filter
 pub fn init_tracing(level: &str, json: bool) {
-    use tracing_subscriber::{fmt, EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
     let default_directive = format!("stateset_api={},tower_http=debug", level);
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
+    let filter_directive = std_env::var("RUST_LOG")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(default_directive.clone());
 
     // Optional OpenTelemetry initialization via env (APP__OTEL_ENABLED or OTEL_EXPORTER_OTLP_ENDPOINT)
-    let otel_enabled = std_env::var("APP__OTEL_ENABLED").map(|v| v == "1" || v.to_lowercase() == "true").unwrap_or(false)
+    let otel_enabled = std_env::var("APP__OTEL_ENABLED")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)
         || std_env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok();
 
     if otel_enabled {
         #[allow(unused_imports)]
         use opentelemetry::{global, KeyValue};
-        use opentelemetry_sdk::{trace as sdktrace, Resource};
         use opentelemetry_otlp::WithExportConfig;
-        use tracing_opentelemetry::OpenTelemetryLayer;
+        use opentelemetry_sdk::{trace as sdktrace, Resource};
 
-        let endpoint = std_env::var("OTEL_EXPORTER_OTLP_ENDPOINT").unwrap_or_else(|_| "http://localhost:4317".to_string());
-        let service_name = std_env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "stateset-api".to_string());
+        let endpoint = std_env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+            .unwrap_or_else(|_| "http://localhost:4317".to_string());
+        let service_name =
+            std_env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "stateset-api".to_string());
 
         let resource = Resource::new(vec![KeyValue::new("service.name", service_name.clone())]);
         let tracer = opentelemetry_otlp::new_pipeline()
             .tracing()
-            .with_exporter(opentelemetry_otlp::new_exporter().tonic().with_endpoint(endpoint))
+            .with_exporter(
+                opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint(endpoint),
+            )
             .with_trace_config(sdktrace::config().with_resource(resource))
             .install_batch(opentelemetry_sdk::runtime::Tokio)
             .expect("failed to install OTLP pipeline");
 
-        let otel_layer = OpenTelemetryLayer::new(tracer);
-        let subscriber = tracing_subscriber::registry()
-            .with(filter)
-            .with(if json { fmt::layer().json() } else { fmt::layer() })
+        let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+        let base = tracing_subscriber::registry()
+            .with(EnvFilter::new(filter_directive.clone()))
             .with(otel_layer);
-        let _ = subscriber.try_init();
-    } else {
-        let _ = if json {
-            fmt().with_env_filter(filter).json().try_init()
+
+        if json {
+            let _ = base.with(fmt::layer().json()).try_init();
         } else {
-            fmt().with_env_filter(filter).try_init()
-        };
+            let _ = base.with(fmt::layer()).try_init();
+        }
+    } else {
+        if json {
+            let _ = fmt().with_env_filter(filter_directive).json().try_init();
+        } else {
+            let _ = fmt().with_env_filter(filter_directive).try_init();
+        }
     }
 }
 
@@ -371,13 +404,25 @@ pub fn load_config() -> Result<AppConfig, AppConfigError> {
         .unwrap_or_else(|_| DEFAULT_ENV.to_string());
     info!("Loading configuration for environment: {}", run_env);
 
-    // Ensure config directory exists
     if !Path::new(CONFIG_DIR).exists() {
-        std::fs::create_dir_all(CONFIG_DIR)?;
+        info!(
+            "Config directory '{}' not found; relying on built-in defaults and environment variables",
+            CONFIG_DIR
+        );
     }
 
     let mut builder = Config::builder()
-        .add_source(File::with_name(&format!("{}/default", CONFIG_DIR)).required(true))
+        .set_default("database_url", "sqlite://stateset.db?mode=rwc")?
+        .set_default("redis_url", "redis://localhost:6379")?
+        .set_default("jwt_secret", "CHANGE_THIS_SECRET_IN_PRODUCTION")?
+        .set_default("jwt_expiration", 3600)?
+        .set_default("refresh_token_expiration", 604800)?
+        .set_default("host", "0.0.0.0")?
+        .set_default("port", 8080)?
+        .set_default("environment", DEFAULT_ENV)?
+        .set_default("log_level", DEFAULT_LOG_LEVEL)?
+        .set_default("log_json", false)?
+        .add_source(File::with_name(&format!("{}/default", CONFIG_DIR)).required(false))
         .add_source(File::with_name(&format!("{}/{}", CONFIG_DIR, run_env)).required(false));
 
     if env::var("DOCKER").is_ok() {

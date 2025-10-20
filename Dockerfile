@@ -13,12 +13,15 @@ WORKDIR /usr/src/app
 COPY Cargo.toml Cargo.lock ./
 COPY migrations/Cargo.toml ./migrations/
 COPY src/bin/only_standalone/Cargo.toml ./src/bin/only_standalone/
+COPY simple_api/Cargo.toml ./simple_api/
 
 # Create dummy files to build dependencies
-RUN mkdir -p src migrations/src proto src/bin/only_standalone
+RUN mkdir -p src migrations/src proto src/bin/only_standalone simple_api/src
 RUN echo "fn main() {}" > src/main.rs
 RUN echo "pub fn run() {}" > migrations/src/lib.rs
 RUN echo "fn main() {}" > src/bin/only_standalone/main.rs
+RUN echo "fn main() {}" > simple_api/src/main.rs
+RUN echo "fn main() {}" > src/bin/migration.rs
 
 # Copy build.rs for the build script
 COPY build.rs ./

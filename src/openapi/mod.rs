@@ -1,5 +1,5 @@
-use utoipa::{OpenApi, ToSchema};
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
@@ -164,22 +164,7 @@ pub struct ApiDocV1;
 pub fn swagger_ui() -> SwaggerUi {
     SwaggerUi::new("/swagger-ui")
         .url("/api-docs/openapi.json", ApiDocV1::openapi())
-        .config(
-            utoipa_swagger_ui::Config::from("/api-docs/openapi.json")
-                .try_it_out_enabled(true)
-                .request_interceptor(
-                    r#"
-                    function(req) {
-                        // Add auth token if available
-                        const token = localStorage.getItem('auth_token');
-                        if (token) {
-                            req.headers.Authorization = 'Bearer ' + token;
-                        }
-                        return req;
-                    }
-                    "#
-                )
-        )
+        .config(utoipa_swagger_ui::Config::from("/api-docs/openapi.json").try_it_out_enabled(true))
 }
 
 #[cfg(test)]

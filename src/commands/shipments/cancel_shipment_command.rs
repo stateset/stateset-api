@@ -1,24 +1,26 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
-    events::{Event, EventSender},
     db::DbPool,
     errors::ServiceError,
+    events::{Event, EventSender},
     models::{
-        shipment::{self, Entity as Shipment, ShipmentStatus}, 
+        shipment::{self, Entity as Shipment, ShipmentStatus},
         shipment_note,
     },
 };
 use async_trait::async_trait;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionError, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
 pub struct CancelShipmentCommand {
-    pub shipment_id: i32,
+    pub shipment_id: Uuid,
 
     #[validate(length(min = 1))]
     pub reason: String,
@@ -36,25 +38,39 @@ impl Command for CancelShipmentCommand {
     ) -> Result<Self::Result, ServiceError> {
         let db = db_pool.clone();
 
+        let command_clone = self.clone();
         let updated_shipment = db
-            .transaction::<_, ServiceError, _>(|txn| {
+            .transaction::<_, shipment::Model, ServiceError>(move |txn| {
+                let cmd = command_clone.clone();
                 Box::pin(async move {
-                    self.cancel_shipment(txn).await?;
-                    self.log_cancellation_reason(txn).await?;
-                    // Enqueue outbox inside txn (no UUID id available)
-                    let payload = serde_json::json!({"shipment_id": self.shipment_id, "reason": self.reason});
-                    let _ = crate::events::outbox::enqueue(txn, "shipment", None, "ShipmentCancelled", &payload).await;
-                    let updated_shipment = self.fetch_updated_shipment(txn).await?;
+                    cmd.cancel_shipment(txn).await?;
+                    cmd.log_cancellation_reason(txn).await?;
+                    let payload = serde_json::json!({
+                        "shipment_id": cmd.shipment_id.to_string(),
+                        "reason": cmd.reason
+                    });
+                    let _ = crate::events::outbox::enqueue(
+                        txn,
+                        "shipment",
+                        Some(cmd.shipment_id),
+                        "ShipmentCancelled",
+                        &payload,
+                    )
+                    .await;
+                    let updated_shipment = cmd.fetch_updated_shipment(txn).await?;
                     Ok(updated_shipment)
                 })
             })
             .await
-            .map_err(|e| {
+            .map_err(|err| {
                 error!(
                     "Transaction failed for cancelling shipment ID {}: {}",
-                    self.shipment_id, e
+                    self.shipment_id, err
                 );
-                e
+                match err {
+                    sea_orm::TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
+                    sea_orm::TransactionError::Transaction(service_err) => service_err,
+                }
             })?;
 
         self.log_and_trigger_event(event_sender, &updated_shipment)
@@ -74,7 +90,7 @@ impl CancelShipmentCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find shipment: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Shipment ID {} not found", self.shipment_id);
@@ -85,7 +101,7 @@ impl CancelShipmentCommand {
         shipment.status = Set(ShipmentStatus::Cancelled);
         shipment.update(txn).await.map_err(|e| {
             error!("Failed to cancel shipment: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
         Ok(())
     }
@@ -102,7 +118,7 @@ impl CancelShipmentCommand {
 
         new_note.insert(txn).await.map_err(|e| {
             error!("Failed to log cancellation reason: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
         Ok(())
     }
@@ -116,7 +132,7 @@ impl CancelShipmentCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch updated shipment: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Shipment ID {} not found", self.shipment_id);

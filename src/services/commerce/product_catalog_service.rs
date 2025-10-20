@@ -1,6 +1,6 @@
 use crate::{
     entities::commerce::{product_variant, Product, ProductModel, ProductVariant},
-    entities::product as product,
+    entities::product,
     errors::ServiceError,
     events::{Event, EventSender},
 };
@@ -8,7 +8,7 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set, QuerySelect,
+    QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -29,9 +29,12 @@ impl ProductCatalogService {
 
     /// Create a new product
     #[instrument(skip(self))]
-    pub async fn create_product(&self, input: CreateProductInput) -> Result<ProductModel, ServiceError> {
+    pub async fn create_product(
+        &self,
+        input: CreateProductInput,
+    ) -> Result<ProductModel, ServiceError> {
         let product_id = Uuid::new_v4();
-        
+
         let product = product::ActiveModel {
             id: Set(product_id),
             name: Set(input.name.clone()),
@@ -73,9 +76,12 @@ impl ProductCatalogService {
 
     /// Create a product variant
     #[instrument(skip(self))]
-    pub async fn create_variant(&self, input: CreateVariantInput) -> Result<product_variant::Model, ServiceError> {
+    pub async fn create_variant(
+        &self,
+        input: CreateVariantInput,
+    ) -> Result<product_variant::Model, ServiceError> {
         let variant_id = Uuid::new_v4();
-        
+
         let variant = product_variant::ActiveModel {
             id: Set(variant_id),
             product_id: Set(input.product_id),
@@ -95,7 +101,10 @@ impl ProductCatalogService {
 
         let variant = variant.insert(&*self.db).await?;
 
-        info!("Created variant {} for product {}", variant_id, input.product_id);
+        info!(
+            "Created variant {} for product {}",
+            variant_id, input.product_id
+        );
         Ok(variant)
     }
 
@@ -110,7 +119,10 @@ impl ProductCatalogService {
 
     /// Get product variants
     #[instrument(skip(self))]
-    pub async fn get_product_variants(&self, product_id: Uuid) -> Result<Vec<product_variant::Model>, ServiceError> {
+    pub async fn get_product_variants(
+        &self,
+        product_id: Uuid,
+    ) -> Result<Vec<product_variant::Model>, ServiceError> {
         ProductVariant::find()
             .filter(product_variant::Column::ProductId.eq(product_id))
             .order_by_asc(product_variant::Column::Position)
@@ -121,14 +133,18 @@ impl ProductCatalogService {
 
     /// Search products
     #[instrument(skip(self))]
-    pub async fn search_products(&self, query: ProductSearchQuery) -> Result<ProductSearchResult, ServiceError> {
+    pub async fn search_products(
+        &self,
+        query: ProductSearchQuery,
+    ) -> Result<ProductSearchResult, ServiceError> {
         let mut db_query = Product::find();
 
         if let Some(search) = &query.search {
             let pattern = format!("%{}%", search);
             db_query = db_query.filter(
-                product::Column::Name.contains(&pattern)
-                    .or(product::Column::Sku.contains(&pattern))
+                product::Column::Name
+                    .contains(&pattern)
+                    .or(product::Column::Sku.contains(&pattern)),
             );
         }
 
@@ -137,7 +153,7 @@ impl ProductCatalogService {
         }
 
         let total = db_query.clone().count(&*self.db).await?;
-        
+
         let products = db_query
             .order_by_desc(product::Column::CreatedAt)
             .limit(query.limit.unwrap_or(20))
@@ -150,7 +166,11 @@ impl ProductCatalogService {
 
     /// Update product price
     #[instrument(skip(self))]
-    pub async fn update_variant_price(&self, variant_id: Uuid, price: Decimal) -> Result<(), ServiceError> {
+    pub async fn update_variant_price(
+        &self,
+        variant_id: Uuid,
+        price: Decimal,
+    ) -> Result<(), ServiceError> {
         let variant = ProductVariant::find_by_id(variant_id)
             .one(&*self.db)
             .await?
@@ -209,4 +229,4 @@ pub struct ProductSearchQuery {
 pub struct ProductSearchResult {
     pub products: Vec<ProductModel>,
     pub total: u64,
-} 
+}

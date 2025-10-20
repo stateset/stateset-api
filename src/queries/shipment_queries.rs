@@ -103,7 +103,7 @@ impl Query for GetShipmentsInDateRangeQuery {
             .await
             .map_err(|e| {
                 log::error!("Database error in GetShipmentsInDateRangeQuery: {:?}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })
     }
 }
@@ -138,7 +138,7 @@ impl Query for GetShipmentDetailsQuery {
                     "Database error fetching shipment in GetShipmentDetailsQuery: {:?}",
                     e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| ServiceError::NotFound("Shipment not found".to_string()))?;
 
@@ -164,7 +164,7 @@ impl Query for GetShipmentDetailsQuery {
                     "Database error fetching shipment items in GetShipmentDetailsQuery: {:?}",
                     e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         // Get tracking events if needed
@@ -173,7 +173,7 @@ impl Query for GetShipmentDetailsQuery {
             .order_by_desc(shipment_event::Column::Timestamp)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(ShipmentDetails {
             shipment,
@@ -211,7 +211,7 @@ impl Query for GetShipmentPerformanceMetricsQuery {
             .filter(crate::models::shipment::Column::CreatedAt.between(self.start_date, self.end_date))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Calculate on-time shipments
         let on_time_shipments = ShipmentEntity::find()
@@ -220,7 +220,7 @@ impl Query for GetShipmentPerformanceMetricsQuery {
             .filter(crate::models::shipment::Column::DeliveredAt.lte(crate::models::shipment::Column::EstimatedDelivery))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let on_time_delivery_rate = if total_shipments > 0 {
             on_time_shipments as f64 / total_shipments as f64
@@ -241,7 +241,7 @@ impl Query for GetShipmentPerformanceMetricsQuery {
             .into_tuple::<Option<f64>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .flatten()
             .unwrap_or(0.0);
 

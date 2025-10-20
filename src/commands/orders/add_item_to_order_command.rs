@@ -7,11 +7,11 @@ use crate::{
 };
 use bigdecimal::BigDecimal;
 use chrono::Utc;
-use std::str::FromStr;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
@@ -87,7 +87,10 @@ impl Command for AddItemToOrderCommand {
 }
 
 impl AddItemToOrderCommand {
-    async fn add_item(&self, db: &DatabaseConnection) -> Result<order_item_entity::Model, ServiceError> {
+    async fn add_item(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<order_item_entity::Model, ServiceError> {
         let new_item = order_item_entity::ActiveModel {
             id: Set(Uuid::new_v4()),
             order_id: Set(self.order_id),
@@ -96,7 +99,10 @@ impl AddItemToOrderCommand {
             product_sku: Set(self.product_sku.clone().unwrap_or_default()),
             quantity: Set(self.quantity),
             unit_price: Set(f64::from_str(&self.unit_price.to_string()).unwrap_or(0.0)),
-            total_price: Set(f64::from_str(&(self.unit_price.clone() * BigDecimal::from(self.quantity)).to_string()).unwrap_or(0.0)),
+            total_price: Set(f64::from_str(
+                &(self.unit_price.clone() * BigDecimal::from(self.quantity)).to_string(),
+            )
+            .unwrap_or(0.0)),
             discount_amount: Set(0.0),
             tax_amount: Set(0.0),
             status: Set(order_item_entity::OrderItemStatus::Pending),
@@ -110,7 +116,7 @@ impl AddItemToOrderCommand {
             ORDER_ITEM_ADD_FAILURES.inc();
             let msg = format!("Failed to add item to order {}: {}", self.order_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(saved_item)

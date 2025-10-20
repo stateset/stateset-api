@@ -1,4 +1,6 @@
-use crate::handlers::common::{created_response, map_service_error, success_response, validate_input};
+use crate::handlers::common::{
+    created_response, map_service_error, success_response, validate_input,
+};
 use crate::{
     auth::AuthenticatedUser,
     errors::ApiError,
@@ -14,12 +16,11 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
 
 /// Creates the router for checkout endpoints
-pub fn checkout_routes() -> Router<Arc<AppState>> {
+pub fn checkout_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(start_checkout))
         .route("/{session_id}", get(get_checkout_session))
@@ -31,7 +32,7 @@ pub fn checkout_routes() -> Router<Arc<AppState>> {
 
 /// Start checkout from cart
 async fn start_checkout(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Json(payload): Json<StartCheckoutRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let session = state
@@ -46,17 +47,19 @@ async fn start_checkout(
 
 /// Get checkout session
 async fn get_checkout_session(
-    State(_state): State<Arc<AppState>>,
+    State(_state): State<AppState>,
     Path(_session_id): Path<Uuid>,
 ) -> Result<axum::response::Response, ApiError> {
     // For now, we'll need to store sessions in memory or cache
     // This is a simplified version
-    Err(ApiError::NotFound("Session storage not implemented yet".to_string()))
+    Err(ApiError::NotFound(
+        "Session storage not implemented yet".to_string(),
+    ))
 }
 
 /// Set customer info
 async fn set_customer_info(
-    State(_state): State<Arc<AppState>>,
+    State(_state): State<AppState>,
     Path(_session_id): Path<Uuid>,
     Json(payload): Json<CustomerInfoRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -71,7 +74,7 @@ async fn set_customer_info(
 
 /// Set shipping address
 async fn set_shipping_address(
-    State(_state): State<Arc<AppState>>,
+    State(_state): State<AppState>,
     Path(_session_id): Path<Uuid>,
     Json(payload): Json<AddressRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -98,7 +101,7 @@ async fn set_shipping_address(
 
 /// Set shipping method
 async fn set_shipping_method(
-    State(_state): State<Arc<AppState>>,
+    State(_state): State<AppState>,
     Path(_session_id): Path<Uuid>,
     Json(payload): Json<ShippingMethodRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -114,7 +117,7 @@ async fn set_shipping_method(
 
 /// Complete checkout
 async fn complete_checkout(
-    State(state): State<Arc<AppState>>,
+    State(state): State<AppState>,
     Path(_session_id): Path<Uuid>,
     Json(payload): Json<CompleteCheckoutRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -166,21 +169,17 @@ async fn complete_checkout(
     //         }
     //     })?;
 
-    Ok(created_response(serde_json::json!({ "order_id": Uuid::new_v4() })))
+    Ok(created_response(
+        serde_json::json!({ "order_id": Uuid::new_v4() }),
+    ))
 }
 
-async fn get_stock_level(
-    _product_id: Uuid,
-    _db: &Arc<crate::db::DbPool>,
-) -> Result<i32, ApiError> {
+async fn get_stock_level(_product_id: Uuid, _db: &crate::db::DbPool) -> Result<i32, ApiError> {
     // Dummy implementation
     Ok(100)
 }
 
-async fn create_order_from_cart(
-    _session: &(),
-    _db: &Arc<crate::db::DbPool>,
-) -> Result<Uuid, ApiError> {
+async fn create_order_from_cart(_session: &(), _db: &crate::db::DbPool) -> Result<Uuid, ApiError> {
     // Dummy implementation
     Ok(Uuid::new_v4())
 }

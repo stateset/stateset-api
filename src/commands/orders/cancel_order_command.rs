@@ -11,7 +11,7 @@ use crate::{
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{IntCounter, IntCounterVec};
-use sea_orm::{*, Set, TransactionError};
+use sea_orm::{Set, TransactionError, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
@@ -26,8 +26,9 @@ lazy_static! {
     .expect("metric can be created");
     static ref ORDER_CANCELLATION_FAILURES: IntCounterVec = IntCounterVec::new(
         prometheus::Opts::new(
-        "order_cancellation_failures_total",
-        "Total number of failed order cancellations"),
+            "order_cancellation_failures_total",
+            "Total number of failed order cancellations"
+        ),
         &["error_type"]
     )
     .expect("metric can be created");
@@ -105,13 +106,13 @@ impl CancelOrderCommand {
                     .one(txn)
                     .await
                     .map_err(|e| OrderError::DatabaseError(e))?
-                    .ok_or(ServiceError::NotFound(format!("Order {} not found", order_id)))?;
+                    .ok_or(ServiceError::NotFound(format!(
+                        "Order {} not found",
+                        order_id
+                    )))?;
 
                 if order.version != version {
-                    warn!(
-                        "Concurrent modification detected for order {}",
-                        order_id
-                    );
+                    warn!("Concurrent modification detected for order {}", order_id);
                     return Err(OrderError::ConcurrentModification(order_id));
                 }
 
@@ -141,7 +142,7 @@ impl CancelOrderCommand {
         })
         .await
         .map_err(|e| match e {
-            TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+            TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
             TransactionError::Transaction(service_err) => service_err,
         })
     }

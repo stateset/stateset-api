@@ -18,7 +18,7 @@ use axum::{
     Router,
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{DatabaseConnection, ConnectionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;

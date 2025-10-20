@@ -51,7 +51,7 @@ impl CancelWorkOrderCommand {
         let mut work_order = work_order_entity::Entity::find_by_id(self.work_order_id)
             .one(txn)
             .await
-            .map_err(ServiceError::DatabaseError)?
+            .map_err(ServiceError::db_error)?
             .ok_or_else(|| ServiceError::NotFound(format!("Work Order with ID {} not found", self.work_order_id)))?;
         let mut active_model = work_order.into_active_model();
         active_model.status = Set(work_order_entity::WorkOrderStatus::Cancelled);

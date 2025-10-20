@@ -64,7 +64,7 @@ impl DuplicateBOMCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find original BOM with ID {}: {}", self.bom_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 ServiceError::NotFound(format!("BOM with ID {} not found", self.bom_id))
@@ -80,7 +80,7 @@ impl DuplicateBOMCommand {
 
         new_bom.insert(txn).await.map_err(|e| {
             error!("Failed to create duplicated BOM: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -94,7 +94,7 @@ impl DuplicateBOMCommand {
                     "Failed to load components from original BOM ID {}: {}",
                     self.bom_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         for component in original_components {
@@ -116,7 +116,7 @@ impl DuplicateBOMCommand {
                     "Failed to copy component to new BOM ID {}: {}",
                     new_bom_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         }
 

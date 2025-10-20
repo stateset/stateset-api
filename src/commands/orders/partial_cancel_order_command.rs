@@ -74,7 +74,7 @@ impl PartialCancelOrderCommand {
                     "Failed to remove items from order ID {}: {:?}",
                     self.order_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         Ok(())
     }
@@ -93,7 +93,7 @@ impl PartialCancelOrderCommand {
                     "Failed to fetch remaining items for order ID {}: {:?}",
                     self.order_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         // Calculate the new total
@@ -108,7 +108,7 @@ impl PartialCancelOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order {}: {:?}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Order not found for ID {}", self.order_id);
@@ -124,7 +124,7 @@ impl PartialCancelOrderCommand {
                 "Failed to update total for order ID {}: {:?}",
                 self.order_id, e
             );
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

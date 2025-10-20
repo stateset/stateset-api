@@ -54,7 +54,7 @@ impl DeleteOrderNoteCommand {
             .map_err(|e| {
                 let msg = format!("Failed to delete order note {}: {}", self.note_id, e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         Ok(())
     }

@@ -1,9 +1,14 @@
-use axum::{extract::Request, middleware::Next, response::Response, http::{StatusCode, HeaderName}};
+use axum::{
+    extract::Request,
+    http::{HeaderName, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
 use http_body_util::BodyExt as _;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
-use tracing::{warn, error};
+use tracing::{error, warn};
 
 #[derive(Serialize, Deserialize)]
 struct Stored {
@@ -22,9 +27,16 @@ pub async fn idempotency_redis_middleware(
 
     let method = req.method().clone();
     let is_mutating = matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE");
-    if !is_mutating { return next.run(req).await; }
+    if !is_mutating {
+        return next.run(req).await;
+    }
 
-    let Some(key) = req.headers().get(HEADER).and_then(|v| v.to_str().ok()).map(|s| s.trim().to_string()) else {
+    let Some(key) = req
+        .headers()
+        .get(HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+    else {
         return next.run(req).await;
     };
 
@@ -43,12 +55,13 @@ pub async fn idempotency_redis_middleware(
     };
 
     // Replay if cached
-    if let Ok(Some(json)) = conn.get::<_, String>(&cache_key).await {
+    if let Ok(Some(json)) = conn.get::<_, Option<String>>(&cache_key).await {
         if let Ok(stored) = serde_json::from_str::<Stored>(&json) {
             let mut resp = Response::new(axum::body::Body::from(stored.body));
             *resp.status_mut() = StatusCode::from_u16(stored.status).unwrap_or(StatusCode::OK);
             if let Some(ct) = stored.content_type.and_then(|s| s.parse().ok()) {
-                resp.headers_mut().insert(HeaderName::from_static("content-type"), ct);
+                resp.headers_mut()
+                    .insert(HeaderName::from_static("content-type"), ct);
             }
             return resp;
         }
@@ -57,16 +70,18 @@ pub async fn idempotency_redis_middleware(
     // Try to acquire processing lock
     match conn.set_nx::<_, _, bool>(&lock_key, "1").await {
         Ok(true) => {
-            let _ : Result<(), _> = conn.expire(&lock_key, TTL_SECS).await;
+            let _: Result<(), _> = conn.expire(&lock_key, TTL_SECS).await;
         }
         Ok(false) => {
             // Someone else is processing; see if result has landed
-            if let Ok(Some(json)) = conn.get::<_, String>(&cache_key).await {
+            if let Ok(Some(json)) = conn.get::<_, Option<String>>(&cache_key).await {
                 if let Ok(stored) = serde_json::from_str::<Stored>(&json) {
                     let mut resp = Response::new(axum::body::Body::from(stored.body));
-                    *resp.status_mut() = StatusCode::from_u16(stored.status).unwrap_or(StatusCode::OK);
+                    *resp.status_mut() =
+                        StatusCode::from_u16(stored.status).unwrap_or(StatusCode::OK);
                     if let Some(ct) = stored.content_type.and_then(|s| s.parse().ok()) {
-                        resp.headers_mut().insert(HeaderName::from_static("content-type"), ct);
+                        resp.headers_mut()
+                            .insert(HeaderName::from_static("content-type"), ct);
                     }
                     return resp;
                 }
@@ -86,8 +101,16 @@ pub async fn idempotency_redis_middleware(
     match body.collect().await {
         Ok(collected) => {
             let bytes = collected.to_bytes();
-            let ct = parts.headers.get("content-type").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
-            let stored = Stored { status: parts.status.as_u16(), content_type: ct, body: String::from_utf8_lossy(&bytes).to_string() };
+            let ct = parts
+                .headers
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            let stored = Stored {
+                status: parts.status.as_u16(),
+                content_type: ct,
+                body: String::from_utf8_lossy(&bytes).to_string(),
+            };
             if let Ok(json) = serde_json::to_string(&stored) {
                 let _: Result<(), _> = conn.set_ex(&cache_key, json, TTL_SECS).await;
             }
@@ -101,4 +124,3 @@ pub async fn idempotency_redis_middleware(
         }
     }
 }
-

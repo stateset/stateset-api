@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use axum::{
     http::{
         header::{HeaderValue, ACCEPT},
-        HeaderMap, StatusCode, Request,
+        HeaderMap, Request, StatusCode,
     },
     middleware::Next,
     response::{IntoResponse, Response},

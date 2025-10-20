@@ -58,7 +58,7 @@ impl Command for BuildToStockCommand {
                     self.bom_id, e
                 );
                 match e {
-                    TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                    TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                     TransactionError::Transaction(service_err) => service_err,
                 }
             })?;
@@ -77,7 +77,7 @@ impl BuildToStockCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch BOM ID {}: {}", self.bom_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("BOM ID {} not found", self.bom_id);
@@ -105,7 +105,7 @@ impl BuildToStockCommand {
             .await
             .map_err(|e| {
                 error!("Failed to create WorkOrder: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         // Fetch BOM line items
@@ -115,7 +115,7 @@ impl BuildToStockCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch BOM line items: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         // Create WorkOrderLineItems based on BOMLineItems
@@ -142,7 +142,7 @@ impl BuildToStockCommand {
             .await
             .map_err(|e| {
                 error!("Failed to create WorkOrderLineItems: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(BuildToStockResult {

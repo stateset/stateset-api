@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use stateset_api::events::{process_events, EventSender};
+use stateset_api::services::inventory::AdjustInventoryCommand;
 use stateset_api::{db, services::inventory::InventoryService};
-use stateset_api::services::inventory::{AdjustInventoryCommand};
-use stateset_api::events::{EventSender, process_events};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -22,7 +22,9 @@ async fn inventory_concurrency() {
         18080,
         "test".to_string(),
     );
-    let pool = db::establish_connection_from_app_config(&cfg).await.expect("db connect");
+    let pool = db::establish_connection_from_app_config(&cfg)
+        .await
+        .expect("db connect");
     let _ = db::run_migrations(&pool).await; // best-effort
 
     let db_arc = Arc::new(pool);
@@ -40,7 +42,9 @@ async fn inventory_concurrency() {
         location_id: Some(location),
         adjustment_quantity: Some(10),
         reason: Some("seed".into()),
-    }).await.expect("seed adjust");
+    })
+    .await
+    .expect("seed adjust");
 
     // Try 20 concurrent reservations of 1 unit each, expect only 10 successes
     let mut tasks = vec![];
@@ -49,11 +53,21 @@ async fn inventory_concurrency() {
         let p = product;
         let l = location;
         tasks.push(tokio::spawn(async move {
-            svc.reserve_inventory_simple(&p, &l, 1).await.map(|_| ()).is_ok()
+            svc.reserve_inventory_simple(&p, &l, 1)
+                .await
+                .map(|_| ())
+                .is_ok()
         }));
     }
     let mut success = 0;
-    for t in tasks { if t.await.unwrap_or(false) { success += 1; } }
-    assert_eq!(success, 10, "exactly 10 reservations should succeed; got {}", success);
+    for t in tasks {
+        if t.await.unwrap_or(false) {
+            success += 1;
+        }
+    }
+    assert_eq!(
+        success, 10,
+        "exactly 10 reservations should succeed; got {}",
+        success
+    );
 }
-

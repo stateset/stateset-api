@@ -4,15 +4,16 @@ use crate::{
     models::payment,
 };
 use chrono::Utc;
+use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    PaginatorTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
+use utoipa::ToSchema;
 use uuid::Uuid;
-use rust_decimal::Decimal;
 use validator::{Validate, ValidationError};
 
 fn validate_positive_decimal(value: &Decimal) -> Result<(), ValidationError> {
@@ -25,15 +26,7 @@ fn validate_positive_decimal(value: &Decimal) -> Result<(), ValidationError> {
     }
 }
 
-fn validate_optional_positive_decimal(value: &Option<Decimal>) -> Result<(), ValidationError> {
-    if let Some(v) = value {
-        validate_positive_decimal(v)
-    } else {
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub enum PaymentStatus {
     Pending,
     Processing,
@@ -56,7 +49,7 @@ impl std::fmt::Display for PaymentStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub enum PaymentMethod {
     CreditCard,
     DebitCard,
@@ -66,7 +59,7 @@ pub enum PaymentMethod {
     Check,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ProcessPaymentRequest {
     pub order_id: Uuid,
     #[validate(custom = "validate_positive_decimal")]
@@ -77,7 +70,7 @@ pub struct ProcessPaymentRequest {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaymentResponse {
     pub id: Uuid,
     pub order_id: Uuid,
@@ -91,10 +84,9 @@ pub struct PaymentResponse {
     pub processed_at: Option<chrono::DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RefundPaymentRequest {
     pub payment_id: Uuid,
-    #[validate(custom = "validate_optional_positive_decimal")]
     pub amount: Option<Decimal>,
     pub reason: Option<String>,
 }
@@ -151,7 +143,7 @@ impl PaymentService {
         let payment = payment_model
             .insert(&*self.db)
             .await
-            .map_err(ServiceError::DatabaseError)?;
+            .map_err(ServiceError::db_error)?;
 
         // Send event
         let event = if matches!(status, PaymentStatus::Succeeded) {
@@ -161,7 +153,9 @@ impl PaymentService {
         } else {
             Event::PaymentAuthorized(payment.id)
         };
-        self.event_sender.send(event).await
+        self.event_sender
+            .send(event)
+            .await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 
         // Outbox enqueue (best-effort)
@@ -210,7 +204,7 @@ impl PaymentService {
         let payment = payment::Entity::find_by_id(payment_id)
             .one(&*self.db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound(format!("Payment {} not found", payment_id)))?;
 
         Ok(PaymentResponse {
@@ -229,13 +223,16 @@ impl PaymentService {
 
     /// Get payments for an order
     #[instrument(skip(self))]
-    pub async fn get_order_payments(&self, order_id: Uuid) -> Result<Vec<PaymentResponse>, ServiceError> {
+    pub async fn get_order_payments(
+        &self,
+        order_id: Uuid,
+    ) -> Result<Vec<PaymentResponse>, ServiceError> {
         let payments = payment::Entity::find()
             .filter(payment::Column::OrderId.eq(order_id))
             .order_by_desc(payment::Column::CreatedAt)
             .all(&*self.db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let responses = payments
             .into_iter()
@@ -265,11 +262,15 @@ impl PaymentService {
         status_filter: Option<PaymentStatus>,
     ) -> Result<(Vec<PaymentResponse>, u64), ServiceError> {
         if page == 0 {
-            return Err(ServiceError::ValidationError("Page number must be greater than 0".to_string()));
+            return Err(ServiceError::ValidationError(
+                "Page number must be greater than 0".to_string(),
+            ));
         }
 
         if limit == 0 || limit > 1000 {
-            return Err(ServiceError::ValidationError("Limit must be between 1 and 1000".to_string()));
+            return Err(ServiceError::ValidationError(
+                "Limit must be between 1 and 1000".to_string(),
+            ));
         }
 
         let mut query = payment::Entity::find();
@@ -282,24 +283,29 @@ impl PaymentService {
             .order_by_desc(payment::Column::CreatedAt)
             .paginate(&*self.db, limit);
 
-        let total = paginator.num_items().await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+        let total = paginator
+            .num_items()
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        let payments = paginator.fetch_page(page - 1).await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+        let payments = paginator
+            .fetch_page(page - 1)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        let responses = payments.into_iter()
+        let responses = payments
+            .into_iter()
             .map(|payment| PaymentResponse {
                 id: payment.id,
                 order_id: payment.order_id,
                 amount: payment.amount,
-                currency: "USD".to_string(),
-                status: payment.status.unwrap_or_else(|| "unknown".to_string()),
-                payment_method: "unknown".to_string(),
-                payment_method_id: None,
-                description: None,
+                currency: payment.currency,
+                status: payment.status,
+                payment_method: payment.payment_method,
+                payment_method_id: payment.payment_method_id,
+                description: payment.description,
                 created_at: payment.created_at,
-                processed_at: None,
+                processed_at: payment.processed_at,
             })
             .collect();
 
@@ -312,19 +318,27 @@ impl PaymentService {
         &self,
         request: RefundPaymentRequest,
     ) -> Result<PaymentResponse, ServiceError> {
-        validator::Validate::validate(&request)?;
-
         // Get original payment
         let original_payment = self.get_payment(request.payment_id).await?;
 
         if original_payment.status != "succeeded" {
-            return Err(ServiceError::ValidationError("Only successful payments can be refunded".to_string()));
+            return Err(ServiceError::ValidationError(
+                "Only successful payments can be refunded".to_string(),
+            ));
         }
 
         let refund_amount = request.amount.unwrap_or(original_payment.amount);
 
+        if refund_amount <= Decimal::ZERO {
+            return Err(ServiceError::ValidationError(
+                "Refund amount must be greater than zero".to_string(),
+            ));
+        }
+
         if refund_amount > original_payment.amount {
-            return Err(ServiceError::ValidationError("Refund amount cannot exceed original payment amount".to_string()));
+            return Err(ServiceError::ValidationError(
+                "Refund amount cannot exceed original payment amount".to_string(),
+            ));
         }
 
         info!(
@@ -355,11 +369,13 @@ impl PaymentService {
         let refund = refund_payment
             .insert(&*self.db)
             .await
-            .map_err(ServiceError::DatabaseError)?;
+            .map_err(ServiceError::db_error)?;
 
         // Send refund event
         let event = Event::PaymentRefunded(refund.id);
-        self.event_sender.send(event).await
+        self.event_sender
+            .send(event)
+            .await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 
         info!(
@@ -394,7 +410,10 @@ impl PaymentService {
     }
 
     /// Simulate payment processing (replace with real payment gateway integration)
-    async fn simulate_payment_processing(&self, _request: &ProcessPaymentRequest) -> Result<PaymentStatus, ServiceError> {
+    async fn simulate_payment_processing(
+        &self,
+        _request: &ProcessPaymentRequest,
+    ) -> Result<PaymentStatus, ServiceError> {
         // Simulate payment processing delay
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -413,7 +432,7 @@ impl PaymentService {
             .filter(payment::Column::Status.eq(PaymentStatus::Succeeded.to_string()))
             .all(&*self.db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut total = Decimal::ZERO;
         for p in payments {

@@ -1,10 +1,4 @@
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    response::Json,
-    routing::get,
-    Router,
-};
+use axum::{extract::Query, http::StatusCode, response::Json, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
