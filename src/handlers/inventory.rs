@@ -1,87 +1,61 @@
 use crate::errors::ServiceError;
-use crate::services::inventory::InventoryService;
-use axum::{
-    extract::{Json, Path, Query, State},
-    response::IntoResponse,
-    routing::{delete, get, post, put},
-    Router,
-    http::StatusCode,
+use crate::services::inventory::{
+    AdjustInventoryCommand, InventoryService, InventorySnapshot, LocationBalance,
+    ReleaseReservationCommand, ReservationOutcome, ReserveInventoryCommand,
 };
-use chrono::{DateTime, Utc};
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::Json,
+};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use serde_json::json;
 use uuid::Uuid;
-use std::sync::Arc;
+use validator::Validate;
 
-// Trait for inventory handler state that provides access to inventory service
+use crate::ApiResponse;
+
+/// Trait that provides access to the inventory service for handlers.
 pub trait InventoryHandlerState: Clone + Send + Sync + 'static {
     fn inventory_service(&self) -> &InventoryService;
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+/// API representation of aggregated inventory for an item.
+#[derive(Debug, Serialize, ToSchema)]
 pub struct InventoryItem {
-    pub id: String,
-    pub product_id: String,
-    pub location_id: String,
-    pub quantity: i32,
-    pub allocated_quantity: i32,
-    pub reserved_quantity: i32,
-    pub available_quantity: i32,
-    pub unit_cost: Option<f64>,
-    pub last_updated: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
+    pub inventory_item_id: i64,
+    pub item_number: String,
+    pub description: Option<String>,
+    pub primary_uom_code: Option<String>,
+    pub organization_id: i64,
+    pub quantities: InventoryQuantities,
+    pub locations: Vec<InventoryLocation>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct InventoryAdjustment {
-    pub id: String,
-    pub inventory_item_id: String,
-    pub adjustment_type: String,
-    pub quantity_change: i32,
-    pub reason: String,
-    pub reference_number: Option<String>,
-    pub created_by: String,
-    pub created_at: DateTime<Utc>,
+/// API representation of quantities.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InventoryQuantities {
+    pub on_hand: String,
+    pub allocated: String,
+    pub available: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateInventoryRequest {
-    pub product_id: String,
-    pub location_id: String,
-    pub quantity: i32,
-    pub unit_cost: Option<f64>,
+/// API representation of inventory at a specific location.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InventoryLocation {
+    pub location_id: i32,
+    pub location_name: Option<String>,
+    pub quantities: InventoryQuantities,
+    pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateInventoryRequest {
-    pub quantity: Option<i32>,
-    pub unit_cost: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct AdjustInventoryRequest {
-    pub adjustment_type: String, // "increase", "decrease", "set"
-    pub quantity: i32,
-    pub reason: String,
-    pub reference_number: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct AllocateInventoryRequest {
-    pub product_id: String,
-    pub location_id: String,
-    pub quantity: i32,
-    pub order_id: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ReserveInventoryRequest {
-    pub product_id: String,
-    pub location_id: String,
-    pub quantity: i32,
-    pub reference_id: String,
-    pub reference_type: String, // "order", "quote", "hold"
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InventoryListResponse {
+    pub items: Vec<InventoryItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
 }
 
 #[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -93,427 +67,493 @@ pub struct InventoryFilters {
     pub offset: Option<u32>,
 }
 
-/// Create the inventory router
-pub fn inventory_router<S>() -> Router<S> 
-where 
-    S: InventoryHandlerState,
-{
-    Router::new()
-        .route("/", get(list_inventory::<S>).post(create_inventory::<S>))
-        .route("/{id}", get(get_inventory::<S>).put(update_inventory::<S>).delete(delete_inventory::<S>))
-        .route("/adjust", post(adjust_inventory::<S>))
-        .route("/allocate", post(allocate_inventory::<S>))
-        .route("/reserve", post(reserve_inventory::<S>))
-        .route("/release", post(release_inventory::<S>))
-        .route("/adjustments", get(list_adjustments::<S>))
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct CreateInventoryRequest {
+    #[validate(length(min = 1))]
+    pub item_number: String,
+    pub description: Option<String>,
+    pub primary_uom_code: Option<String>,
+    pub organization_id: Option<i64>,
+    pub location_id: i32,
+    pub quantity_on_hand: i64,
+    pub reason: Option<String>,
 }
 
-/// List inventory items with optional filtering
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct UpdateInventoryRequest {
+    pub location_id: i32,
+    pub on_hand: Option<i64>,
+    pub description: Option<String>,
+    pub primary_uom_code: Option<String>,
+    pub organization_id: Option<i64>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ReserveInventoryRequest {
+    pub location_id: i32,
+    #[validate(range(min = 1))]
+    pub quantity: i64,
+    pub reference_id: Option<String>,
+    pub reference_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct ReleaseInventoryRequest {
+    pub location_id: i32,
+    #[validate(range(min = 1))]
+    pub quantity: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReservationResponse {
+    pub reservation_id: String,
+    pub location: InventoryLocation,
+}
+
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+pub struct LowStockQuery {
+    pub threshold: Option<i64>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/inventory",
-    params(
-        InventoryFilters
-    ),
+    params(InventoryFilters),
     responses(
-        (status = 200, description = "Inventory list returned",
-            headers(
-                ("X-Request-Id" = String, description = "Unique request id for tracing"),
-                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
-                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
-                ("X-RateLimit-Reset" = String, description = "Seconds until window resets"),
-            )
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+        (status = 200, description = "Inventory list returned", body = ApiResponse<InventoryListResponse>)
     ),
     tag = "inventory"
 )]
 pub async fn list_inventory<S>(
     State(state): State<S>,
     Query(filters): Query<InventoryFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<Json<ApiResponse<InventoryListResponse>>, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let inventory_service = state.inventory_service();
-    let page = (filters.offset.unwrap_or(0) / filters.limit.unwrap_or(50)) + 1;
-    let limit = filters.limit.unwrap_or(50) as u64;
+    let service = state.inventory_service();
+    let per_page = filters.limit.unwrap_or(50).max(1) as u64;
+    let offset = filters.offset.unwrap_or(0) as u64;
+    let page = offset / per_page + 1;
 
-    // Get inventory items from database with pagination
-    let (db_items, total) = inventory_service
-        .list_inventory(page as u64, limit)
-        .await?;
+    let (snapshots, _total) = service.list_inventory(page, per_page).await?;
+    let mut filtered = apply_filters(snapshots, &filters);
+    let items: Vec<InventoryItem> = filtered.drain(..).map(snapshot_to_api_item).collect();
 
-    // Convert database models to API response format
-    let mut inventory_items: Vec<InventoryItem> = db_items
-        .into_iter()
-        .map(|item| InventoryItem {
-            id: item.id,
-            product_id: item.sku, // Using SKU as product_id
-            location_id: item.warehouse.to_string(),
-            quantity: item.available + item.allocated_quantity.unwrap_or(0) + item.reserved_quantity.unwrap_or(0),
-            allocated_quantity: item.allocated_quantity.unwrap_or(0),
-            reserved_quantity: item.reserved_quantity.unwrap_or(0),
-            available_quantity: item.available,
-            unit_cost: item.unit_cost.map(|cost| cost.to_string().parse().unwrap_or(0.0)),
-            last_updated: item.last_movement_date.map(|d| d.and_utc()).unwrap_or_else(|| Utc::now()),
-            created_at: item.arrival_date.and_hms_opt(0, 0, 0).unwrap().and_utc(),
-        })
-        .collect();
+    let response = InventoryListResponse {
+        total: items.len() as u64,
+        page,
+        per_page,
+        items,
+    };
 
-    // Apply filters
-    if let Some(product_id) = &filters.product_id {
-        inventory_items.retain(|item| &item.product_id == product_id);
-    }
-    if let Some(location_id) = &filters.location_id {
-        inventory_items.retain(|item| &item.location_id == location_id);
-    }
-    if let Some(true) = filters.low_stock {
-        inventory_items.retain(|item| item.available_quantity < 10);
-    }
-
-    let response = json!({
-        "success": true,
-        "data": {
-            "inventory": inventory_items,
-            "total": total,
-            "page": page,
-            "per_page": limit,
-            "limit": filters.limit.unwrap_or(50),
-            "offset": filters.offset.unwrap_or(0)
-        }
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    Ok(Json(ApiResponse::success(response)))
 }
 
-/// Create new inventory item
 #[utoipa::path(
     post,
     path = "/api/v1/inventory",
     request_body = CreateInventoryRequest,
     responses(
-        (status = 201, description = "Inventory item created", body = InventoryItem,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+        (status = 201, description = "Inventory created", body = ApiResponse<InventoryItem>)
     ),
     tag = "inventory"
 )]
 pub async fn create_inventory<S>(
-    State(_state): State<S>,
+    State(state): State<S>,
     Json(payload): Json<CreateInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<(StatusCode, Json<ApiResponse<InventoryItem>>), ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let inventory_item = InventoryItem {
-        id: Uuid::new_v4().to_string(),
-        product_id: payload.product_id,
-        location_id: payload.location_id,
-        quantity: payload.quantity,
-        allocated_quantity: 0,
-        reserved_quantity: 0,
-        available_quantity: payload.quantity,
-        unit_cost: payload.unit_cost,
-        last_updated: Utc::now(),
-        created_at: Utc::now(),
-    };
+    payload
+        .validate()
+        .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
-    Ok((StatusCode::CREATED, Json(inventory_item)))
+    let service = state.inventory_service();
+    let organization_id = payload.organization_id.unwrap_or(1);
+    let item = service
+        .ensure_item(
+            &payload.item_number,
+            organization_id,
+            payload.description.clone(),
+            payload.primary_uom_code.clone(),
+        )
+        .await?;
+
+    if payload.quantity_on_hand != 0 {
+        service
+            .adjust_inventory(AdjustInventoryCommand {
+                inventory_item_id: Some(item.inventory_item_id),
+                item_number: None,
+                location_id: payload.location_id,
+                quantity_delta: Decimal::from(payload.quantity_on_hand),
+                reason: payload.reason.clone(),
+            })
+            .await?;
+    }
+
+    let snapshot = service
+        .get_snapshot_by_id(item.inventory_item_id)
+        .await?
+        .ok_or_else(|| {
+            ServiceError::InternalError("Failed to load inventory snapshot".to_string())
+        })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse::success(snapshot_to_api_item(snapshot))),
+    ))
 }
 
-/// Get specific inventory item
 #[utoipa::path(
     get,
     path = "/api/v1/inventory/{id}",
-    params(
-        ("id" = String, Path, description = "Inventory item ID")
-    ),
+    params(("id" = String, Path, description = "Inventory item id or item number")),
     responses(
-        (status = 200, description = "Inventory item returned", body = InventoryItem,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+        (status = 200, description = "Inventory item returned", body = ApiResponse<InventoryItem>),
+        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
     ),
     tag = "inventory"
 )]
 pub async fn get_inventory<S>(
-    State(_state): State<S>,
+    State(state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<Json<ApiResponse<InventoryItem>>, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let inventory_item = InventoryItem {
-        id: id.clone(),
-        product_id: "prod_abc".to_string(),
-        location_id: "loc_warehouse_001".to_string(),
-        quantity: 100,
-        allocated_quantity: 20,
-        reserved_quantity: 10,
-        available_quantity: 70,
-        unit_cost: Some(25.99),
-        last_updated: Utc::now(),
-        created_at: Utc::now() - chrono::Duration::days(30),
-    };
-
-    Ok((StatusCode::OK, Json(inventory_item)))
+    let service = state.inventory_service();
+    let snapshot = fetch_snapshot(service, &id).await?;
+    Ok(Json(ApiResponse::success(snapshot_to_api_item(snapshot))))
 }
 
-/// Update inventory item
 #[utoipa::path(
     put,
     path = "/api/v1/inventory/{id}",
-    params(
-        ("id" = String, Path, description = "Inventory item ID")
-    ),
+    params(("id" = String, Path, description = "Inventory item id or item number")),
     request_body = UpdateInventoryRequest,
     responses(
-        (status = 200, description = "Inventory item updated", body = InventoryItem,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+        (status = 200, description = "Inventory item updated", body = ApiResponse<InventoryItem>)
     ),
     tag = "inventory"
 )]
 pub async fn update_inventory<S>(
-    State(_state): State<S>,
+    State(state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<Json<ApiResponse<InventoryItem>>, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let inventory_item = InventoryItem {
-        id: id.clone(),
-        product_id: "prod_abc".to_string(),
-        location_id: "loc_warehouse_001".to_string(),
-        quantity: payload.quantity.unwrap_or(100),
-        allocated_quantity: 20,
-        reserved_quantity: 10,
-        available_quantity: payload.quantity.unwrap_or(100) - 30,
-        unit_cost: payload.unit_cost.or(Some(25.99)),
-        last_updated: Utc::now(),
-        created_at: Utc::now() - chrono::Duration::days(30),
-    };
+    payload
+        .validate()
+        .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(inventory_item)))
+    let service = state.inventory_service();
+    let snapshot = fetch_snapshot(service, &id).await?;
+
+    if payload.description.is_some()
+        || payload.primary_uom_code.is_some()
+        || payload.organization_id.is_some()
+    {
+        service
+            .ensure_item(
+                &snapshot.item_number,
+                payload.organization_id.unwrap_or(snapshot.organization_id),
+                payload.description.clone().or(snapshot.description.clone()),
+                payload
+                    .primary_uom_code
+                    .clone()
+                    .or(snapshot.primary_uom_code.clone()),
+            )
+            .await?;
+    }
+
+    if let Some(new_on_hand) = payload.on_hand {
+        let balance = service
+            .get_location_balance(snapshot.inventory_item_id, payload.location_id)
+            .await?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!(
+                    "No inventory for item {} at location {}",
+                    snapshot.inventory_item_id, payload.location_id
+                ))
+            })?;
+        let delta = Decimal::from(new_on_hand) - balance.quantity_on_hand;
+        if !delta.is_zero() {
+            service
+                .adjust_inventory(AdjustInventoryCommand {
+                    inventory_item_id: Some(snapshot.inventory_item_id),
+                    item_number: None,
+                    location_id: payload.location_id,
+                    quantity_delta: delta,
+                    reason: payload.reason.clone().or(Some("ADJUSTMENT".to_string())),
+                })
+                .await?;
+        }
+    }
+
+    let refreshed = fetch_snapshot(service, &id).await?;
+    Ok(Json(ApiResponse::success(snapshot_to_api_item(refreshed))))
 }
 
-/// Delete inventory item
 #[utoipa::path(
     delete,
     path = "/api/v1/inventory/{id}",
-    params(
-        ("id" = String, Path, description = "Inventory item ID")
-    ),
-    responses(
-        (status = 204, description = "Inventory item deleted"),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
-    ),
+    params(("id" = String, Path, description = "Inventory item id or item number")),
+    responses((status = 204, description = "Inventory deleted")),
     tag = "inventory"
 )]
 pub async fn delete_inventory<S>(
-    State(_state): State<S>,
+    State(state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<StatusCode, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let _ = id; // placeholder until wired to DB
+    let service = state.inventory_service();
+    let snapshot = fetch_snapshot(service, &id).await?;
+
+    for location in snapshot.locations {
+        if !location.quantity_on_hand.is_zero() {
+            service
+                .adjust_inventory(AdjustInventoryCommand {
+                    inventory_item_id: Some(snapshot.inventory_item_id),
+                    item_number: None,
+                    location_id: location.location_id,
+                    quantity_delta: Decimal::ZERO - location.quantity_on_hand,
+                    reason: Some("DELETE_INVENTORY".to_string()),
+                })
+                .await?;
+        }
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Adjust inventory quantities
-async fn adjust_inventory<S>(
-    State(_state): State<S>,
-    Json(payload): Json<AdjustInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+#[utoipa::path(
+    post,
+    path = "/api/v1/inventory/{id}/reserve",
+    params(("id" = String, Path, description = "Inventory item id or item number")),
+    request_body = ReserveInventoryRequest,
+    responses((status = 200, description = "Inventory reserved", body = ApiResponse<ReservationResponse>)),
+    tag = "inventory"
+)]
+pub async fn reserve_inventory<S>(
+    State(state): State<S>,
+    Path(id): Path<String>,
+    Json(payload): Json<ReserveInventoryRequest>,
+) -> Result<Json<ApiResponse<ReservationResponse>>, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let adjustment = InventoryAdjustment {
-        id: Uuid::new_v4().to_string(),
-        inventory_item_id: "inv_001".to_string(),
-        adjustment_type: payload.adjustment_type.clone(),
-        quantity_change: payload.quantity,
-        reason: payload.reason,
-        reference_number: payload.reference_number,
-        created_by: "user_001".to_string(),
-        created_at: Utc::now(),
+    payload
+        .validate()
+        .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
+
+    let service = state.inventory_service();
+    let snapshot = fetch_snapshot(service, &id).await?;
+    let reference_id = match &payload.reference_id {
+        Some(r) => Some(
+            Uuid::parse_str(r)
+                .map_err(|_| ServiceError::ValidationError("Invalid reference_id".to_string()))?,
+        ),
+        None => None,
     };
 
-    Ok((StatusCode::CREATED, Json(adjustment)))
+    let outcome: ReservationOutcome = service
+        .reserve_inventory(ReserveInventoryCommand {
+            inventory_item_id: Some(snapshot.inventory_item_id),
+            item_number: None,
+            location_id: payload.location_id,
+            quantity: Decimal::from(payload.quantity),
+            reference_id,
+            reference_type: payload.reference_type.clone(),
+        })
+        .await?;
+
+    let response = ReservationResponse {
+        reservation_id: outcome.id_str(),
+        location: balance_to_location(outcome.balance),
+    };
+
+    Ok(Json(ApiResponse::success(response)))
 }
 
-/// Allocate inventory for orders
-async fn allocate_inventory<S>(
-    State(_state): State<S>,
-    Json(payload): Json<AllocateInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
-    S: InventoryHandlerState,
-{
-    let response = json!({
-        "message": "Inventory allocated successfully",
-        "product_id": payload.product_id,
-        "location_id": payload.location_id,
-        "allocated_quantity": payload.quantity,
-        "order_id": payload.order_id,
-        "allocation_id": Uuid::new_v4().to_string()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Reserve inventory
-pub async fn reserve_inventory<S>(
-    State(_state): State<S>,
-    Json(payload): Json<ReserveInventoryRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
-    S: InventoryHandlerState,
-{
-    let response = json!({
-        "message": "Inventory reserved successfully",
-        "product_id": payload.product_id,
-        "location_id": payload.location_id,
-        "reserved_quantity": payload.quantity,
-        "reference_id": payload.reference_id,
-        "reference_type": payload.reference_type,
-        "reservation_id": Uuid::new_v4().to_string()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Release reserved inventory
+#[utoipa::path(
+    post,
+    path = "/api/v1/inventory/{id}/release",
+    params(("id" = String, Path, description = "Inventory item id or item number")),
+    request_body = ReleaseInventoryRequest,
+    responses((status = 200, description = "Inventory released", body = ApiResponse<InventoryLocation>)),
+    tag = "inventory"
+)]
 pub async fn release_inventory<S>(
-    State(_state): State<S>,
-    Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+    State(state): State<S>,
+    Path(id): Path<String>,
+    Json(payload): Json<ReleaseInventoryRequest>,
+) -> Result<Json<ApiResponse<InventoryLocation>>, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let response = json!({
-        "message": "Reserved inventory released successfully",
-        "released_at": Utc::now()
-    });
+    payload
+        .validate()
+        .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(response)))
+    let service = state.inventory_service();
+    let snapshot = fetch_snapshot(service, &id).await?;
+
+    let balance = service
+        .release_reservation(ReleaseReservationCommand {
+            inventory_item_id: Some(snapshot.inventory_item_id),
+            item_number: None,
+            location_id: payload.location_id,
+            quantity: Decimal::from(payload.quantity),
+        })
+        .await?;
+
+    Ok(Json(ApiResponse::success(balance_to_location(balance))))
 }
 
-/// List inventory adjustments
-async fn list_adjustments<S>(
-    State(_state): State<S>,
-    Query(_filters): Query<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
-    S: InventoryHandlerState,
-{
-    let adjustments = vec![
-        InventoryAdjustment {
-            id: "adj_001".to_string(),
-            inventory_item_id: "inv_001".to_string(),
-            adjustment_type: "increase".to_string(),
-            quantity_change: 50,
-            reason: "Stock replenishment".to_string(),
-            reference_number: Some("PO-2024-001".to_string()),
-            created_by: "user_001".to_string(),
-            created_at: Utc::now() - chrono::Duration::hours(2),
-        }
-    ];
-
-    let response = json!({
-        "adjustments": adjustments,
-        "total": adjustments.len()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Get low stock items
 #[utoipa::path(
     get,
     path = "/api/v1/inventory/low-stock",
-    responses(
-        (status = 200, description = "Low stock items returned",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
-    ),
+    params(LowStockQuery),
+    responses((status = 200, description = "Low stock items", body = ApiResponse<InventoryListResponse>)),
     tag = "inventory"
 )]
 pub async fn get_low_stock_items<S>(
-    State(_state): State<S>,
-    Query(filters): Query<InventoryFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+    State(state): State<S>,
+    Query(query): Query<LowStockQuery>,
+) -> Result<Json<ApiResponse<InventoryListResponse>>, ServiceError>
+where
     S: InventoryHandlerState,
 {
-    let threshold = 10; // Define low stock threshold
-    
-    // Sample low stock items
-    let low_stock_items = vec![
-        InventoryItem {
-            id: "inv_low_001".to_string(),
-            product_id: "prod_abc".to_string(),
-            location_id: "warehouse_001".to_string(),
-            quantity: 5,
-            allocated_quantity: 2,
-            reserved_quantity: 1,
-            available_quantity: 2,
-            unit_cost: Some(15.99),
-            last_updated: Utc::now(),
-            created_at: Utc::now() - chrono::Duration::days(15),
+    let filters = InventoryFilters {
+        product_id: None,
+        location_id: None,
+        low_stock: Some(true),
+        limit: query.limit,
+        offset: query.offset,
+    };
+    let threshold = Decimal::from(query.threshold.unwrap_or(10));
+
+    let service = state.inventory_service();
+    let per_page = filters.limit.unwrap_or(50).max(1) as u64;
+    let offset = filters.offset.unwrap_or(0) as u64;
+    let page = offset / per_page + 1;
+
+    let (snapshots, _total) = service.list_inventory(page, per_page).await?;
+    let filtered: Vec<InventoryItem> = snapshots
+        .into_iter()
+        .filter(|snapshot| snapshot.total_available < threshold)
+        .map(snapshot_to_api_item)
+        .collect();
+
+    let response = InventoryListResponse {
+        total: filtered.len() as u64,
+        page,
+        per_page,
+        items: filtered,
+    };
+
+    Ok(Json(ApiResponse::success(response)))
+}
+
+fn apply_filters(
+    snapshots: Vec<InventorySnapshot>,
+    filters: &InventoryFilters,
+) -> Vec<InventorySnapshot> {
+    let mut filtered = snapshots;
+    if let Some(product_filter) = filters.product_id.as_deref() {
+        filtered.retain(|snap| {
+            snap.item_number.eq_ignore_ascii_case(product_filter)
+                || snap.inventory_item_id.to_string() == product_filter
+        });
+    }
+    if let Some(loc_filter) = filters.location_id.as_deref() {
+        if let Ok(loc_id) = loc_filter.parse::<i32>() {
+            filtered.retain(|snap| snap.locations.iter().any(|loc| loc.location_id == loc_id));
+        }
+    }
+    if filters.low_stock.unwrap_or(false) {
+        filtered.retain(|snap| snap.total_available < Decimal::from(10));
+    }
+    filtered
+}
+
+async fn fetch_snapshot(
+    service: &InventoryService,
+    id: &str,
+) -> Result<InventorySnapshot, ServiceError> {
+    if let Ok(item_id) = id.parse::<i64>() {
+        service
+            .get_snapshot_by_id(item_id)
+            .await?
+            .ok_or_else(|| ServiceError::NotFound(format!("Inventory item {} not found", id)))
+    } else {
+        service
+            .get_snapshot_by_item_number(id)
+            .await?
+            .ok_or_else(|| ServiceError::NotFound(format!("Inventory item {} not found", id)))
+    }
+}
+
+fn snapshot_to_api_item(snapshot: InventorySnapshot) -> InventoryItem {
+    InventoryItem {
+        inventory_item_id: snapshot.inventory_item_id,
+        item_number: snapshot.item_number,
+        description: snapshot.description,
+        primary_uom_code: snapshot.primary_uom_code,
+        organization_id: snapshot.organization_id,
+        quantities: InventoryQuantities {
+            on_hand: decimal_to_string(snapshot.total_on_hand),
+            allocated: decimal_to_string(snapshot.total_allocated),
+            available: decimal_to_string(snapshot.total_available),
         },
-        InventoryItem {
-            id: "inv_low_002".to_string(),
-            product_id: "prod_def".to_string(),
-            location_id: "warehouse_002".to_string(),
-            quantity: 3,
-            allocated_quantity: 1,
-            reserved_quantity: 0,
-            available_quantity: 2,
-            unit_cost: Some(22.50),
-            last_updated: Utc::now(),
-            created_at: Utc::now() - chrono::Duration::days(20),
-        }
-    ];
+        locations: snapshot
+            .locations
+            .into_iter()
+            .map(balance_to_location)
+            .collect(),
+    }
+}
 
-    let response = json!({
-        "success": true,
-        "data": {
-            "low_stock_items": low_stock_items,
-            "threshold": threshold,
-            "total": low_stock_items.len()
-        }
-    });
+fn balance_to_location(balance: LocationBalance) -> InventoryLocation {
+    InventoryLocation {
+        location_id: balance.location_id,
+        location_name: balance.location_name,
+        quantities: InventoryQuantities {
+            on_hand: decimal_to_string(balance.quantity_on_hand),
+            allocated: decimal_to_string(balance.quantity_allocated),
+            available: decimal_to_string(balance.quantity_available),
+        },
+        updated_at: balance.updated_at.to_rfc3339(),
+    }
+}
 
-    Ok((StatusCode::OK, Json(response)))
+fn decimal_to_string(value: Decimal) -> String {
+    let mut s = value.normalize().to_string();
+    if s.contains('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+        if s.is_empty() {
+            s.push('0');
+        }
+    }
+    s
+}
+
+impl InventoryHandlerState for crate::AppState {
+    fn inventory_service(&self) -> &InventoryService {
+        &self.inventory_service
+    }
 }

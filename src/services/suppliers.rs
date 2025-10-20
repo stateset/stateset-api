@@ -98,7 +98,7 @@ impl SupplierService {
             .one(db)
             .await
             .map_err(|e| {
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(supplier)
@@ -121,7 +121,7 @@ impl SupplierService {
             .one(db)
             .await
             .map_err(|e| {
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(supplier)
@@ -141,7 +141,7 @@ impl SupplierService {
             .all(db)
             .await
             .map_err(|e| {
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(suppliers)
@@ -159,7 +159,7 @@ impl SupplierService {
             .all(db)
             .await
             .map_err(|e| {
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(suppliers)

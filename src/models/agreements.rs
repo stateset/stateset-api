@@ -54,7 +54,9 @@ impl Model {
     ) -> Result<(), ValidationError> {
         // Here you would typically save the line item to the database
         // For this example, we'll just validate the line item
-        line_item.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        line_item
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(())
     }
 

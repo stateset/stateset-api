@@ -4,7 +4,7 @@ fn main() {
 
     println!("✅ IMPLEMENTED ADVANCED FEATURES:");
     println!("=================================");
-    
+
     // 1. Advanced Caching Strategies
     println!("\n1️⃣ Advanced Caching Strategies:");
     println!("   ✅ LRU (Least Recently Used) eviction policy");

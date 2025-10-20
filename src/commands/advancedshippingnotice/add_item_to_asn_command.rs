@@ -7,7 +7,7 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -35,7 +35,6 @@ pub struct AddItemToASNCommand {
     pub quantity_shipped: i32,
     pub package_number: Option<String>,
     pub lot_number: Option<String>,
-    #[validate]
     pub serial_numbers: Option<Vec<String>>,
     pub expiration_date: Option<String>,
     pub customs_value: Option<f64>,
@@ -131,7 +130,7 @@ impl AddItemToASNCommand {
             ASN_ITEM_ADD_FAILURES.inc();
             let msg = format!("Failed to add item to ASN {}: {}", self.asn_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

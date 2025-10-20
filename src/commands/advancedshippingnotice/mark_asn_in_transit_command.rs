@@ -3,12 +3,10 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::{
-        asn_entity::{self, Entity as ASN, ASNStatus},
-    },
+    models::asn_entity::{self, ASNStatus, Entity as ASN},
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{*, Set};
+use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::instrument;
@@ -59,11 +57,14 @@ impl Command for MarkASNInTransitCommand {
         let current_asn = ASN::find_by_id(self.asn_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or(ServiceError::NotFound(self.asn_id.to_string()))?;
 
         if current_asn.status != ASNStatus::Submitted {
-            return Err(ServiceError::ValidationError(format!("ASN {} cannot be marked as in transit from current status", self.asn_id)));
+            return Err(ServiceError::ValidationError(format!(
+                "ASN {} cannot be marked as in transit from current status",
+                self.asn_id
+            )));
         }
 
         // Update ASN with shipping details
@@ -78,13 +79,14 @@ impl Command for MarkASNInTransitCommand {
                     // Note: carrier_details, departure_time, estimated_delivery fields
                     // are not part of the ASN model - they would be stored separately
 
-                    asn.update(txn)
-                        .await
-                        .map_err(|e| ServiceError::DatabaseError(e))
+                    asn.update(txn).await.map_err(|e| ServiceError::db_error(e))
                 })
             })
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|err| match err {
+                sea_orm::TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
+                sea_orm::TransactionError::Transaction(service_err) => service_err,
+            })?;
 
         event_sender
             .send(Event::ASNInTransit(self.asn_id))

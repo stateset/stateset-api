@@ -11,7 +11,7 @@ use crate::{
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{IntCounter, IntCounterVec};
-use sea_orm::{*, DbErr};
+use sea_orm::{DbErr, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
@@ -25,7 +25,10 @@ lazy_static! {
     )
     .expect("metric can be created");
     static ref ASN_CANCELLATION_FAILURES: IntCounterVec = IntCounterVec::new(
-        prometheus::Opts::new("asn_cancellation_failures_total", "Total number of failed ASN cancellations"),
+        prometheus::Opts::new(
+            "asn_cancellation_failures_total",
+            "Total number of failed ASN cancellations"
+        ),
         &["error_type"]
     )
     .expect("metric can be created");
@@ -76,12 +79,12 @@ impl Command for CancelASNCommand {
         let db = db_pool.as_ref();
 
         // Validate ASN can be cancelled in current state
-        self.validate_can_cancel(db).await.map_err(|e| ServiceError::ASNError(e))?;
+        self.validate_can_cancel(db).await?;
 
-        let updated_asn = self.cancel_asn_in_db(db).await.map_err(|e| ServiceError::ASNError(e))?;
+        let updated_asn = self.cancel_asn_in_db(db).await?;
 
         self.log_and_trigger_events(&event_sender, &updated_asn)
-            .await.map_err(|e| ServiceError::ASNError(e))?;
+            .await?;
 
         ASN_CANCELLATIONS.inc();
 
@@ -110,7 +113,10 @@ impl CancelASNCommand {
                 ASN_CANCELLATION_FAILURES
                     .with_label_values(&["invalid_status"])
                     .inc();
-                Err(ASNError::InvalidStatus(format!("Cannot cancel ASN {} - invalid status", self.asn_id)))
+                Err(ASNError::InvalidStatus(format!(
+                    "Cannot cancel ASN {} - invalid status",
+                    self.asn_id
+                )))
             }
             _ => Ok(()),
         }
@@ -124,46 +130,45 @@ impl CancelASNCommand {
         let asn_id = self.asn_id;
         let version = self.version;
         let reason = self.reason.clone();
-        
-        let result = db.transaction::<_, asn_entity::Model, DbErr>(|txn| {
-            Box::pin(async move {
-                let asn = ASN::find_by_id(asn_id)
-                    .one(txn)
-                    .await?
-                    .ok_or(DbErr::RecordNotFound(format!("ASN {} not found", asn_id)))?;
 
-                if asn.version != version {
-                    warn!("Concurrent modification detected for ASN {}", asn_id);
-                    return Err(DbErr::Custom("Concurrent modification detected".to_string()));
-                }
+        let result = db
+            .transaction::<_, asn_entity::Model, DbErr>(|txn| {
+                Box::pin(async move {
+                    let asn = ASN::find_by_id(asn_id)
+                        .one(txn)
+                        .await?
+                        .ok_or(DbErr::RecordNotFound(format!("ASN {} not found", asn_id)))?;
 
-                let mut asn: asn_entity::ActiveModel = asn.into();
-                asn.status = Set(ASNStatus::Cancelled);
-                asn.version = Set(version + 1);
-                asn.updated_at = Set(Utc::now());
+                    if asn.version != version {
+                        warn!("Concurrent modification detected for ASN {}", asn_id);
+                        return Err(DbErr::Custom(
+                            "Concurrent modification detected".to_string(),
+                        ));
+                    }
 
-                let updated_asn = asn
-                    .update(txn)
-                    .await?;
+                    let mut asn: asn_entity::ActiveModel = asn.into();
+                    asn.status = Set(ASNStatus::Cancelled);
+                    asn.version = Set(version + 1);
+                    asn.updated_at = Set(Utc::now());
 
-                // Add cancellation note
-                let new_note = asn_note_entity::ActiveModel {
-                    asn_id: Set(asn_id),
-                    note_type: Set(asn_note_entity::ASNNoteType::System),
-                    note_text: Set(reason),
-                    created_at: Set(Utc::now()),
-                    created_by: Set(None), // Could add user context if available
-                    ..Default::default()
-                };
+                    let updated_asn = asn.update(txn).await?;
 
-                new_note
-                    .insert(txn)
-                    .await?;
+                    // Add cancellation note
+                    let new_note = asn_note_entity::ActiveModel {
+                        asn_id: Set(asn_id),
+                        note_type: Set(asn_note_entity::ASNNoteType::System),
+                        note_text: Set(reason),
+                        created_at: Set(Utc::now()),
+                        created_by: Set(None), // Could add user context if available
+                        ..Default::default()
+                    };
 
-                Ok(updated_asn)
+                    new_note.insert(txn).await?;
+
+                    Ok(updated_asn)
+                })
             })
-        })
-        .await;
+            .await;
 
         result.map_err(|e| match e {
             sea_orm::TransactionError::Connection(db_err) => ASNError::DatabaseError(db_err),
@@ -199,9 +204,7 @@ impl CancelASNCommand {
         // Send supplier notification event if requested
         if self.notify_supplier {
             event_sender
-                .send(Event::ASNCancellationNotificationRequested(
-                    self.asn_id,
-                ))
+                .send(Event::ASNCancellationNotificationRequested(self.asn_id))
                 .await
                 .map_err(|e| {
                     ASN_CANCELLATION_FAILURES
@@ -216,4 +219,3 @@ impl CancelASNCommand {
         Ok(())
     }
 }
-

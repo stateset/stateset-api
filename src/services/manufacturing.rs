@@ -1,24 +1,24 @@
-use std::sync::Arc;
-use chrono::{Utc, NaiveDate};
+use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, TransactionTrait,
-    QueryFilter, ColumnTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
+use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
     entities::{
-        manufacturing_work_orders::{self, Entity as WorkOrderEntity},
         bom_header::{self, Entity as BomHeaderEntity},
         item_master::{self, Entity as ItemMasterEntity},
+        manufacturing_work_orders::{self, Entity as WorkOrderEntity},
     },
     errors::ServiceError,
-    services::{
-        inventory_sync::{InventorySyncService, TransactionType},
-        bom::BomService,
-    },
     events::{Event, EventSender},
+    services::{
+        bom::BomService,
+        inventory_sync::{InventorySyncService, TransactionType},
+    },
 };
 
 /// Manufacturing service for managing work orders and production
@@ -58,13 +58,13 @@ impl ManufacturingService {
         location_id: i32,
     ) -> Result<manufacturing_work_orders::Model, ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Verify item exists and has a BOM
         let item = ItemMasterEntity::find_by_id(item_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound(format!("Item {} not found", item_id)))?;
 
         // Find active BOM for the item
@@ -73,16 +73,22 @@ impl ManufacturingService {
             .filter(bom_header::Column::StatusCode.eq("ACTIVE"))
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("No active BOM found for item {}", item_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("No active BOM found for item {}", item_id))
+            })?;
 
         // Validate component availability
-        let availability = self.bom_service
+        let availability = self
+            .bom_service
             .validate_component_availability(bom.bom_id, quantity_to_build, location_id)
             .await?;
 
         if !availability.can_produce {
-            warn!("Insufficient components for work order: {:?}", availability.shortages);
+            warn!(
+                "Insufficient components for work order: {:?}",
+                availability.shortages
+            );
             // We'll create the work order but mark it as pending materials
         }
 
@@ -95,10 +101,10 @@ impl ManufacturingService {
             scheduled_completion_date: Set(Some(scheduled_completion_date)),
             actual_start_date: Set(None),
             actual_completion_date: Set(None),
-            status_code: Set(Some(if availability.can_produce { 
-                "READY".to_string() 
-            } else { 
-                "PENDING_MATERIALS".to_string() 
+            status_code: Set(Some(if availability.can_produce {
+                "READY".to_string()
+            } else {
+                "PENDING_MATERIALS".to_string()
             })),
             quantity_to_build: Set(Some(quantity_to_build)),
             quantity_completed: Set(Some(Decimal::ZERO)),
@@ -108,22 +114,26 @@ impl ManufacturingService {
 
         let created = work_order.insert(&txn).await.map_err(|e| {
             error!("Failed to create work order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::WorkOrderCreated {
-                work_order_id: created.work_order_id,
-                item_id,
-                quantity: quantity_to_build,
-            }).await;
+            let _ = sender
+                .send(Event::WorkOrderCreated {
+                    work_order_id: created.work_order_id,
+                    item_id,
+                    quantity: quantity_to_build,
+                })
+                .await;
         }
 
-        info!("Work order created: {} for item {} quantity {}", 
-            work_order_number, item_id, quantity_to_build);
+        info!(
+            "Work order created: {} for item {} quantity {}",
+            work_order_number, item_id, quantity_to_build
+        );
 
         Ok(created)
     }
@@ -136,27 +146,31 @@ impl ManufacturingService {
         location_id: i32,
     ) -> Result<manufacturing_work_orders::Model, ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Get work order
         let work_order = WorkOrderEntity::find_by_id(work_order_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Work order {} not found", work_order_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Work order {} not found", work_order_id))
+            })?;
 
         // Validate status
         if work_order.status_code != Some("READY".to_string()) {
-            return Err(ServiceError::InvalidOperation(
-                format!("Work order {} is not ready to start. Current status: {:?}", 
-                    work_order_id, work_order.status_code)
-            ));
+            return Err(ServiceError::InvalidOperation(format!(
+                "Work order {} is not ready to start. Current status: {:?}",
+                work_order_id, work_order.status_code
+            )));
         }
 
-        let item_id = work_order.item_id
+        let item_id = work_order
+            .item_id
             .ok_or_else(|| ServiceError::InvalidOperation("Work order has no item".to_string()))?;
-        let quantity = work_order.quantity_to_build
-            .ok_or_else(|| ServiceError::InvalidOperation("Work order has no quantity".to_string()))?;
+        let quantity = work_order.quantity_to_build.ok_or_else(|| {
+            ServiceError::InvalidOperation("Work order has no quantity".to_string())
+        })?;
 
         // Find BOM
         let bom = BomHeaderEntity::find()
@@ -164,8 +178,10 @@ impl ManufacturingService {
             .filter(bom_header::Column::StatusCode.eq("ACTIVE"))
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("No active BOM found for item {}", item_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("No active BOM found for item {}", item_id))
+            })?;
 
         // Consume components
         self.bom_service
@@ -180,17 +196,19 @@ impl ManufacturingService {
 
         let updated = active.update(&txn).await.map_err(|e| {
             error!("Failed to update work order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::WorkOrderStarted {
-                work_order_id,
-                item_id,
-            }).await;
+            let _ = sender
+                .send(Event::WorkOrderStarted {
+                    work_order_id,
+                    item_id,
+                })
+                .await;
         }
 
         info!("Work order {} started, components consumed", work_order_id);
@@ -207,24 +225,27 @@ impl ManufacturingService {
         location_id: i32,
     ) -> Result<manufacturing_work_orders::Model, ServiceError> {
         let db = &*self.db;
-        let txn = db.begin().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Get work order
         let work_order = WorkOrderEntity::find_by_id(work_order_id)
             .one(&txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Work order {} not found", work_order_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Work order {} not found", work_order_id))
+            })?;
 
         // Validate status
         if work_order.status_code != Some("IN_PROGRESS".to_string()) {
-            return Err(ServiceError::InvalidOperation(
-                format!("Work order {} is not in progress. Current status: {:?}", 
-                    work_order_id, work_order.status_code)
-            ));
+            return Err(ServiceError::InvalidOperation(format!(
+                "Work order {} is not in progress. Current status: {:?}",
+                work_order_id, work_order.status_code
+            )));
         }
 
-        let item_id = work_order.item_id
+        let item_id = work_order
+            .item_id
             .ok_or_else(|| ServiceError::InvalidOperation("Work order has no item".to_string()))?;
 
         // Add finished goods to inventory
@@ -246,33 +267,38 @@ impl ManufacturingService {
 
         let mut active: manufacturing_work_orders::ActiveModel = work_order.into();
         active.quantity_completed = Set(Some(total_completed));
-        
+
         if total_completed >= quantity_to_build {
             active.status_code = Set(Some("COMPLETED".to_string()));
             active.actual_completion_date = Set(Some(Utc::now().date_naive()));
         } else {
             active.status_code = Set(Some("PARTIALLY_COMPLETED".to_string()));
         }
-        
+
         active.updated_at = Set(Utc::now().into());
 
         let updated = active.update(&txn).await.map_err(|e| {
             error!("Failed to update work order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
-        txn.commit().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::WorkOrderCompleted {
-                work_order_id,
-                item_id,
-                quantity_completed: completed_quantity,
-            }).await;
+            let _ = sender
+                .send(Event::WorkOrderCompleted {
+                    work_order_id,
+                    item_id,
+                    quantity_completed: completed_quantity,
+                })
+                .await;
         }
 
-        info!("Work order {} completed with quantity {}", work_order_id, completed_quantity);
+        info!(
+            "Work order {} completed with quantity {}",
+            work_order_id, completed_quantity
+        );
 
         Ok(updated)
     }
@@ -284,16 +310,20 @@ impl ManufacturingService {
         work_order_id: i64,
     ) -> Result<WorkOrderStatus, ServiceError> {
         let db = &*self.db;
-        
+
         let work_order = WorkOrderEntity::find_by_id(work_order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Work order {} not found", work_order_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Work order {} not found", work_order_id))
+            })?;
 
         Ok(WorkOrderStatus {
             work_order_id,
-            status: work_order.status_code.unwrap_or_else(|| "UNKNOWN".to_string()),
+            status: work_order
+                .status_code
+                .unwrap_or_else(|| "UNKNOWN".to_string()),
             quantity_to_build: work_order.quantity_to_build.unwrap_or(Decimal::ZERO),
             quantity_completed: work_order.quantity_completed.unwrap_or(Decimal::ZERO),
             actual_start_date: work_order.actual_start_date,
@@ -303,22 +333,21 @@ impl ManufacturingService {
 
     /// Cancels a work order (if not started)
     #[instrument(skip(self))]
-    pub async fn cancel_work_order(
-        &self,
-        work_order_id: i64,
-    ) -> Result<(), ServiceError> {
+    pub async fn cancel_work_order(&self, work_order_id: i64) -> Result<(), ServiceError> {
         let db = &*self.db;
-        
+
         let work_order = WorkOrderEntity::find_by_id(work_order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Work order {} not found", work_order_id)))?;
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Work order {} not found", work_order_id))
+            })?;
 
         // Can only cancel if not started
         if work_order.actual_start_date.is_some() {
             return Err(ServiceError::InvalidOperation(
-                "Cannot cancel work order that has already started".to_string()
+                "Cannot cancel work order that has already started".to_string(),
             ));
         }
 
@@ -328,7 +357,7 @@ impl ManufacturingService {
 
         active.update(db).await.map_err(|e| {
             error!("Failed to cancel work order: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         info!("Work order {} cancelled", work_order_id);

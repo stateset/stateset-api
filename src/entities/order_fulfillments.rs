@@ -43,4 +43,4 @@ impl Related<super::sales_order_line::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {} 
+impl ActiveModelBehavior for ActiveModel {}

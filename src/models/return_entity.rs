@@ -1,13 +1,14 @@
 use chrono::NaiveDateTime;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "returns")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: String,
-    pub order_id: String,
+    pub id: Uuid,
+    pub order_id: Uuid,
     pub status: String,
     pub reason: String,
     pub created_at: NaiveDateTime,

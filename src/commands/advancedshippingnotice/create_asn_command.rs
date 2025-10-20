@@ -6,14 +6,13 @@ use crate::{
     models::{
         asn_entity::{self, Entity as ASN},
         asn_item_entity::{self, Entity as CreateASNItem},
-        asn_package_entity,
-        ASNStatus,
+        asn_package_entity, ASNStatus,
     },
 };
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -178,51 +177,58 @@ impl CreateASNCommand {
         let supplier_id = self.supplier_id;
         let supplier_name = self.supplier_name.clone();
         let expected_delivery_date = self.expected_delivery_date;
-        let shipping_address = format!("{}, {}, {} {}", self.shipping_address.street, self.shipping_address.city, self.shipping_address.state, self.shipping_address.postal_code);
+        let shipping_address = format!(
+            "{}, {}, {} {}",
+            self.shipping_address.street,
+            self.shipping_address.city,
+            self.shipping_address.state,
+            self.shipping_address.postal_code
+        );
         let items = self.items.clone();
-        
-        let result = db.transaction::<_, asn_entity::Model, DbErr>(|txn| {
-            Box::pin(async move {
-                let new_asn = asn_entity::ActiveModel {
-                    asn_number: Set(format!("ASN-{}", Uuid::new_v4())),
-                    supplier_id: Set(supplier_id),
-                    supplier_name: Set(supplier_name),
-                    status: Set(ASNStatus::Draft),
-                    expected_delivery_date: Set(expected_delivery_date),
-                    shipping_address: Set(shipping_address),
-                    created_at: Set(Utc::now()),
-                    updated_at: Set(Utc::now()),
-                    version: Set(1),
-                    ..Default::default()
-                };
 
-                let saved_asn = new_asn.insert(txn).await?;
-
-                // Skip packages for now - not implemented in model
-
-                // Save items
-                for item in &items {
-                    let new_item = asn_item_entity::ActiveModel {
-                        asn_id: Set(saved_asn.id),
-                        product_id: Set(item.product_id),
-                        product_name: Set(item.product_name.clone()),
-                        product_sku: Set(item.product_sku.clone()),
-                        quantity_expected: Set(item.quantity),
-                        quantity_received: Set(0), // Initially 0
-                        unit_price: Set(item.unit_price),
+        let result = db
+            .transaction::<_, asn_entity::Model, DbErr>(|txn| {
+                Box::pin(async move {
+                    let new_asn = asn_entity::ActiveModel {
+                        asn_number: Set(format!("ASN-{}", Uuid::new_v4())),
+                        supplier_id: Set(supplier_id),
+                        supplier_name: Set(supplier_name),
+                        status: Set(ASNStatus::Draft),
+                        expected_delivery_date: Set(expected_delivery_date),
+                        shipping_address: Set(shipping_address),
+                        created_at: Set(Utc::now()),
+                        updated_at: Set(Utc::now()),
+                        version: Set(1),
                         ..Default::default()
                     };
-                    new_item.insert(txn).await?;
-                }
 
-                Ok(saved_asn)
+                    let saved_asn = new_asn.insert(txn).await?;
+
+                    // Skip packages for now - not implemented in model
+
+                    // Save items
+                    for item in &items {
+                        let new_item = asn_item_entity::ActiveModel {
+                            asn_id: Set(saved_asn.id),
+                            product_id: Set(item.product_id),
+                            product_name: Set(item.product_name.clone()),
+                            product_sku: Set(item.product_sku.clone()),
+                            quantity_expected: Set(item.quantity),
+                            quantity_received: Set(0), // Initially 0
+                            unit_price: Set(item.unit_price),
+                            ..Default::default()
+                        };
+                        new_item.insert(txn).await?;
+                    }
+
+                    Ok(saved_asn)
+                })
             })
-        })
-        .await;
-        
+            .await;
+
         result.map_err(|e| match e {
-            sea_orm::TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
-            sea_orm::TransactionError::Transaction(db_err) => ServiceError::DatabaseError(db_err),
+            sea_orm::TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
+            sea_orm::TransactionError::Transaction(db_err) => ServiceError::db_error(db_err),
         })
     }
 

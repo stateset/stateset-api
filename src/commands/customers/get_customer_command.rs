@@ -32,7 +32,7 @@ impl Command for GetCustomerCommand {
         let customer = Customer::find_by_id(self.id).one(db).await.map_err(|e| {
             let msg = format!("Failed to get customer: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(msg)
+            ServiceError::db_error(msg)
         })?;
 
         info!("Fetched customer: {}", self.id);

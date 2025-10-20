@@ -9,16 +9,16 @@ use crate::{
     },
     commands::Command,
     db::DbPool,
+    entities::warranty,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::warranty,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use redis::Client as RedisClient;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use slog::Logger;
 use std::sync::Arc;
@@ -67,7 +67,14 @@ impl WarrantyService {
             .await?;
         // Outbox: WarrantyCreated
         let payload = serde_json::json!({"warranty_id": result.to_string()});
-        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(result), "WarrantyCreated", &payload).await;
+        let _ = crate::events::outbox::enqueue(
+            &*self.db_pool,
+            "warranty",
+            Some(result),
+            "WarrantyCreated",
+            &payload,
+        )
+        .await;
         Ok(result)
     }
 
@@ -82,7 +89,14 @@ impl WarrantyService {
             .await?;
         // Outbox: WarrantyClaimed
         let payload = serde_json::json!({"warranty_id": result.to_string()});
-        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(result), "WarrantyClaimed", &payload).await;
+        let _ = crate::events::outbox::enqueue(
+            &*self.db_pool,
+            "warranty",
+            Some(result),
+            "WarrantyClaimed",
+            &payload,
+        )
+        .await;
         Ok(result)
     }
 
@@ -96,8 +110,15 @@ impl WarrantyService {
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
         // Outbox: WarrantyClaimApproved
-        let payload = serde_json::json!({"warranty_id": command.warranty_id.to_string(), "claim_id": command.claim_id.to_string()});
-        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(command.warranty_id), "WarrantyClaimApproved", &payload).await;
+        let payload = serde_json::json!({"claim_id": command.claim_id.to_string()});
+        let _ = crate::events::outbox::enqueue(
+            &*self.db_pool,
+            "warranty",
+            Some(command.claim_id),
+            "WarrantyClaimApproved",
+            &payload,
+        )
+        .await;
         Ok(())
     }
 
@@ -111,8 +132,15 @@ impl WarrantyService {
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
         // Outbox: WarrantyClaimRejected
-        let payload = serde_json::json!({"warranty_id": command.warranty_id.to_string(), "claim_id": command.claim_id.to_string()});
-        let _ = crate::events::outbox::enqueue(&*self.db_pool, "warranty", Some(command.warranty_id), "WarrantyClaimRejected", &payload).await;
+        let payload = serde_json::json!({"claim_id": command.claim_id.to_string()});
+        let _ = crate::events::outbox::enqueue(
+            &*self.db_pool,
+            "warranty",
+            Some(command.claim_id),
+            "WarrantyClaimRejected",
+            &payload,
+        )
+        .await;
         Ok(())
     }
 
@@ -133,12 +161,12 @@ impl WarrantyService {
         &self,
         product_id: &Uuid,
     ) -> Result<Vec<warranty::Model>, ServiceError> {
-        let db = &*self.db_pool;
+        let db = self.db_pool.as_ref();
         let warranties = warranty::Entity::find()
-            .filter(warranty::Column::OrderId.eq(*product_id)) // Assuming product linked via order
+            .filter(warranty::Column::ProductId.eq(*product_id))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(warranties)
     }
@@ -149,15 +177,15 @@ impl WarrantyService {
         &self,
         customer_id: &Uuid,
     ) -> Result<Vec<warranty::Model>, ServiceError> {
-        let db = &*self.db_pool;
+        let db = self.db_pool.as_ref();
         let now = Utc::now();
 
         let warranties = warranty::Entity::find()
             .filter(warranty::Column::CustomerId.eq(*customer_id))
-            .filter(warranty::Column::CreatedDate.lt(now))
+            .filter(warranty::Column::EndDate.gte(now))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(warranties)
     }
@@ -169,41 +197,42 @@ impl WarrantyService {
         product_id: &Uuid,
         serial_number: &str,
     ) -> Result<bool, ServiceError> {
-        let db = &*self.db_pool;
-        let now = Utc::now();
+        let db = self.db_pool.as_ref();
+        let _ = serial_number;
 
         let warranty_exists = warranty::Entity::find()
-            .filter(warranty::Column::OrderId.eq(*product_id))
-            .count(db) // Remove EndDate
+            .filter(warranty::Column::ProductId.eq(*product_id))
+            .filter(warranty::Column::Status.eq("active"))
+            .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(warranty_exists > 0)
     }
 
-    pub async fn list_warranties(&self, page: u64, limit: u64) -> Result<(Vec<warranty::Model>, u64), ServiceError> {
+    pub async fn list_warranties(
+        &self,
+        page: u64,
+        limit: u64,
+    ) -> Result<(Vec<warranty::Model>, u64), ServiceError> {
+        let db = self.db_pool.as_ref();
+        let total = warranty::Entity::find()
+            .count(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))? as u64;
 
-        let db = &*self.db_pool;
-
-        let total = warranty::Entity::find().count(db).await.map_err(|e| ServiceError::DatabaseError(e))? as u64;
+        let offset = page.saturating_sub(1) * limit;
 
         let warranties = warranty::Entity::find()
-
-            .order_by_desc(warranty::Column::CreatedDate)
-
-            .offset((page - 1) * limit)
-
+            .order_by_desc(warranty::Column::CreatedAt)
+            .offset(offset)
             .limit(limit)
-
             .all(db)
-
             .await
-
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((warranties, total))
     }
-
 }
 
 #[cfg(test)]

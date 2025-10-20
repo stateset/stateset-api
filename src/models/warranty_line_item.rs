@@ -69,7 +69,8 @@ impl Model {
             created_at: now,
             updated_at: now,
         };
-        item.validate().map_err(|_| ValidationError::new("Warranty line item validation failed"))?;
+        item.validate()
+            .map_err(|_| ValidationError::new("Warranty line item validation failed"))?;
         Ok(item)
     }
 }

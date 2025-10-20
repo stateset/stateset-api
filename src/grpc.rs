@@ -283,123 +283,39 @@ impl InventoryService for InventoryGrpcService {
         &self,
         request: Request<UpdateInventoryRequest>,
     ) -> Result<Response<UpdateInventoryResponse>, Status> {
-        let req = request.into_inner();
-        let product_id = Uuid::parse_str(&req.product_id)
-            .map_err(|_| Status::invalid_argument("invalid product_id"))?;
-        
-        // Fix Option::parse_str usage
-        let warehouse_id = if req.warehouse_id.is_empty() {
-            None
-        } else {
-            Some(req.warehouse_id.clone())
-        };
-
-        let cmd = crate::commands::inventory::adjust_inventory_command::AdjustInventoryCommand {
-            product_id,
-            location_id: warehouse_id,
-            adjustment_quantity: req.quantity_change,
-            reason_code: req.reason,
-            notes: None,
-            lot_number: None,
-            reference_number: None,
-            version: 0,
-        };
-
-        self.svc
-            .adjust_inventory(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(UpdateInventoryResponse {
-            product_id: req.product_id,
-            new_quantity: 0,
-            warehouse_id: req.warehouse_id,
-        }))
+        let _ = request;
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 
     async fn get_inventory(
         &self,
         request: Request<GetInventoryRequest>,
     ) -> Result<Response<GetInventoryResponse>, Status> {
-        let req = request.into_inner();
-        let product_id = Uuid::parse_str(&req.product_id)
-            .map_err(|_| Status::invalid_argument("invalid product_id"))?;
-        let warehouse_id = Uuid::parse_str(&req.warehouse_id)
-            .map_err(|_| Status::invalid_argument("invalid warehouse_id"))?;
-
-        let item = self
-            .svc
-            .get_inventory(&product_id, &warehouse_id)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        if let Some(i) = item {
-            let resp = InventoryItem {
-                product_id: product_id.to_string(), // Use the parameter instead
-                quantity: i.available, // Use available field as quantity
-                warehouse_id: warehouse_id.to_string(), // Use the parameter instead
-                location: String::new(),
-                last_updated: None, // No last_updated field, use None
-            };
-            Ok(Response::new(GetInventoryResponse {
-                item: Some(resp),
-            }))
-        } else {
-            Err(Status::not_found("inventory not found"))
-        }
+        let _ = request;
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 
     async fn list_inventory(
         &self,
         _request: Request<ListInventoryRequest>,
     ) -> Result<Response<ListInventoryResponse>, Status> {
-        Ok(Response::new(ListInventoryResponse {
-            items: vec![],
-            pagination: None,
-        }))
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 
     async fn reserve_inventory(
         &self,
         request: Request<ReserveInventoryRequest>,
     ) -> Result<Response<ReserveInventoryResponse>, Status> {
-        let req = request.into_inner();
-        let product_id = Uuid::parse_str(&req.product_id)
-            .map_err(|_| Status::invalid_argument("invalid product_id"))?;
-        let cmd = crate::commands::inventory::reserve_inventory_command::ReserveInventoryCommand {
-            warehouse_id: String::new(),
-            reference_id: Uuid::parse_str(&req.order_id).unwrap_or_default(),
-            reference_type: "ORDER".to_string(),
-            items: vec![
-                crate::commands::inventory::reserve_inventory_command::ReservationRequest {
-                    product_id,
-                    quantity: req.quantity,
-                    lot_numbers: None,
-                    location_id: None,
-                    substitutes: None,
-                },
-            ],
-            reservation_type:
-                crate::commands::inventory::reserve_inventory_command::ReservationType::SalesOrder,
-            duration_days: None,
-            priority: None,
-            notes: None,
-            reservation_strategy:
-                crate::commands::inventory::reserve_inventory_command::ReservationStrategy::Strict,
-        };
-
-        // The return type of reserve_inventory is Result<(), ServiceError>
-        // So we can't access fields of the result
-        self.svc
-            .reserve_inventory(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        // Since we can't access the result fields, we'll just return a generic response
-        Ok(Response::new(ReserveInventoryResponse {
-            success: true,
-            reservation_id: req.order_id.clone(),
-        }))
+        let _ = request;
+        Err(Status::unimplemented(
+            "Inventory gRPC handlers are not implemented in this server",
+        ))
     }
 }
 
@@ -411,30 +327,11 @@ pub struct ReturnGrpcService {
 impl ReturnService for ReturnGrpcService {
     async fn create_return(
         &self,
-        request: Request<CreateReturnRequest>,
+        _request: Request<CreateReturnRequest>,
     ) -> Result<Response<CreateReturnResponse>, Status> {
-        let ret = request
-            .into_inner()
-            .r#return
-            .ok_or_else(|| Status::invalid_argument("return missing"))?;
-
-        let order_id = Uuid::parse_str(&ret.order_id)
-            .map_err(|_| Status::invalid_argument("invalid order_id"))?;
-        // let cmd = crate::commands::returns::create_return_command::InitiateReturnCommand {
-            order_id,
-            reason: ret.reason.clone(),
-        };
-
-        let id = self
-            .svc
-            .create_return(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(CreateReturnResponse {
-            return_id: id.to_string(),
-            status: ReturnStatus::Requested as i32,
-        }))
+        Err(Status::unimplemented(
+            "Return creation is not yet implemented",
+        ))
     }
 
     async fn get_return(
@@ -470,49 +367,11 @@ impl ReturnService for ReturnGrpcService {
 
     async fn update_return_status(
         &self,
-        request: Request<UpdateReturnStatusRequest>,
+        _request: Request<UpdateReturnStatusRequest>,
     ) -> Result<Response<UpdateReturnStatusResponse>, Status> {
-        let req = request.into_inner();
-        let return_id = Uuid::parse_str(&req.return_id)
-            .map_err(|_| Status::invalid_argument("invalid return_id"))?;
-        // Map new_status to command
-        match ReturnStatus::try_from(req.new_status) {
-            Ok(ReturnStatus::Approved) => {
-                let cmd =
-                    // crate::commands::returns::approve_return_command::ApproveReturnCommand { return_id };
-                self.svc
-                    .approve_return(cmd)
-                    .await
-                    .map_err(|e| Status::internal(e.to_string()))?;
-            }
-            Ok(ReturnStatus::Rejected) => {
-                let cmd =
-                    // crate::commands::returns::reject_return_command::RejectReturnCommand { return_id }; // reason is missing
-                self.svc
-                    .reject_return(cmd)
-                    .await
-                    .map_err(|e| Status::internal(e.to_string()))?;
-            }
-            Ok(ReturnStatus::Received) => {
-                let cmd =
-                    // crate::commands::returns::complete_return_command::CompleteReturnCommand { return_id }; //  missing `completed_by`, `metadata` and `notes`
-                self.svc
-                    .complete_return(cmd)
-                    .await
-                    .map_err(|e| Status::internal(e.to_string()))?;
-            }
-            Err(_) => {
-                return Err(Status::invalid_argument("Invalid return status"));
-            }
-            _ => {
-                return Err(Status::invalid_argument("Unsupported return status"));
-            }
-        }
-
-        Ok(Response::new(UpdateReturnStatusResponse {
-            return_id: req.return_id,
-            status: req.new_status,
-        }))
+        Err(Status::unimplemented(
+            "Return status updates are not yet implemented",
+        ))
     }
 
     async fn list_returns(
@@ -534,44 +393,11 @@ pub struct ShipmentGrpcService {
 impl ShipmentService for ShipmentGrpcService {
     async fn create_shipment(
         &self,
-        request: Request<CreateShipmentRequest>,
+        _request: Request<CreateShipmentRequest>,
     ) -> Result<Response<CreateShipmentResponse>, Status> {
-        let shipment = request
-            .into_inner()
-            .shipment
-            .ok_or_else(|| Status::invalid_argument("shipment missing"))?;
-
-        let order_id = Uuid::parse_str(&shipment.order_id)
-            .map_err(|_| Status::invalid_argument("invalid order_id"))?;
-        // let cmd = crate::commands::shipments::create_shipment_command::CreateShipmentCommand {
-            order_id,
-            recipient_name: "Recipient".to_string(),
-            shipping_address: shipment
-                .shipping_address
-                .as_ref()
-                .map(|a| a.street_line1.clone())
-                .unwrap_or_default(),
-            carrier: if shipment.carrier.is_empty() {
-                None
-            } else {
-                Some(shipment.carrier.clone())
-            },
-            tracking_number: if shipment.tracking_number.is_empty() {
-                None
-            } else {
-                Some(shipment.tracking_number.clone())
-            },
-        };
-
-        let id = self
-            .svc
-            .create_shipment(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(CreateShipmentResponse {
-            shipment_id: id.to_string(),
-        }))
+        Err(Status::unimplemented(
+            "Shipment service not yet implemented",
+        ))
     }
 
     async fn get_shipment(
@@ -609,39 +435,11 @@ impl ShipmentService for ShipmentGrpcService {
 
     async fn update_shipment_status(
         &self,
-        request: Request<UpdateShipmentStatusRequest>,
+        _request: Request<UpdateShipmentStatusRequest>,
     ) -> Result<Response<UpdateShipmentStatusResponse>, Status> {
-        let req = request.into_inner();
-        let shipment_id: i32 = req
-            .shipment_id
-            .parse()
-            .map_err(|_| Status::invalid_argument("invalid shipment_id"))?;
-
-        let status = match req.new_status.as_str() {
-            "ReadyToShip" => crate::models::shipment::ShipmentStatus::ReadyToShip,
-            "Shipped" => crate::models::shipment::ShipmentStatus::Shipped,
-            "InTransit" => crate::models::shipment::ShipmentStatus::InTransit,
-            "OutForDelivery" => crate::models::shipment::ShipmentStatus::OutForDelivery,
-            "Delivered" => crate::models::shipment::ShipmentStatus::Delivered,
-            "Failed" => crate::models::shipment::ShipmentStatus::Failed,
-            "Returned" => crate::models::shipment::ShipmentStatus::Returned,
-            "Cancelled" => crate::models::shipment::ShipmentStatus::Cancelled,
-            _ => crate::models::shipment::ShipmentStatus::Processing,
-        };
-        // let cmd = crate::commands::shipments::update_shipment_command::UpdateShipmentStatusCommand {
-            shipment_id,
-            new_status: status,
-        };
-
-        self.svc
-            .update_shipment(cmd)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(UpdateShipmentStatusResponse {
-            shipment_id: req.shipment_id,
-            status: req.new_status,
-        }))
+        Err(Status::unimplemented(
+            "Shipment status updates not yet implemented",
+        ))
     }
 
     async fn list_shipments(

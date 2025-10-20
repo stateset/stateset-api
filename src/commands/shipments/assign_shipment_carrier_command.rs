@@ -1,9 +1,8 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
-    events::{Event, EventSender},
     db::DbPool,
     errors::ServiceError,
+    events::{Event, EventSender},
     models::shipment::{self, Entity as Shipment, ShippingCarrier},
 };
 use async_trait::async_trait;
@@ -11,11 +10,12 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Quer
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct AssignShipmentCarrierCommand {
-    pub shipment_id: i32,
+    pub shipment_id: Uuid,
 
     #[validate(length(min = 1))]
     pub carrier_name: String, // Name of the shipping carrier
@@ -34,8 +34,18 @@ impl Command for AssignShipmentCarrierCommand {
         let db = db_pool.clone();
         let updated_shipment = self.assign_carrier(&db).await?;
         // Outbox enqueue (string id)
-        let payload = serde_json::json!({"shipment_id": self.shipment_id, "carrier": self.carrier_name});
-        let _ = crate::events::outbox::enqueue(&*db, "shipment", None, "CarrierAssignedToShipment", &payload).await;
+        let payload = serde_json::json!({
+            "shipment_id": self.shipment_id.to_string(),
+            "carrier": self.carrier_name
+        });
+        let _ = crate::events::outbox::enqueue(
+            &*db,
+            "shipment",
+            None,
+            "CarrierAssignedToShipment",
+            &payload,
+        )
+        .await;
 
         self.log_and_trigger_event(event_sender, &updated_shipment)
             .await?;
@@ -54,7 +64,7 @@ impl AssignShipmentCarrierCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find shipment: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Shipment ID {} not found", self.shipment_id);
@@ -71,10 +81,10 @@ impl AssignShipmentCarrierCommand {
             _ => ShippingCarrier::Other,
         };
         shipment_active_model.carrier = Set(carrier);
-        
+
         let updated_shipment = shipment_active_model.update(db).await.map_err(|e| {
             error!("Failed to assign carrier: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(updated_shipment)
@@ -90,7 +100,10 @@ impl AssignShipmentCarrierCommand {
             self.shipment_id, self.carrier_name
         );
         event_sender
-            .send(Event::ShipmentUpdated(Uuid::new_v4())) // Convert i32 to UUID or use proper event
+            .send(Event::CarrierAssignedToShipment(
+                shipment.id,
+                self.carrier_name.clone(),
+            ))
             .await
             .map_err(|e| {
                 error!(

@@ -66,7 +66,7 @@ impl RemoveComponentFromBOMCommand {
                     "Failed to remove component {} from BOM ID {}: {}",
                     self.component_id, self.bom_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         Ok(())
     }

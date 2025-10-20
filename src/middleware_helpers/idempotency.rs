@@ -20,10 +20,14 @@ impl Default for IdempotencyStore {
 }
 
 impl IdempotencyStore {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
     pub fn get(&self, key: &str, ttl: Duration) -> Option<StoredResponse> {
         if let Some(sr) = self.0.get(key) {
-            if sr.stored_at.elapsed() < ttl { return Some(sr.clone()); }
+            if sr.stored_at.elapsed() < ttl {
+                return Some(sr.clone());
+            }
         }
         None
     }
@@ -32,7 +36,8 @@ impl IdempotencyStore {
     }
     pub fn cleanup(&self, ttl: Duration) {
         let now = Instant::now();
-        self.0.retain(|_, sr| now.duration_since(sr.stored_at) < ttl);
+        self.0
+            .retain(|_, sr| now.duration_since(sr.stored_at) < ttl);
     }
 }
 
@@ -54,13 +59,16 @@ pub async fn idempotency_middleware(mut req: Request, next: Next) -> Response {
     let method = req.method().clone();
     let is_mutating = matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE");
 
-    if !is_mutating { return next.run(req).await; }
+    if !is_mutating {
+        return next.run(req).await;
+    }
 
     let Some(key) = req
         .headers()
         .get(HEADER)
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.trim().to_string()) else {
+        .map(|s| s.trim().to_string())
+    else {
         return next.run(req).await;
     };
 
@@ -78,7 +86,8 @@ pub async fn idempotency_middleware(mut req: Request, next: Next) -> Response {
         let mut resp = Response::new(axum::body::Body::from(stored.body.clone()));
         *resp.status_mut() = stored.status;
         if let Some(ct) = stored.content_type.clone() {
-            resp.headers_mut().insert(HeaderName::from_static("content-type"), ct);
+            resp.headers_mut()
+                .insert(HeaderName::from_static("content-type"), ct);
         }
         return resp;
     }

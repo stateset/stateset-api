@@ -1,19 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use stateset_api::{
-        handlers::customers::*,
-        services::commerce::customer_service::*,
-        AppState,
-    };
     use axum::{
         body::Body,
         http::{Request, StatusCode},
         routing::post,
         Router,
     };
-    use tower::ServiceExt;
     use serde_json::json;
+    use stateset_api::{handlers::customers::*, services::commerce::customer_service::*, AppState};
     use std::sync::Arc;
+    use tower::ServiceExt;
 
     #[tokio::test]
     async fn test_customer_registration_flow() {
@@ -30,8 +26,9 @@ mod tests {
         });
 
         // Parse the request
-        let register_request: RegisterCustomerRequest = serde_json::from_value(request_body).unwrap();
-        
+        let register_request: RegisterCustomerRequest =
+            serde_json::from_value(request_body).unwrap();
+
         // Validate the request
         assert!(register_request.validate().is_ok());
         assert_eq!(register_request.email, "test@example.com");
@@ -42,7 +39,7 @@ mod tests {
     #[tokio::test]
     async fn test_payment_request_validation() {
         use stateset_api::services::payments::*;
-        
+
         let payment_request = ProcessPaymentRequest {
             order_id: uuid::Uuid::new_v4(),
             amount: rust_decimal::Decimal::new(10000, 2), // $100.00
@@ -61,7 +58,7 @@ mod tests {
     #[tokio::test]
     async fn test_order_creation_request() {
         use stateset_api::handlers::orders::*;
-        
+
         let request_body = json!({
             "customer_id": "550e8400-e29b-41d4-a716-446655440000",
             "items": [
@@ -81,7 +78,7 @@ mod tests {
 
         // Parse the request
         let create_request: CreateOrderRequest = serde_json::from_value(request_body).unwrap();
-        
+
         // Validate the request
         assert!(create_request.validate().is_ok());
         assert_eq!(create_request.items.len(), 1);

@@ -1,8 +1,8 @@
 // Re-enabling all handler modules after implementing them
 pub mod auth;
 pub mod common;
-pub mod orders;
 pub mod inventory;
+pub mod orders;
 pub mod returns;
 pub mod shipments;
 pub mod warranties;
@@ -11,16 +11,16 @@ pub mod work_orders;
 // pub mod bom; // Disabled due to missing service dependencies
 pub mod cash_sales;
 pub mod customers;
-pub mod payments;
-pub mod payment_webhooks;
 pub mod notifications;
+pub mod payment_webhooks;
+pub mod payments;
 // pub mod purchase_orders; // Disabled due to missing service dependencies
 // pub mod reports; // Disabled due to missing service dependencies
 // pub mod suppliers; // Disabled due to missing service dependencies
-pub mod users;
-pub mod commerce;
 pub mod agents;
+pub mod commerce;
 pub mod outbox_admin;
+pub mod users;
 
 use crate::events::EventSender;
 use crate::message_queue::{InMemoryMessageQueue, MessageQueue};
@@ -42,7 +42,7 @@ pub struct AppServices {
     pub agentic_checkout: Arc<crate::services::commerce::AgenticCheckoutService>,
     pub customer: Arc<crate::services::commerce::CustomerService>,
     pub order: Arc<crate::services::orders::OrderService>,
-    // pub cash_sales: Arc<crate::services::cash_sale::CashSaleService>,
+    pub cash_sales: Arc<crate::services::cash_sale::CashSaleService>,
     // pub reports: Arc<crate::services::reports::ReportService>,
 }
 
@@ -87,14 +87,18 @@ impl AppServices {
             cache,
             event_sender.clone(),
         ));
+        let cash_sales = Arc::new(crate::services::cash_sale::CashSaleService::new(
+            db_pool.clone(),
+        ));
 
-        Self { 
-            product_catalog, 
-            cart, 
-            checkout, 
+        Self {
+            product_catalog,
+            cart,
+            checkout,
             agentic_checkout,
-            customer, 
-            order: order_service 
+            customer,
+            order: order_service,
+            cash_sales,
         }
     }
 }

@@ -45,7 +45,7 @@ impl Query for GetInventoryItemQuery {
             .filter(<crate::models::inventory_item_entity::Entity as sea_orm::EntityTrait>::Column::ProductId.eq(self.product_id))
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Inventory item not found".to_string()))
     }
 }
@@ -65,7 +65,7 @@ impl Query for GetInventoryItemByProductQuery {
             .filter(crate::models::inventory_item_entity::Column::ProductId.eq(self.product_id))
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Inventory item not found".to_string()))
     }
 }
@@ -91,7 +91,7 @@ impl Query for GetLowStockItemsQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -127,7 +127,7 @@ impl Query for GetInventoryValueQuery {
             .into_tuple::<(Option<f64>, Option<i64>)>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         match result {
             Some((total_value, total_items)) => Ok(InventoryValue {
@@ -163,7 +163,7 @@ impl Query for GetInventoryMovementsQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -214,7 +214,7 @@ impl Query for GetTopSellingProductsQuery {
             .into_model::<TopSellingProduct>()
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(results)
     }
@@ -251,7 +251,7 @@ impl Query for GetInventoryTurnoverRatioQuery {
             .into_tuple::<Option<rust_decimal::Decimal>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let avg_inventory_value = avg_inventory_result
             .flatten()
@@ -273,7 +273,7 @@ impl Query for GetInventoryTurnoverRatioQuery {
             .into_tuple::<Option<f64>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let cost_of_goods_sold = cogs_result.flatten().unwrap_or(0.0);
 
@@ -319,7 +319,7 @@ impl Query for GetInventoryForecastQuery {
             .into_tuple::<i32>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let current_stock = current_stock_result.unwrap_or(0);
 
@@ -338,7 +338,7 @@ impl Query for GetInventoryForecastQuery {
             .into_tuple::<Option<i64>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let total_sold = total_sold_result.flatten().unwrap_or(0) as i32;
         let average_daily_demand = total_sold as f64 / self.forecast_period as f64;
@@ -381,7 +381,7 @@ impl Query for GetAverageInventoryValueQuery {
             .into_tuple::<Option<rust_decimal::Decimal>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(avg_value.flatten().map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0))
     }
@@ -414,7 +414,7 @@ impl Query for GetCostOfGoodsSoldQuery {
             .into_tuple::<Option<f64>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok(cogs.flatten().unwrap_or(0.0))
     }
@@ -451,7 +451,7 @@ impl Query for ForecastDemandQuery {
             .into_tuple()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let avg_daily_sales: Option<f64> = OrderItem::find()
             .inner_join(Order)
@@ -467,7 +467,7 @@ impl Query for ForecastDemandQuery {
             .into_tuple()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .flatten();
 
         let forecasted_demand = (avg_daily_sales.unwrap_or(0.0) * self.days_ahead as f64).round() as i32;

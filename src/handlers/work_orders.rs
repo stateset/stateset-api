@@ -8,9 +8,9 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
 use serde_json::json;
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 // Generic trait for work orders handler state
@@ -130,19 +130,27 @@ pub struct WorkOrderFilters {
 }
 
 /// Create the work orders router
-pub fn work_orders_router<S>() -> Router<S> 
-where 
+pub fn work_orders_router<S>() -> Router<S>
+where
     S: WorkOrdersAppState,
 {
     Router::new()
         .route("/", get(list_work_orders::<S>).post(create_work_order::<S>))
-        .route("/{id}", get(get_work_order::<S>).put(update_work_order::<S>).delete(delete_work_order::<S>))
+        .route(
+            "/{id}",
+            get(get_work_order::<S>)
+                .put(update_work_order::<S>)
+                .delete(delete_work_order::<S>),
+        )
         .route("/{id}/schedule", post(schedule_work_order::<S>))
         .route("/{id}/start", post(start_work_order::<S>))
         .route("/{id}/complete", post(complete_work_order::<S>))
         .route("/{id}/hold", post(hold_work_order::<S>))
         .route("/{id}/cancel", post(cancel_work_order::<S>))
-        .route("/{id}/materials/{material_id}/consume", post(consume_material::<S>))
+        .route(
+            "/{id}/materials/{material_id}/consume",
+            post(consume_material::<S>),
+        )
         .route("/{id}/tasks/{task_id}", put(update_task::<S>))
         .route("/capacity/:work_center_id", get(get_capacity::<S>))
 }
@@ -169,8 +177,8 @@ where
 pub async fn list_work_orders<S>(
     State(_state): State<S>,
     Query(filters): Query<WorkOrderFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     // Mock data for now - replace with actual database queries
@@ -191,33 +199,29 @@ where
             actual_end: None,
             estimated_hours: Some(8.0),
             actual_hours: Some(2.0),
-            materials: vec![
-                WorkOrderMaterial {
-                    id: "wom_001".to_string(),
-                    material_id: "mat_001".to_string(),
-                    material_name: "Steel Frame".to_string(),
-                    required_quantity: 100.0,
-                    allocated_quantity: 100.0,
-                    consumed_quantity: 50.0,
-                    unit_of_measure: "pieces".to_string(),
-                    cost_per_unit: Some(15.50),
-                }
-            ],
-            tasks: vec![
-                WorkOrderTask {
-                    id: "wot_001".to_string(),
-                    task_name: "Assembly".to_string(),
-                    description: Some("Assemble main frame".to_string()),
-                    sequence: 1,
-                    status: "in_progress".to_string(),
-                    estimated_hours: Some(4.0),
-                    actual_hours: Some(2.0),
-                    assigned_to: Some("worker_001".to_string()),
-                    started_at: Some(Utc::now() - chrono::Duration::hours(2)),
-                    completed_at: None,
-                    notes: None,
-                }
-            ],
+            materials: vec![WorkOrderMaterial {
+                id: "wom_001".to_string(),
+                material_id: "mat_001".to_string(),
+                material_name: "Steel Frame".to_string(),
+                required_quantity: 100.0,
+                allocated_quantity: 100.0,
+                consumed_quantity: 50.0,
+                unit_of_measure: "pieces".to_string(),
+                cost_per_unit: Some(15.50),
+            }],
+            tasks: vec![WorkOrderTask {
+                id: "wot_001".to_string(),
+                task_name: "Assembly".to_string(),
+                description: Some("Assemble main frame".to_string()),
+                sequence: 1,
+                status: "in_progress".to_string(),
+                estimated_hours: Some(4.0),
+                actual_hours: Some(2.0),
+                assigned_to: Some("worker_001".to_string()),
+                started_at: Some(Utc::now() - chrono::Duration::hours(2)),
+                completed_at: None,
+                notes: None,
+            }],
             notes: Some("High priority customer order".to_string()),
             created_at: Utc::now() - chrono::Duration::days(1),
             updated_at: Utc::now() - chrono::Duration::hours(1),
@@ -238,18 +242,16 @@ where
             actual_end: None,
             estimated_hours: Some(8.0),
             actual_hours: None,
-            materials: vec![
-                WorkOrderMaterial {
-                    id: "wom_002".to_string(),
-                    material_id: "mat_002".to_string(),
-                    material_name: "Paint - Blue".to_string(),
-                    required_quantity: 10.0,
-                    allocated_quantity: 10.0,
-                    consumed_quantity: 0.0,
-                    unit_of_measure: "liters".to_string(),
-                    cost_per_unit: Some(25.00),
-                }
-            ],
+            materials: vec![WorkOrderMaterial {
+                id: "wom_002".to_string(),
+                material_id: "mat_002".to_string(),
+                material_name: "Paint - Blue".to_string(),
+                required_quantity: 10.0,
+                allocated_quantity: 10.0,
+                consumed_quantity: 0.0,
+                unit_of_measure: "liters".to_string(),
+                cost_per_unit: Some(25.00),
+            }],
             tasks: vec![
                 WorkOrderTask {
                     id: "wot_002".to_string(),
@@ -276,7 +278,7 @@ where
                     started_at: None,
                     completed_at: None,
                     notes: None,
-                }
+                },
             ],
             notes: None,
             created_at: Utc::now() - chrono::Duration::hours(12),
@@ -329,13 +331,13 @@ where
 pub async fn create_work_order<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateWorkOrderRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let work_order_id = Uuid::new_v4().to_string();
     let now = Utc::now();
-    
+
     let work_order = WorkOrder {
         id: work_order_id.clone(),
         order_id: payload.order_id,
@@ -353,7 +355,7 @@ where
         estimated_hours: payload.estimated_hours,
         actual_hours: None,
         materials: vec![], // Will be populated from BOM
-        tasks: vec![], // Will be created based on routing
+        tasks: vec![],     // Will be created based on routing
         notes: payload.notes,
         created_at: now,
         updated_at: now,
@@ -380,8 +382,8 @@ where
 pub async fn get_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let work_order = WorkOrder {
@@ -400,33 +402,29 @@ where
         actual_end: None,
         estimated_hours: Some(8.0),
         actual_hours: Some(2.0),
-        materials: vec![
-            WorkOrderMaterial {
-                id: "wom_001".to_string(),
-                material_id: "mat_001".to_string(),
-                material_name: "Steel Frame".to_string(),
-                required_quantity: 100.0,
-                allocated_quantity: 100.0,
-                consumed_quantity: 50.0,
-                unit_of_measure: "pieces".to_string(),
-                cost_per_unit: Some(15.50),
-            }
-        ],
-        tasks: vec![
-            WorkOrderTask {
-                id: "wot_001".to_string(),
-                task_name: "Assembly".to_string(),
-                description: Some("Assemble main frame".to_string()),
-                sequence: 1,
-                status: "in_progress".to_string(),
-                estimated_hours: Some(4.0),
-                actual_hours: Some(2.0),
-                assigned_to: Some("worker_001".to_string()),
-                started_at: Some(Utc::now() - chrono::Duration::hours(2)),
-                completed_at: None,
-                notes: None,
-            }
-        ],
+        materials: vec![WorkOrderMaterial {
+            id: "wom_001".to_string(),
+            material_id: "mat_001".to_string(),
+            material_name: "Steel Frame".to_string(),
+            required_quantity: 100.0,
+            allocated_quantity: 100.0,
+            consumed_quantity: 50.0,
+            unit_of_measure: "pieces".to_string(),
+            cost_per_unit: Some(15.50),
+        }],
+        tasks: vec![WorkOrderTask {
+            id: "wot_001".to_string(),
+            task_name: "Assembly".to_string(),
+            description: Some("Assemble main frame".to_string()),
+            sequence: 1,
+            status: "in_progress".to_string(),
+            estimated_hours: Some(4.0),
+            actual_hours: Some(2.0),
+            assigned_to: Some("worker_001".to_string()),
+            started_at: Some(Utc::now() - chrono::Duration::hours(2)),
+            completed_at: None,
+            notes: None,
+        }],
         notes: Some("High priority customer order".to_string()),
         created_at: Utc::now() - chrono::Duration::days(1),
         updated_at: Utc::now() - chrono::Duration::hours(1),
@@ -456,8 +454,8 @@ pub async fn update_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateWorkOrderRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let work_order = WorkOrder {
@@ -470,15 +468,21 @@ where
         status: payload.status.unwrap_or_else(|| "in_progress".to_string()),
         work_center_id: "wc_assembly".to_string(),
         assigned_to: payload.assigned_to.or(Some("worker_001".to_string())),
-        scheduled_start: payload.scheduled_start.or(Some(Utc::now() - chrono::Duration::hours(4))),
-        scheduled_end: payload.scheduled_end.or(Some(Utc::now() + chrono::Duration::hours(4))),
+        scheduled_start: payload
+            .scheduled_start
+            .or(Some(Utc::now() - chrono::Duration::hours(4))),
+        scheduled_end: payload
+            .scheduled_end
+            .or(Some(Utc::now() + chrono::Duration::hours(4))),
         actual_start: Some(Utc::now() - chrono::Duration::hours(2)),
         actual_end: None,
         estimated_hours: payload.estimated_hours.or(Some(8.0)),
         actual_hours: Some(2.0),
         materials: vec![],
         tasks: vec![],
-        notes: payload.notes.or(Some("High priority customer order".to_string())),
+        notes: payload
+            .notes
+            .or(Some("High priority customer order".to_string())),
         created_at: Utc::now() - chrono::Duration::days(1),
         updated_at: Utc::now(),
     };
@@ -502,8 +506,8 @@ where
 pub async fn delete_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let _ = id; // placeholder until wired to DB
@@ -530,8 +534,8 @@ pub async fn schedule_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<ScheduleWorkOrderRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let response = json!({
@@ -565,8 +569,8 @@ where
 pub async fn start_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let response = json!({
@@ -596,8 +600,8 @@ where
 pub async fn complete_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let response = json!({
@@ -628,12 +632,15 @@ pub async fn hold_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
-    let reason = payload.get("reason").and_then(|v| v.as_str()).unwrap_or("No reason provided");
-    
+    let reason = payload
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("No reason provided");
+
     let response = json!({
         "message": format!("Work order {} has been put on hold", id),
         "work_order_id": id,
@@ -663,12 +670,15 @@ pub async fn cancel_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
-    let reason = payload.get("reason").and_then(|v| v.as_str()).unwrap_or("No reason provided");
-    
+    let reason = payload
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("No reason provided");
+
     let response = json!({
         "message": format!("Work order {} has been cancelled", id),
         "work_order_id": id,
@@ -703,8 +713,8 @@ pub async fn consume_material<S>(
     State(_state): State<S>,
     Path((id, material_id)): Path<(String, String)>,
     Json(payload): Json<MaterialConsumptionRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let response = json!({
@@ -742,8 +752,8 @@ pub async fn update_task<S>(
     State(_state): State<S>,
     Path((id, task_id)): Path<(String, String)>,
     Json(payload): Json<TaskUpdateRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let response = json!({
@@ -781,12 +791,18 @@ pub async fn get_capacity<S>(
     State(_state): State<S>,
     Path(work_center_id): Path<String>,
     Query(filters): Query<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
-    let start_date = filters.get("start_date").and_then(|v| v.as_str()).unwrap_or("2024-01-01");
-    let end_date = filters.get("end_date").and_then(|v| v.as_str()).unwrap_or("2024-12-31");
+    let start_date = filters
+        .get("start_date")
+        .and_then(|v| v.as_str())
+        .unwrap_or("2024-01-01");
+    let end_date = filters
+        .get("end_date")
+        .and_then(|v| v.as_str())
+        .unwrap_or("2024-12-31");
 
     // Mock capacity data
     let capacity_data = json!({
@@ -817,8 +833,8 @@ pub async fn assign_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
     let response = json!({
@@ -836,12 +852,15 @@ pub async fn update_work_order_status<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: WorkOrdersAppState,
 {
-    let new_status = payload.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
-    
+    let new_status = payload
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown");
+
     let response = json!({
         "message": format!("Work order {} status updated to {}", id, new_status),
         "work_order_id": id,

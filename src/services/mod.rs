@@ -15,9 +15,9 @@ pub mod order_status;
 pub mod factory;
 
 // Inventory management services
+pub mod bom;
 pub mod inventory_adjustment_service;
 pub mod inventory_sync;
-pub mod bom;
 pub mod manufacturing;
 pub mod purchase_receipt;
 pub mod sales_fulfillment;
@@ -36,7 +36,7 @@ pub mod notifications;
 
 // Financial Services
 // pub mod accounting;
-// pub mod cash_sale;
+pub mod cash_sale;
 // pub mod invoicing;
 // pub mod item_receipts;
 pub mod payments;
@@ -78,5 +78,5 @@ pub mod item_receipt_service {
 }
 */
 // pub mod category_service;
-pub mod commerce;
 pub mod analytics;
+pub mod commerce;

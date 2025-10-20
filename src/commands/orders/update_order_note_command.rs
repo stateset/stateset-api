@@ -52,7 +52,7 @@ impl UpdateOrderNoteCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find note: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 let msg = format!("Note {} not found", self.note_id);
@@ -68,7 +68,7 @@ impl UpdateOrderNoteCommand {
         active.update(db).await.map_err(|e| {
             let msg = format!("Failed to update order note: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

@@ -1,10 +1,9 @@
-use uuid::Uuid;
 use crate::{
     commands::Command,
-    events::{Event, EventSender},
     db::DbPool,
     errors::ServiceError,
-    models::shipment::{self, Entity as Shipment, ShipmentStatus},
+    events::{Event, EventSender},
+    models::shipment::{self, ShipmentStatus},
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -12,16 +11,17 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ConfirmShipmentDeliveryCommand {
-    pub shipment_id: i32,
+    pub shipment_id: Uuid,
 }
 
 #[async_trait::async_trait]
 impl Command for ConfirmShipmentDeliveryCommand {
-    type Result = Shipment;
+    type Result = shipment::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
@@ -36,7 +36,14 @@ impl Command for ConfirmShipmentDeliveryCommand {
             "shipment_id": updated_shipment.id.to_string(),
             "delivered_at": updated_shipment.delivered_at.map(|t| t.to_rfc3339()),
         });
-        let _ = crate::events::outbox::enqueue(&*db, "shipment", Some(updated_shipment.id), "ShipmentDelivered", &payload).await;
+        let _ = crate::events::outbox::enqueue(
+            &*db,
+            "shipment",
+            Some(updated_shipment.id),
+            "ShipmentDelivered",
+            &payload,
+        )
+        .await;
 
         self.log_and_trigger_event(event_sender, &updated_shipment)
             .await?;
@@ -49,13 +56,13 @@ impl ConfirmShipmentDeliveryCommand {
     async fn confirm_delivery(
         &self,
         db: &sea_orm::DatabaseConnection,
-    ) -> Result<Shipment, ServiceError> {
+    ) -> Result<shipment::Model, ServiceError> {
         let mut shipment: shipment::ActiveModel = shipment::Entity::find_by_id(self.shipment_id)
             .one(db)
             .await
             .map_err(|e| {
                 error!("Failed to fetch shipment: {}", e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Shipment with ID {} not found", self.shipment_id);
@@ -67,18 +74,18 @@ impl ConfirmShipmentDeliveryCommand {
         shipment.delivered_at = Set(Some(Utc::now()));
         shipment.update(db).await.map_err(|e| {
             error!("Failed to confirm delivery: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &Shipment,
+        shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!("Shipment ID: {} confirmed as delivered.", self.shipment_id);
         event_sender
-            .send(Event::ShipmentDelivered(self.shipment_id))
+            .send(Event::ShipmentDelivered(shipment.id))
             .await
             .map_err(|e| {
                 error!(

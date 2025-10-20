@@ -6,7 +6,7 @@ use crate::{
     models::return_note_entity::{self, Entity as ReturnNote},
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{*, Set};
+use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -47,7 +47,10 @@ impl Command for AddReturnNoteCommand {
             return_id: Set(self.return_id),
             note_type: Set(return_note_entity::ReturnNoteType::System),
             content: Set(self.note.clone()),
-            created_by: Set(self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok())),
+            created_by: Set(self
+                .created_by
+                .as_ref()
+                .and_then(|s| Uuid::parse_str(s).ok())),
             is_visible_to_customer: Set(false),
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
@@ -57,7 +60,7 @@ impl Command for AddReturnNoteCommand {
         new_note.insert(db).await.map_err(|e| {
             let msg = format!("Failed to create return note: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         Ok(AddReturnNoteResult {
@@ -80,7 +83,10 @@ impl AddReturnNoteCommand {
             return_id: Set(self.return_id),
             note_type: Set(return_note_entity::ReturnNoteType::System),
             content: Set(self.note.clone()),
-            created_by: Set(self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok())),
+            created_by: Set(self
+                .created_by
+                .as_ref()
+                .and_then(|s| Uuid::parse_str(s).ok())),
             is_visible_to_customer: Set(false),
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
@@ -93,7 +99,7 @@ impl AddReturnNoteCommand {
             .map_err(|e| {
                 let msg = format!("Failed to add return note: {}", e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(sea_orm::DbErr::Custom(msg))
+                ServiceError::db_error(sea_orm::DbErr::Custom(msg))
             })?;
 
         Ok(return_note_entity::Model {
@@ -101,7 +107,10 @@ impl AddReturnNoteCommand {
             return_id: self.return_id,
             note_type: return_note_entity::ReturnNoteType::System,
             content: self.note.clone(),
-            created_by: self.created_by.as_ref().and_then(|s| Uuid::parse_str(s).ok()),
+            created_by: self
+                .created_by
+                .as_ref()
+                .and_then(|s| Uuid::parse_str(s).ok()),
             is_visible_to_customer: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),

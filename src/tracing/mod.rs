@@ -7,6 +7,7 @@ use axum::{
     BoxError,
 };
 use futures::{future::BoxFuture, Future, FutureExt, StreamExt};
+use metrics::{counter, histogram};
 use opentelemetry::{
     global,
     trace::{FutureExt as OtelFutureExt, Span, TraceContextExt, Tracer, TracerProvider},
@@ -17,6 +18,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonValue};
 use slog::Logger;
+use std::convert::Infallible;
 use std::{
     collections::HashMap,
     fmt,
@@ -29,19 +31,20 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
-use std::convert::Infallible;
 use thiserror::Error;
 use tokio::time::Instant as TokioInstant;
 use tower::{Layer, Service};
 use tower_http::{classify::StatusInRangeAsFailures, trace::TraceLayer};
 use tracing::{instrument, Level};
-use metrics::{counter, histogram};
 
-// Re-export tracing macros for use in lib.rs  
+// Re-export tracing macros for use in lib.rs
+use http_body_util::{combinators::Frame, BodyExt};
+use tower_http::trace::{
+    DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest,
+    DefaultOnResponse,
+};
 pub use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
-use http_body_util::{BodyExt, combinators::Frame};
-use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure};
 
 /**
  * Tracing and Observability Module
@@ -315,7 +318,10 @@ pub struct RequestLoggerMiddleware<S> {
 
 impl<S, ReqBody, ResBody> Service<Request<ReqBody>> for RequestLoggerMiddleware<S>
 where
-    S: Service<Request<BufferedBody<ReqBody>>, Response = Response<ResBody>> + Clone + Send + 'static,
+    S: Service<Request<BufferedBody<ReqBody>>, Response = Response<ResBody>>
+        + Clone
+        + Send
+        + 'static,
     S::Future: Send + 'static,
     S::Error: Into<BoxError> + Send + 'static,
     ReqBody: HttpBody + Unpin + Send + 'static,
@@ -337,8 +343,8 @@ where
         }
     }
 
-    fn call(&mut self, request: Request<ReqBody>) -> Self::Future 
-    where 
+    fn call(&mut self, request: Request<ReqBody>) -> Self::Future
+    where
         <ResBody as HttpBody>::Error: std::error::Error + Send + Sync + 'static,
         ResBody: axum::body::HttpBody + Unpin,
     {
@@ -445,7 +451,11 @@ where
         req_with_context.extensions_mut().insert(context);
         req_with_context.extensions_mut().insert(otel_ctx.clone());
         // Respect incoming request id if provided
-        if let Some(req_id_hdr) = req_with_context.headers().get("x-request-id").and_then(|v| v.to_str().ok()) {
+        if let Some(req_id_hdr) = req_with_context
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+        {
             // Attach to span
             let span = otel_ctx.span();
             span.set_attribute(KeyValue::new("request_id", req_id_hdr.to_string()));
@@ -473,7 +483,8 @@ where
                     let headers = response.headers_mut();
                     headers.insert(
                         "X-Request-Id",
-                        http::HeaderValue::from_str(&request_id).unwrap_or(http::HeaderValue::from_static("unknown")),
+                        http::HeaderValue::from_str(&request_id)
+                            .unwrap_or(http::HeaderValue::from_static("unknown")),
                     );
 
                     let res_has_json_body = RequestLogger::is_json_content(response.headers());
@@ -561,7 +572,10 @@ where
                             if let Ok(mut val) = serde_json::from_slice::<JsonValue>(&out_bytes) {
                                 if let JsonValue::Object(ref mut map) = val {
                                     if !map.contains_key("request_id") {
-                                        map.insert("request_id".to_string(), JsonValue::String(request_id.clone()));
+                                        map.insert(
+                                            "request_id".to_string(),
+                                            JsonValue::String(request_id.clone()),
+                                        );
                                         if let Ok(new_bytes) = serde_json::to_vec(&val) {
                                             out_bytes = new_bytes;
                                         }
@@ -571,7 +585,8 @@ where
                         }
 
                         let body_str = String::from_utf8_lossy(&out_bytes);
-                        let limited_body = RequestLogger::limit_body(&body_str, logger.max_body_size);
+                        let limited_body =
+                            RequestLogger::limit_body(&body_str, logger.max_body_size);
 
                         info!(
                             request_id = %request_id,
@@ -617,7 +632,10 @@ where
                             if let Ok(mut val) = serde_json::from_slice::<JsonValue>(&out_bytes) {
                                 if let JsonValue::Object(ref mut map) = val {
                                     if !map.contains_key("request_id") {
-                                        map.insert("request_id".to_string(), JsonValue::String(request_id.clone()));
+                                        map.insert(
+                                            "request_id".to_string(),
+                                            JsonValue::String(request_id.clone()),
+                                        );
                                         if let Ok(new_bytes) = serde_json::to_vec(&val) {
                                             out_bytes = new_bytes;
                                         }
@@ -766,8 +784,8 @@ impl<B> StreamReader<B> {
 
 impl<B> futures::Stream for StreamReader<B>
 where
-B: HttpBody<Data = axum::body::Bytes> + Unpin + Send,
-B::Error: Into<BoxError> + Send + Sync,
+    B: HttpBody<Data = axum::body::Bytes> + Unpin + Send,
+    B::Error: Into<BoxError> + Send + Sync,
 {
     type Item = Result<Bytes, BoxError>;
 
@@ -810,8 +828,17 @@ pub fn setup_default_tracing(service_name: &str) -> Result<(), TracingError> {
 }
 
 /// Configure tracing for the application with tower-http
-pub fn configure_http_tracing() -> tower_http::trace::TraceLayer<tower_http::classify::SharedClassifier<StatusInRangeAsFailures>, DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure> {
-    let classifier = tower_http::classify::SharedClassifier::new(StatusInRangeAsFailures::new(500..=599));
+pub fn configure_http_tracing() -> tower_http::trace::TraceLayer<
+    tower_http::classify::SharedClassifier<StatusInRangeAsFailures>,
+    DefaultMakeSpan,
+    DefaultOnRequest,
+    DefaultOnResponse,
+    DefaultOnBodyChunk,
+    DefaultOnEos,
+    DefaultOnFailure,
+> {
+    let classifier =
+        tower_http::classify::SharedClassifier::new(StatusInRangeAsFailures::new(500..=599));
     TraceLayer::new(classifier)
         .make_span_with(DefaultMakeSpan::default())
         .on_request(DefaultOnRequest::default())
@@ -921,9 +948,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
     use axum::{routing::get, Router};
     use http::Method;
-    use axum::body::Body;
     use serde_json::json;
     use tokio::sync::oneshot;
     use tower::util::ServiceExt; // bring oneshot into scope

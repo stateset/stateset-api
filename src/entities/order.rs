@@ -11,14 +11,14 @@ use validator::{Validate, ValidationError};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    
+
     #[validate(length(
         min = 1,
         max = 50,
         message = "Order number must be between 1 and 50 characters"
     ))]
     pub order_number: String,
-    
+
     pub customer_id: Uuid,
     pub status: String,
     pub order_date: DateTime<Utc>,

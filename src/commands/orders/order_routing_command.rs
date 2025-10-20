@@ -105,7 +105,7 @@ impl OrderRoutingCommand {
                 ORDER_ROUTING_FAILURES.inc();
                 let msg = format!("Failed to fetch order {}: {}", self.order_id, e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 ORDER_ROUTING_FAILURES.inc();
@@ -125,7 +125,7 @@ impl OrderRoutingCommand {
                     self.order_id, e
                 );
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok((order, order_items))
@@ -139,7 +139,7 @@ impl OrderRoutingCommand {
             ORDER_ROUTING_FAILURES.inc();
             let msg = format!("Failed to fetch facilities: {}", e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 
@@ -211,7 +211,7 @@ impl OrderRoutingCommand {
                     let updated = order.update(txn).await.map_err(|e| {
                         let msg = format!("Failed to update order with facility: {}", e);
                         error!("{}", msg);
-                        ServiceError::DatabaseError(e)
+                        ServiceError::db_error(e)
                     })?;
                     results.push(updated);
                 }
@@ -222,7 +222,7 @@ impl OrderRoutingCommand {
         .map_err(|e| {
             error!("Transaction failed for order routing: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })
@@ -271,7 +271,7 @@ impl OrderRoutingCommand {
                     let order_model = Order::find_by_id(order.order_id)
                         .one(txn)
                         .await
-                        .map_err(|e| ServiceError::DatabaseError(e))?
+                        .map_err(|e| ServiceError::db_error(e))?
                         .ok_or_else(|| {
                             ServiceError::NotFound(format!(
                                 "Order {} not found",
@@ -288,7 +288,7 @@ impl OrderRoutingCommand {
         .map_err(|e| {
             error!("Transaction failed for order allocation: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })

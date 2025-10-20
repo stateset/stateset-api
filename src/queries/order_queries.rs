@@ -57,7 +57,7 @@ impl Query for GetOrderQuery {
         Order::find_by_id(self.order_id)
             .one(pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -80,7 +80,7 @@ impl Query for GetCustomerOrdersQuery {
             .filter(order_entity::Column::CustomerId.eq(self.customer_id))
             .all(pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -136,7 +136,7 @@ impl Query for GetOrdersByStatusQuery {
             .offset(self.offset)
             .all(pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -169,7 +169,7 @@ impl Query for GetOrdersInDateRangeQuery {
             .offset(self.offset)
             .all(pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -257,7 +257,7 @@ impl Query for GetTopSellingProductsQuery {
             })
         })
         .await
-        .map_err(|e| ServiceError::DatabaseError(e))
+        .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -322,7 +322,7 @@ impl Query for GetOrderDetailsQuery {
             })
         })
         .await
-        .map_err(|e| ServiceError::DatabaseError(e))
+        .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -404,7 +404,7 @@ impl Query for GetAverageOrderValueQuery {
         ];
 
         let result: Option<f64> = db.execute_raw(sql, params).await.map_err(|e| {
-            ServiceError::DatabaseError(format!("Failed to get average order value: {}", e))
+            ServiceError::db_error(format!("Failed to get average order value: {}", e))
         })?;
 
         Ok(result.unwrap_or(0.0))

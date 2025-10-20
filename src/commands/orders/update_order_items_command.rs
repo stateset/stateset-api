@@ -91,7 +91,7 @@ impl UpdateOrderItemsCommand {
                     self.order_id, e
                 );
                 ORDER_ITEM_UPDATE_FAILURES.inc();
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         Ok(())
     }
@@ -111,7 +111,7 @@ impl UpdateOrderItemsCommand {
                     self.order_id, e
                 );
                 ORDER_ITEM_UPDATE_FAILURES.inc();
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
         }
         Ok(())
@@ -127,7 +127,7 @@ impl UpdateOrderItemsCommand {
             .await
             .map_err(|e| {
                 error!("Failed to find order for ID {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 error!("Order not found for ID {}", self.order_id);

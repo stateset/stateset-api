@@ -1,12 +1,12 @@
-use chrono::{DateTime, Utc};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
-use validator::{Validate, ValidationError};
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
 /// Shipping carrier enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
@@ -242,11 +242,7 @@ impl Related<super::shipment_event::Entity> for Entity {
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     /// Hook that is triggered before insert/update
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.id = Set(Uuid::new_v4());
@@ -292,7 +288,9 @@ impl Model {
             is_signature_required: false,
         };
 
-        shipment.validate().map_err(|_| ValidationError::new("Shipment validation failed"))?;
+        shipment
+            .validate()
+            .map_err(|_| ValidationError::new("Shipment validation failed"))?;
         Ok(shipment)
     }
 
@@ -382,7 +380,8 @@ impl Model {
         self.recipient_phone = phone;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Shipment validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Shipment validation failed"))?;
         Ok(())
     }
 
@@ -402,7 +401,8 @@ impl Model {
         self.is_signature_required = signature_required;
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Shipment validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Shipment validation failed"))?;
         Ok(())
     }
 
@@ -411,14 +411,16 @@ impl Model {
         self.notes = Some(notes);
         self.updated_at = Utc::now();
 
-        self.validate().map_err(|_| ValidationError::new("Shipment validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Shipment validation failed"))?;
         Ok(())
     }
 
     /// Save the shipment to database
     pub async fn save(&self, db: &DatabaseConnection) -> Result<Model, ShipmentError> {
         // Validate before saving
-        self.validate().map_err(|_| ValidationError::new("Shipment validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Shipment validation failed"))?;
 
         let model: ActiveModel = self.clone().into();
         let result = match self.id {

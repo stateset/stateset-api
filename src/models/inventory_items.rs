@@ -139,7 +139,9 @@ impl Model {
             location_in_warehouse: None,
             last_movement_date: None,
         };
-        inventory_item.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        inventory_item
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(inventory_item)
     }
 

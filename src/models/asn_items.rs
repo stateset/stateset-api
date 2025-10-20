@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "asn_items")]

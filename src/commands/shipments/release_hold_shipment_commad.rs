@@ -1,9 +1,11 @@
-use uuid::Uuid;
 use async_trait::async_trait;
-use sea_orm::{entity::prelude::*, ActiveValue::Set, DatabaseConnection, DatabaseTransaction, TransactionTrait};
+use sea_orm::{
+    entity::prelude::*, ActiveValue::Set, DatabaseConnection, DatabaseTransaction, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 use validator::Validate;
 
 use crate::commands::Command;
@@ -32,14 +34,16 @@ impl Command for ShipOrderCommand {
     ) -> Result<Self::Result, ServiceError> {
         let txn = db_pool.begin().await.map_err(|e| {
             error!("Failed to begin transaction: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         let saved_shipment = match async {
             self.finalize_shipment(&txn).await?;
             self.update_order_status(&txn).await?;
             self.fetch_saved_shipment(&txn).await
-        }.await {
+        }
+        .await
+        {
             Ok(shipment) => shipment,
             Err(e) => {
                 if let Err(rollback_err) = txn.rollback().await {
@@ -55,7 +59,7 @@ impl Command for ShipOrderCommand {
 
         txn.commit().await.map_err(|e| {
             error!("Failed to commit transaction: {}", e);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         self.log_and_trigger_event(event_sender, &saved_shipment)
@@ -79,7 +83,7 @@ impl ShipOrderCommand {
                 "Failed to finalize shipment for order ID {}: {}",
                 self.order_id, e
             );
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
         Ok(())
     }
@@ -90,19 +94,19 @@ impl ShipOrderCommand {
             .await
             .map_err(|e| {
                 error!("Failed to fetch order ID {}: {}", self.order_id, e);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| ServiceError::NotFound("Order not found".to_string()))?
             .into();
 
-        order.status = Set(OrderStatus::Shipped);
+        order.order_status = Set(OrderStatus::Shipped);
 
         order.update(txn).await.map_err(|e| {
             error!(
                 "Failed to update order status to 'Shipped' for order ID {}: {}",
                 self.order_id, e
             );
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
         Ok(())
     }
@@ -121,7 +125,7 @@ impl ShipOrderCommand {
                     "Failed to fetch saved shipment for order ID {}: {}",
                     self.order_id, e
                 );
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| ServiceError::NotFound("Shipment not found".to_string()))
     }
@@ -136,10 +140,7 @@ impl ShipOrderCommand {
             self.order_id, self.tracking_number
         );
         event_sender
-            .send(Event::OrderShipped(
-                self.order_id,
-                self.tracking_number.clone(),
-            ))
+            .send(Event::OrderShipped(self.order_id))
             .await
             .map_err(|e| {
                 error!(

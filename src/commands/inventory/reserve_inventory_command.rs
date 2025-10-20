@@ -135,7 +135,7 @@ impl Command for ReserveInventoryCommand {
             )
             .count(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         if existing > 0 {
             INVENTORY_RESERVATION_FAILURES
@@ -183,7 +183,7 @@ impl ReserveInventoryCommand {
             )
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 ServiceError::NotFound(format!(
                     "Inventory level not found for product {} in warehouse {}",
@@ -199,7 +199,7 @@ impl ReserveInventoryCommand {
             .filter(inventory_reservation_entity::Column::Status.eq(ReservationStatus::Reserved))
             .all(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let total_reserved: i32 = existing_reservations.iter().map(|r| r.quantity_reserved).sum();
 
@@ -312,7 +312,7 @@ impl ReserveInventoryCommand {
         .map_err(|e| {
             error!("Transaction failed for inventory reservation: {}", e);
             match e {
-                TransactionError::Connection(db_err) => ServiceError::DatabaseError(db_err),
+                TransactionError::Connection(db_err) => ServiceError::db_error(db_err),
                 TransactionError::Transaction(service_err) => service_err,
             }
         })
@@ -334,7 +334,7 @@ impl ReserveInventoryCommand {
             )
             .one(txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 ServiceError::NotFound(format!(
                     "Inventory level not found for product {} in warehouse {}",
@@ -368,7 +368,7 @@ impl ReserveInventoryCommand {
         reservation
             .insert(txn)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
         Ok(ReservationResult {
             reservation_id: reservation.id,
             warehouse_id: self.warehouse_id.clone(),

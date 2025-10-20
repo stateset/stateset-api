@@ -50,17 +50,17 @@ impl ActiveModelBehavior for ActiveModel {
         C: ConnectionTrait,
     {
         let mut active_model = self;
-        
+
         let now = Utc::now();
-        
+
         if insert {
             active_model.created_at = Set(now);
         }
-        
+
         if let ActiveValue::NotSet = active_model.updated_at {
             active_model.updated_at = Set(Some(now));
         }
-        
+
         Ok(active_model)
     }
 }

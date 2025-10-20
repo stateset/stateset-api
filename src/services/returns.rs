@@ -1,12 +1,16 @@
 use crate::circuit_breaker::CircuitBreaker;
+use crate::commands::returns::{
+    complete_return_command::CompleteReturnCommand,
+    restock_returned_items_command::RestockReturnedItemsCommand,
+};
 use crate::message_queue::MessageQueue;
 use crate::{
     // commands::returns::{
-        // approve_return_command::ApproveReturnCommand, cancel_return_command::CancelReturnCommand,
-        // complete_return_command::CompleteReturnCommand,
-        // create_return_command::InitiateReturnCommand as CreateReturnCommand,
-        // refund_return_command::RefundReturnCommand, reject_return_command::RejectReturnCommand,
-        // restock_returned_items_command::RestockReturnedItemsCommand,
+    // approve_return_command::ApproveReturnCommand, cancel_return_command::CancelReturnCommand,
+    // complete_return_command::CompleteReturnCommand,
+    // create_return_command::InitiateReturnCommand as CreateReturnCommand,
+    // refund_return_command::RefundReturnCommand, reject_return_command::RejectReturnCommand,
+    // restock_returned_items_command::RestockReturnedItemsCommand,
     // },
     commands::Command,
     db::DbPool,
@@ -14,18 +18,16 @@ use crate::{
     events::{Event, EventSender},
     models::return_entity,
 };
-use crate::commands::returns::{
-    complete_return_command::CompleteReturnCommand,
-    restock_returned_items_command::RestockReturnedItemsCommand,
-};
 use anyhow::Result;
 use redis::Client as RedisClient;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, QueryOrder};
+use sea_orm::PaginatorTrait;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
 use slog::Logger;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
-use sea_orm::PaginatorTrait;
 
 /// Service for managing returns
 #[derive(Clone)]
@@ -107,7 +109,7 @@ impl ReturnService {
     // }
     //     Ok(())
     // }
-    // 
+    //
 
     // /// Processes a refund for a return
     // #[instrument(skip(self))]
@@ -158,7 +160,7 @@ impl ReturnService {
             .map_err(|e| {
                 let msg = format!("Failed to get return: {}", e);
                 error!(return_id = %return_id, error = %e, "Database error when fetching return");
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?;
 
         Ok(ret)
@@ -181,10 +183,15 @@ impl ReturnService {
             .paginate(db, limit);
 
         // Get the total count of returns
-        let total = paginator.num_items().await.map_err(|e| ServiceError::DatabaseError(e))?;
+        let total = paginator
+            .num_items()
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        let returns = paginator.fetch_page(page - 1).await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+        let returns = paginator
+            .fetch_page(page - 1)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((returns, total))
     }

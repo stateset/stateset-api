@@ -73,7 +73,7 @@ impl UpdateBillingAddressCommand {
                 BILLING_ADDRESS_UPDATE_FAILURES.inc();
                 let msg = format!("Failed to find order ID {}: {}", self.order_id, e);
                 error!("{}", msg);
-                ServiceError::DatabaseError(e)
+                ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
                 BILLING_ADDRESS_UPDATE_FAILURES.inc();
@@ -93,7 +93,7 @@ impl UpdateBillingAddressCommand {
                 self.order_id, e
             );
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })
     }
 

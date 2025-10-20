@@ -82,7 +82,7 @@ impl ApplyOrderDiscountCommand {
         let order = order_entity::Entity::find_by_id(self.order_id)
             .one(db)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| {
                 let msg = format!("Order {} not found", self.order_id);
                 error!("{}", msg);
@@ -96,7 +96,7 @@ impl ApplyOrderDiscountCommand {
         let updated_order = active_model.update(db).await.map_err(|e| {
             let msg = format!("Failed to update Order {}: {}", self.order_id, e);
             error!("{}", msg);
-            ServiceError::DatabaseError(e)
+            ServiceError::db_error(e)
         })?;
 
         event_sender

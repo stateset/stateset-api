@@ -1,24 +1,23 @@
 use crate::errors::ServiceError;
 use axum::{
     extract::{Json, Path, Query, State},
+    http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
     Router,
-    http::StatusCode,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::{ToSchema, IntoParams};
 use serde_json::json;
-use uuid::Uuid;
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
 // Generic trait for returns handler state
 pub trait ReturnsAppState: Clone + Send + Sync + 'static {}
 impl<T> ReturnsAppState for T where T: Clone + Send + Sync + 'static {}
 
-#[derive(Debug, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Return {
     pub id: String,
     pub order_id: String,
@@ -120,13 +119,18 @@ pub struct UpdateReturnStatusBody {
 }
 
 /// Create the returns router
-pub fn returns_router<S>() -> Router<S> 
-where 
+pub fn returns_router<S>() -> Router<S>
+where
     S: ReturnsAppState,
 {
     Router::new()
         .route("/", get(list_returns::<S>).post(create_return::<S>))
-        .route("/{id}", get(get_return::<S>).put(update_return::<S>).delete(delete_return::<S>))
+        .route(
+            "/{id}",
+            get(get_return::<S>)
+                .put(update_return::<S>)
+                .delete(delete_return::<S>),
+        )
         .route("/{id}/process", post(process_return::<S>))
         .route("/{id}/approve", post(approve_return::<S>))
         .route("/{id}/reject", post(reject_return::<S>))
@@ -158,8 +162,8 @@ where
 pub async fn list_returns<S>(
     State(_state): State<S>,
     Query(filters): Query<ReturnFilters>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     // Mock data for now - replace with actual database queries
@@ -172,18 +176,16 @@ where
             reason: "defective".to_string(),
             description: Some("Item arrived damaged".to_string()),
             return_type: "refund".to_string(),
-            items: vec![
-                ReturnItem {
-                    id: "ret_item_001".to_string(),
-                    order_item_id: "order_item_001".to_string(),
-                    product_id: "prod_abc".to_string(),
-                    quantity: 1,
-                    unit_price: 99.99,
-                    total_refund: 99.99,
-                    condition: "damaged".to_string(),
-                    restockable: false,
-                }
-            ],
+            items: vec![ReturnItem {
+                id: "ret_item_001".to_string(),
+                order_item_id: "order_item_001".to_string(),
+                product_id: "prod_abc".to_string(),
+                quantity: 1,
+                unit_price: 99.99,
+                total_refund: 99.99,
+                condition: "damaged".to_string(),
+                restockable: false,
+            }],
             total_refund_amount: 99.99,
             inspection_notes: None,
             processed_by: None,
@@ -200,18 +202,16 @@ where
             reason: "size_issue".to_string(),
             description: Some("Wrong size ordered".to_string()),
             return_type: "exchange".to_string(),
-            items: vec![
-                ReturnItem {
-                    id: "ret_item_002".to_string(),
-                    order_item_id: "order_item_002".to_string(),
-                    product_id: "prod_def".to_string(),
-                    quantity: 1,
-                    unit_price: 149.99,
-                    total_refund: 0.0,
-                    condition: "new".to_string(),
-                    restockable: true,
-                }
-            ],
+            items: vec![ReturnItem {
+                id: "ret_item_002".to_string(),
+                order_item_id: "order_item_002".to_string(),
+                product_id: "prod_def".to_string(),
+                quantity: 1,
+                unit_price: 149.99,
+                total_refund: 0.0,
+                condition: "new".to_string(),
+                restockable: true,
+            }],
             total_refund_amount: 0.0,
             inspection_notes: Some("Item in excellent condition".to_string()),
             processed_by: Some("staff_001".to_string()),
@@ -266,19 +266,19 @@ where
 pub async fn create_return<S>(
     State(_state): State<S>,
     Json(payload): Json<CreateReturnRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let return_id = Uuid::new_v4().to_string();
     let now = Utc::now();
-    
+
     // Calculate total refund amount from items
     let total_refund_amount = match payload.return_type.as_str() {
         "refund" => 99.99, // Mock calculation
         _ => 0.0,
     };
-    
+
     let return_order = Return {
         id: return_id.clone(),
         order_id: payload.order_id,
@@ -287,16 +287,21 @@ where
         reason: payload.reason,
         description: payload.description,
         return_type: payload.return_type,
-        items: payload.items.into_iter().enumerate().map(|(i, item)| ReturnItem {
-            id: format!("{}_item_{}", return_id, i),
-            order_item_id: item.order_item_id,
-            product_id: "prod_abc".to_string(), // Mock - get from order item
-            quantity: item.quantity,
-            unit_price: 99.99, // Mock - get from order item
-            total_refund: 99.99 * item.quantity as f64,
-            condition: "unknown".to_string(),
-            restockable: true,
-        }).collect(),
+        items: payload
+            .items
+            .into_iter()
+            .enumerate()
+            .map(|(i, item)| ReturnItem {
+                id: format!("{}_item_{}", return_id, i),
+                order_item_id: item.order_item_id,
+                product_id: "prod_abc".to_string(), // Mock - get from order item
+                quantity: item.quantity,
+                unit_price: 99.99, // Mock - get from order item
+                total_refund: 99.99 * item.quantity as f64,
+                condition: "unknown".to_string(),
+                restockable: true,
+            })
+            .collect(),
         total_refund_amount,
         inspection_notes: None,
         processed_by: None,
@@ -320,8 +325,8 @@ where
 pub async fn get_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let return_order = Return {
@@ -332,18 +337,16 @@ where
         reason: "defective".to_string(),
         description: Some("Item arrived damaged".to_string()),
         return_type: "refund".to_string(),
-        items: vec![
-            ReturnItem {
-                id: format!("{}_item_1", id),
-                order_item_id: "order_item_001".to_string(),
-                product_id: "prod_abc".to_string(),
-                quantity: 1,
-                unit_price: 99.99,
-                total_refund: 99.99,
-                condition: "damaged".to_string(),
-                restockable: false,
-            }
-        ],
+        items: vec![ReturnItem {
+            id: format!("{}_item_1", id),
+            order_item_id: "order_item_001".to_string(),
+            product_id: "prod_abc".to_string(),
+            quantity: 1,
+            unit_price: 99.99,
+            total_refund: 99.99,
+            condition: "damaged".to_string(),
+            restockable: false,
+        }],
         total_refund_amount: 99.99,
         inspection_notes: None,
         processed_by: None,
@@ -369,8 +372,8 @@ pub async fn update_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateReturnRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let return_order = Return {
@@ -413,12 +416,12 @@ pub async fn update_return_status<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateReturnStatusBody>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let new_status = payload.status.as_str();
-    
+
     let response = json!({
         "message": format!("Return {} status updated to {}", id, new_status),
         "return_id": id,
@@ -440,8 +443,8 @@ where
 pub async fn delete_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let _ = id; // placeholder until wired to DB
@@ -468,8 +471,8 @@ pub async fn process_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<ProcessReturnRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let status = match payload.action.as_str() {
@@ -507,8 +510,8 @@ where
 pub async fn approve_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let response = json!({
@@ -538,8 +541,8 @@ where
 pub async fn reject_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let response = json!({
@@ -572,8 +575,8 @@ pub async fn restock_return<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
     Json(payload): Json<RestockReturnRequest>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let response = json!({
@@ -598,8 +601,8 @@ where
 pub async fn issue_refund<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError> 
-where 
+) -> Result<impl IntoResponse, ServiceError>
+where
     S: ReturnsAppState,
 {
     let response = json!({

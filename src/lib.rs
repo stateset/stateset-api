@@ -3,11 +3,8 @@
 //! This crate provides the core functionality for the StateSet API
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms)]
-#![warn(
-    clippy::all,
-    clippy::perf,
-    clippy::dbg_macro
-)]
+#![allow(elided_lifetimes_in_paths)]
+#![warn(clippy::all, clippy::perf, clippy::dbg_macro)]
 
 // Core modules
 pub mod api;
@@ -25,6 +22,7 @@ pub mod health;
 pub mod message_queue;
 pub mod metrics;
 pub mod middleware_helpers;
+pub mod migrator;
 pub mod models;
 pub mod openapi;
 pub mod proto;
@@ -32,28 +30,21 @@ pub mod rate_limiter;
 pub mod services;
 pub mod tracing;
 pub mod versioning;
-pub mod migrator;
 
-use axum::{
-    extract::State,
-    middleware,
-    response::Json,
-    routing::get,
-    Router,
-};
+use axum::{extract::State, middleware, response::Json, routing::get, Router};
+use redis::AsyncCommands;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use utoipa::ToSchema;
-use redis::AsyncCommands;
 
 // Tracing imports - use external tracing crate directly to avoid conflicts
 
 // Import handler traits
-use handlers::inventory::InventoryHandlerState;
-use crate::auth::AuthRouterExt;
 use crate::auth::consts as perm;
+use crate::auth::AuthRouterExt;
+use handlers::inventory::InventoryHandlerState;
 
 // App state definition
 #[derive(Clone)]
@@ -78,8 +69,12 @@ pub struct ListQuery {
     pub sort_order: Option<String>,
 }
 
-fn default_page() -> u64 { 1 }
-fn default_limit() -> u64 { 20 }
+fn default_page() -> u64 {
+    1
+}
+fn default_limit() -> u64 {
+    20
+}
 
 // Common response wrappers
 #[derive(Serialize, ToSchema)]
@@ -137,45 +132,93 @@ pub fn api_v1_routes() -> Router<AppState> {
     let orders_read = Router::new()
         .route("/orders", get(handlers::orders::list_orders))
         .route("/orders/{id}", get(handlers::orders::get_order))
-        .route("/orders/by-number/{order_number}", get(handlers::orders::get_order_by_number))
+        .route(
+            "/orders/by-number/{order_number}",
+            get(handlers::orders::get_order_by_number),
+        )
         .route("/orders/{id}/items", get(handlers::orders::get_order_items))
         .with_permission(perm::ORDERS_READ);
 
     let orders_create = Router::new()
-        .route("/orders", axum::routing::post(handlers::orders::create_order))
+        .route(
+            "/orders",
+            axum::routing::post(handlers::orders::create_order),
+        )
         .with_permission(perm::ORDERS_CREATE);
 
     let orders_update = Router::new()
-        .route("/orders/{id}", axum::routing::put(handlers::orders::update_order))
-        .route("/orders/{id}/items", axum::routing::post(handlers::orders::add_order_item))
-        .route("/orders/{id}/status", axum::routing::put(handlers::orders::update_order_status))
-        .route("/orders/{id}/archive", axum::routing::post(handlers::orders::archive_order))
+        .route(
+            "/orders/{id}",
+            axum::routing::put(handlers::orders::update_order),
+        )
+        .route(
+            "/orders/{id}/items",
+            axum::routing::post(handlers::orders::add_order_item),
+        )
+        .route(
+            "/orders/{id}/status",
+            axum::routing::put(handlers::orders::update_order_status),
+        )
+        .route(
+            "/orders/{id}/archive",
+            axum::routing::post(handlers::orders::archive_order),
+        )
         .with_permission(perm::ORDERS_UPDATE);
 
     let orders_cancel = Router::new()
-        .route("/orders/{id}/cancel", axum::routing::post(handlers::orders::cancel_order))
+        .route(
+            "/orders/{id}/cancel",
+            axum::routing::post(handlers::orders::cancel_order),
+        )
         .with_permission(perm::ORDERS_CANCEL);
 
     let orders_delete = Router::new()
-        .route("/orders/{id}", axum::routing::delete(handlers::orders::delete_order))
+        .route(
+            "/orders/{id}",
+            axum::routing::delete(handlers::orders::delete_order),
+        )
         .with_permission(perm::ORDERS_DELETE);
 
     // Inventory routes with permission gating
     let inventory_read = Router::new()
-        .route("/inventory", get(handlers::inventory::list_inventory::<AppState>))
-        .route("/inventory/{id}", get(handlers::inventory::get_inventory::<AppState>))
-        .route("/inventory/low-stock", get(handlers::inventory::get_low_stock_items::<AppState>))
+        .route(
+            "/inventory",
+            get(handlers::inventory::list_inventory::<AppState>),
+        )
+        .route(
+            "/inventory/{id}",
+            get(handlers::inventory::get_inventory::<AppState>),
+        )
+        .route(
+            "/inventory/low-stock",
+            get(handlers::inventory::get_low_stock_items::<AppState>),
+        )
         .with_permission(perm::INVENTORY_READ);
 
     let inventory_mutate = Router::new()
-        .route("/inventory", axum::routing::post(handlers::inventory::create_inventory::<AppState>))
-        .route("/inventory/{id}", axum::routing::put(handlers::inventory::update_inventory::<AppState>))
-        .route("/inventory/{id}/reserve", axum::routing::post(handlers::inventory::reserve_inventory::<AppState>))
-        .route("/inventory/{id}/release", axum::routing::post(handlers::inventory::release_inventory::<AppState>))
+        .route(
+            "/inventory",
+            axum::routing::post(handlers::inventory::create_inventory::<AppState>),
+        )
+        .route(
+            "/inventory/{id}",
+            axum::routing::put(handlers::inventory::update_inventory::<AppState>),
+        )
+        .route(
+            "/inventory/{id}/reserve",
+            axum::routing::post(handlers::inventory::reserve_inventory::<AppState>),
+        )
+        .route(
+            "/inventory/{id}/release",
+            axum::routing::post(handlers::inventory::release_inventory::<AppState>),
+        )
         .with_permission(perm::INVENTORY_ADJUST);
 
     let inventory_delete = Router::new()
-        .route("/inventory/{id}", axum::routing::delete(handlers::inventory::delete_inventory::<AppState>))
+        .route(
+            "/inventory/{id}",
+            axum::routing::delete(handlers::inventory::delete_inventory::<AppState>),
+        )
         .with_permission(perm::INVENTORY_ADJUST);
 
     // Returns routes with permission gating
@@ -221,60 +264,101 @@ pub fn api_v1_routes() -> Router<AppState> {
 
     // Warranties routes with permission gating
     let warranties_read = Router::new()
-        .route("/warranties", get(handlers::warranties::list_warranties::<AppState>))
-        .route("/warranties/{id}", get(handlers::warranties::get_warranty::<AppState>))
+        .route(
+            "/warranties",
+            get(handlers::warranties::list_warranties::<AppState>),
+        )
+        .route(
+            "/warranties/{id}",
+            get(handlers::warranties::get_warranty::<AppState>),
+        )
         .with_permission(perm::WARRANTIES_READ);
 
     let warranties_create = Router::new()
-        .route("/warranties", axum::routing::post(handlers::warranties::create_warranty::<AppState>))
+        .route(
+            "/warranties",
+            axum::routing::post(handlers::warranties::create_warranty::<AppState>),
+        )
         .with_permission(perm::WARRANTIES_CREATE);
 
     let warranties_update = Router::new()
-        .route("/warranties/{id}", axum::routing::put(handlers::warranties::update_warranty::<AppState>))
-        .route("/warranties/{id}/claim", axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>))
+        .route(
+            "/warranties/{id}",
+            axum::routing::put(handlers::warranties::update_warranty::<AppState>),
+        )
+        .route(
+            "/warranties/{id}/claim",
+            axum::routing::post(handlers::warranties::create_warranty_claim::<AppState>),
+        )
         .with_permission(perm::WARRANTIES_UPDATE);
 
     let warranties_delete = Router::new()
-        .route("/warranties/{id}", axum::routing::delete(handlers::warranties::delete_warranty::<AppState>))
+        .route(
+            "/warranties/{id}",
+            axum::routing::delete(handlers::warranties::delete_warranty::<AppState>),
+        )
         .with_permission(perm::WARRANTIES_DELETE);
 
     // Work Orders routes with permission gating
     let work_orders_read = Router::new()
-        .route("/work-orders", get(handlers::work_orders::list_work_orders::<AppState>))
-        .route("/work-orders/{id}", get(handlers::work_orders::get_work_order::<AppState>))
+        .route(
+            "/work-orders",
+            get(handlers::work_orders::list_work_orders::<AppState>),
+        )
+        .route(
+            "/work-orders/{id}",
+            get(handlers::work_orders::get_work_order::<AppState>),
+        )
         .with_permission(perm::WORKORDERS_READ);
 
     let work_orders_create = Router::new()
-        .route("/work-orders", axum::routing::post(handlers::work_orders::create_work_order::<AppState>))
+        .route(
+            "/work-orders",
+            axum::routing::post(handlers::work_orders::create_work_order::<AppState>),
+        )
         .with_permission(perm::WORKORDERS_CREATE);
 
     let work_orders_update = Router::new()
-        .route("/work-orders/{id}", axum::routing::put(handlers::work_orders::update_work_order::<AppState>))
-        .route("/work-orders/{id}/assign", axum::routing::post(handlers::work_orders::assign_work_order::<AppState>))
-        .route("/work-orders/{id}/complete", axum::routing::post(handlers::work_orders::complete_work_order::<AppState>))
-        .route("/work-orders/{id}/status", axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>))
+        .route(
+            "/work-orders/{id}",
+            axum::routing::put(handlers::work_orders::update_work_order::<AppState>),
+        )
+        .route(
+            "/work-orders/{id}/assign",
+            axum::routing::post(handlers::work_orders::assign_work_order::<AppState>),
+        )
+        .route(
+            "/work-orders/{id}/complete",
+            axum::routing::post(handlers::work_orders::complete_work_order::<AppState>),
+        )
+        .route(
+            "/work-orders/{id}/status",
+            axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>),
+        )
         .with_permission(perm::WORKORDERS_UPDATE);
 
     let work_orders_delete = Router::new()
-        .route("/work-orders/{id}", axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>))
+        .route(
+            "/work-orders/{id}",
+            axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>),
+        )
         .with_permission(perm::WORKORDERS_DELETE);
 
     // Admin outbox routes
-    let outbox_admin = handlers::outbox_admin::router()
-        .with_permission("admin:outbox");
+    let outbox_admin = handlers::outbox_admin::router().with_permission("admin:outbox");
 
     // Payments routes
-    let payments = handlers::payments::payment_routes()
-        .with_permission("payments:access");
+    let payments = handlers::payments::payment_routes().with_permission("payments:access");
     // Payment webhook (does not require auth, but signature-verified)
-    let payment_webhook = Router::new()
-        .route("/payments/webhook", axum::routing::post(handlers::payment_webhooks::payment_webhook));
+    let payment_webhook = Router::new().route(
+        "/payments/webhook",
+        axum::routing::post(handlers::payment_webhooks::payment_webhook),
+    );
 
     Router::new()
         // Status and health endpoints
         .route("/status", get(api_status))
         .route("/health", get(health_check))
-        
         // Orders API (auth + permissions)
         .merge(orders_read)
         .merge(orders_create)
@@ -285,7 +369,6 @@ pub fn api_v1_routes() -> Router<AppState> {
         .merge(inventory_read)
         .merge(inventory_mutate)
         .merge(inventory_delete)
-
         // ASN API (auth + permissions) - temporarily disabled
         // .route("/asns", get(handlers::asn::list_asns))
         // .route("/asns/{id}", get(handlers::asn::get_asn))
@@ -296,47 +379,38 @@ pub fn api_v1_routes() -> Router<AppState> {
         // .route("/asns/{id}/delivered", post(handlers::asn::delivered_asn))
         // .route("/asns/{id}/cancel", post(handlers::asn::cancel_asn))
         // .with_permission("asn:read")
-
         // Returns API (auth + permissions)
         .merge(returns_read)
         .merge(returns_write)
         .merge(returns_delete)
-
         // Shipments API (auth + permissions)
         .merge(shipments_read)
         .merge(shipments_write)
         .merge(shipments_delete)
-
         // Warranties API (auth + permissions)
         .merge(warranties_read)
         .merge(warranties_create)
         .merge(warranties_update)
         .merge(warranties_delete)
-
-         // Agents API
-         .nest("/agents", handlers::agents::agents_routes())
-         
-         // Work Orders API (auth + permissions)
-         .merge(work_orders_read)
-         .merge(work_orders_create)
-         .merge(work_orders_update)
-         .merge(work_orders_delete)
-
-         // Payments API
-         .nest("/payments", payments)
-         .merge(payment_webhook)
-
-         // Commerce API (products, carts, checkout)
-         .nest("/products", handlers::commerce::products_routes())
-         .nest("/carts", handlers::commerce::carts_routes())
-         .nest("/checkout", handlers::commerce::checkout_routes())
-         .nest("/customers", handlers::commerce::customers_routes())
-         
-         // Agentic Checkout API (for ChatGPT integration)
-         .merge(handlers::commerce::agentic_checkout_routes())
-
-         // Admin
-         .nest("/admin/outbox", outbox_admin)
+        // Agents API
+        .nest("/agents", handlers::agents::agents_routes())
+        // Work Orders API (auth + permissions)
+        .merge(work_orders_read)
+        .merge(work_orders_create)
+        .merge(work_orders_update)
+        .merge(work_orders_delete)
+        // Payments API
+        .nest("/payments", payments)
+        .merge(payment_webhook)
+        // Commerce API (products, carts, checkout)
+        .nest("/products", handlers::commerce::products_routes())
+        .nest("/carts", handlers::commerce::carts_routes())
+        .nest("/checkout", handlers::commerce::checkout_routes())
+        .nest("/customers", handlers::commerce::customers_routes())
+        // Agentic Checkout API (for ChatGPT integration)
+        .merge(handlers::commerce::agentic_checkout_routes())
+        // Admin
+        .nest("/admin/outbox", outbox_admin)
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {
@@ -352,17 +426,19 @@ async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> 
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "environment": std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()),
     });
-    
+
     Ok(Json(ApiResponse::success(status_data)))
 }
 
-async fn health_check(State(state): State<AppState>) -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {
+async fn health_check(
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {
     // Check database connectivity
     let db_status = match state.db.ping().await {
         Ok(_) => "healthy",
         Err(_) => "unhealthy",
     };
-    
+
     // Check Redis connectivity
     let redis_status = match state.redis.get_async_connection().await {
         Ok(mut conn) => match redis::cmd("PING").query_async::<_, String>(&mut conn).await {
@@ -371,7 +447,7 @@ async fn health_check(State(state): State<AppState>) -> Result<Json<ApiResponse<
         },
         Err(_) => "unhealthy",
     };
-    
+
     let health_data = json!({
         "status": if db_status == "healthy" && redis_status == "healthy" { "healthy" } else { "unhealthy" },
         "checks": {
@@ -382,7 +458,7 @@ async fn health_check(State(state): State<AppState>) -> Result<Json<ApiResponse<
         "timestamp": chrono::Utc::now().to_rfc3339(),
         "uptime": "unknown", // TODO: Calculate actual uptime
     });
-    
+
     Ok(Json(ApiResponse::success(health_data)))
 }
 
@@ -394,15 +470,15 @@ async fn request_logging_middleware(
     let method = request.method().clone();
     let uri = request.uri().clone();
     let start = std::time::Instant::now();
-    
+
     // Log incoming request
     tracing::info!(method = %method, uri = %uri, "Incoming request");
-    
+
     let response = next.run(request).await;
-    
+
     let duration = start.elapsed();
     let status = response.status();
-    
+
     // Log completed request
     tracing::info!(
         method = %method,
@@ -411,7 +487,7 @@ async fn request_logging_middleware(
         elapsed_ms = duration.as_millis() as u64,
         "Request completed"
     );
-    
+
     response
 }
 
@@ -434,13 +510,6 @@ pub mod prelude {
     pub use crate::versioning::*;
 }
 
-// Implement InventoryHandlerState trait for AppState
-impl InventoryHandlerState for AppState {
-    fn inventory_service(&self) -> &services::inventory::InventoryService {
-        &self.inventory_service
-    }
-}
-
-// Note: AppState automatically implements ReturnsAppState, ShipmentsAppState, 
+// Note: AppState automatically implements ReturnsAppState, ShipmentsAppState,
 // WarrantiesAppState, and WorkOrdersAppState through blanket implementations
 // in the respective handler modules

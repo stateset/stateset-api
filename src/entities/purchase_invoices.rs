@@ -29,4 +29,4 @@ impl Related<super::purchase_invoice_lines::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {} 
+impl ActiveModelBehavior for ActiveModel {}

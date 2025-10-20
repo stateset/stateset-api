@@ -1,16 +1,16 @@
+use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ActiveModelBehavior, ActiveValue, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel,
-    QueryFilter, QuerySelect, Set, TransactionTrait, QueryOrder,
+    ActiveModelBehavior, ActiveValue, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 use thiserror::Error;
-use validator::{Validate, ValidationError};
 use uuid::Uuid;
-use async_trait::async_trait;
+use validator::{Validate, ValidationError};
 
 /// Custom error type for machine operations
 #[derive(Error, Debug)]
@@ -257,7 +257,6 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::maintenance_record::Entity")]
     MaintenanceRecords,
-
     // TODO: Uncomment when machine_part entity is implemented
     // #[sea_orm(has_many = "super::machine_part::Entity")]
     // MachineParts,
@@ -289,11 +288,7 @@ impl Related<super::maintenance_record::Entity> for Entity {
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
-    async fn before_save<C: ConnectionTrait>(
-        self,
-        _db: &C,
-        insert: bool,
-    ) -> Result<Self, DbErr> {
+    async fn before_save<C: ConnectionTrait>(self, _db: &C, insert: bool) -> Result<Self, DbErr> {
         let mut active_model = self;
         if insert {
             active_model.set_id_if_needed();
@@ -371,7 +366,9 @@ impl Model {
             maintenance_count: 0,
         };
 
-        machine.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        machine
+            .validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
         Ok(machine)
     }
 
@@ -537,7 +534,8 @@ impl Model {
     /// Save the machine to database
     pub async fn save(&self, db: &DatabaseConnection) -> Result<Model, MachineError> {
         // Validate before saving
-        self.validate().map_err(|_| ValidationError::new("Validation failed"))?;
+        self.validate()
+            .map_err(|_| ValidationError::new("Validation failed"))?;
 
         let model: ActiveModel = self.clone().into();
         let result = match self.id {

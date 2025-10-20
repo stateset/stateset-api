@@ -49,7 +49,7 @@ impl Query for GetASNQuery {
         ASNEntity::find_by_id(self.asn_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -73,7 +73,7 @@ impl Query for GetASNsByStatusQuery {
             .order_by_desc(crate::models::asn_entity::Column::ExpectedDeliveryDate)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -104,21 +104,21 @@ impl Query for GetASNDetailsQuery {
         let asn = ASNEntity::find_by_id(self.asn_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("ASN not found".to_string()))?;
 
         // Fetch the supplier
         let supplier = SupplierEntity::find_by_id(asn.supplier_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Supplier not found".to_string()))?;
 
         // Fetch the warehouse
         let warehouse = WarehouseEntity::find_by_id(asn.warehouse_id)
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound("Warehouse not found".to_string()))?;
 
         // Fetch purchase order if exists
@@ -126,7 +126,7 @@ impl Query for GetASNDetailsQuery {
             PurchaseOrderEntity::find_by_id(po_id)
                 .one(db_pool)
                 .await
-                .map_err(|e| ServiceError::DatabaseError(e))?
+                .map_err(|e| ServiceError::db_error(e))?
         } else {
             None
         };
@@ -136,7 +136,7 @@ impl Query for GetASNDetailsQuery {
             .filter(crate::models::asn_item_entity::Column::AsnId.eq(self.asn_id))
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         let mut packages_with_items = Vec::new();
         for package in packages {
@@ -144,7 +144,7 @@ impl Query for GetASNDetailsQuery {
                 .filter(crate::models::asn_item_entity::Column::AsnId.eq(package.asn_id))
                 .all(db_pool)
                 .await
-                .map_err(|e| ServiceError::DatabaseError(e))?;
+                .map_err(|e| ServiceError::db_error(e))?;
             
             packages_with_items.push((package, items_with_products));
         }
@@ -180,7 +180,7 @@ impl Query for GetASNsByDateRangeQuery {
             .offset(self.offset)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -213,7 +213,7 @@ impl Query for GetASNsByTrackingQuery {
             .filter(condition)
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))
+            .map_err(|e| ServiceError::db_error(e))
     }
 }
 
@@ -250,7 +250,7 @@ impl Query for GetASNStatisticsQuery {
             .filter(crate::models::asn_entity::Column::CreatedAt.between(self.start_date, self.end_date))
             .count(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Get status counts
         let status_counts = ASNEntity::find()
@@ -265,7 +265,7 @@ impl Query for GetASNStatisticsQuery {
             .into_model::<StatusCount>()
             .all(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?;
+            .map_err(|e| ServiceError::db_error(e))?;
 
         // Convert to tuple format
         let status_counts: Vec<(ASNStatus, i64)> = status_counts
@@ -288,7 +288,7 @@ impl Query for GetASNStatisticsQuery {
             .into_tuple::<Option<f64>>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .flatten()
             .unwrap_or(0.0);
 
@@ -309,7 +309,7 @@ impl Query for GetASNStatisticsQuery {
             .into_tuple::<i64>()
             .one(db_pool)
             .await
-            .map_err(|e| ServiceError::DatabaseError(e))?
+            .map_err(|e| ServiceError::db_error(e))?
             .unwrap_or(0);
 
         let on_time_delivery_rate = if total_asns > 0 {

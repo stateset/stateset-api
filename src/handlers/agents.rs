@@ -1,4 +1,8 @@
-use axum::{extract::{Json, Path, Query, State}, routing::{get, post}, Router};
+use axum::{
+    extract::{Json, Path, Query, State},
+    routing::{get, post},
+    Router,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -6,7 +10,7 @@ use validator::Validate;
 
 use crate::{
     errors::ApiError,
-    handlers::common::{map_service_error, success_response, created_response, validate_input},
+    handlers::common::{created_response, map_service_error, success_response, validate_input},
     services::commerce::{CartService, ProductCatalogService},
     AppState,
 };
@@ -16,7 +20,10 @@ pub fn agents_routes() -> Router<AppState> {
     use crate::auth::AuthRouterExt;
     Router::new()
         .route("/recommendations", get(get_recommendations))
-        .route("/customers/{customer_id}/carts/{cart_id}/items", post(agent_add_to_cart))
+        .route(
+            "/customers/{customer_id}/carts/{cart_id}/items",
+            post(agent_add_to_cart),
+        )
         .with_permission("agents:access")
 }
 
@@ -44,24 +51,28 @@ async fn get_recommendations(
     let offset = (page.saturating_sub(1)) * per_page;
 
     // Use a lightweight search using Product entity directly
-    use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, QueryOrder, PaginatorTrait, QuerySelect};
-    use crate::entities::product::{Entity as Product, Column as ProductColumn};
+    use crate::entities::product::{Column as ProductColumn, Entity as Product};
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 
     let mut query = Product::find();
     if let Some(ref search) = params.search {
         let pattern = format!("%{}%", search);
         query = query.filter(
-            ProductColumn::Name.contains(&pattern)
-                .or(ProductColumn::Sku.contains(&pattern))
+            ProductColumn::Name
+                .contains(&pattern)
+                .or(ProductColumn::Sku.contains(&pattern)),
         );
     }
     if let Some(active) = params.is_active {
         query = query.filter(ProductColumn::IsActive.eq(active));
     }
 
-    let total = query.clone().count(&*state.db).await.map_err(|e| {
-        crate::errors::ServiceError::DatabaseError(e)
-    }).map_err(map_service_error)?;
+    let total = query
+        .clone()
+        .count(&*state.db)
+        .await
+        .map_err(|e| crate::errors::ServiceError::db_error(e))
+        .map_err(map_service_error)?;
 
     let products = query
         .order_by_desc(ProductColumn::CreatedAt)
@@ -69,16 +80,19 @@ async fn get_recommendations(
         .offset(offset)
         .all(&*state.db)
         .await
-        .map_err(|e| crate::errors::ServiceError::DatabaseError(e))
+        .map_err(|e| crate::errors::ServiceError::db_error(e))
         .map_err(map_service_error)?;
 
-    Ok(success_response(RecommendationsResponse { products, total }))
+    Ok(success_response(RecommendationsResponse {
+        products,
+        total,
+    }))
 }
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct AgentAddToCartRequest {
     pub variant_id: Uuid,
-    
+
     pub quantity: i32,
 }
 
@@ -112,9 +126,15 @@ trait AgentsHandlerState {
 
 impl AgentsHandlerState for AppState {
     fn cart_service(&self) -> CartService {
-        crate::services::commerce::CartService::new(self.db.clone(), Arc::new(self.event_sender.clone()))
+        crate::services::commerce::CartService::new(
+            self.db.clone(),
+            Arc::new(self.event_sender.clone()),
+        )
     }
     fn product_catalog_service(&self) -> ProductCatalogService {
-        crate::services::commerce::ProductCatalogService::new(self.db.clone(), Arc::new(self.event_sender.clone()))
+        crate::services::commerce::ProductCatalogService::new(
+            self.db.clone(),
+            Arc::new(self.event_sender.clone()),
+        )
     }
-} 
+}

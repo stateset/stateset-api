@@ -97,7 +97,9 @@ impl Model {
         };
 
         // Validate the new order
-        order.validate().map_err(|_e| ValidationError::new("Order validation failed"))?;
+        order
+            .validate()
+            .map_err(|_e| ValidationError::new("Order validation failed"))?;
 
         Ok(order)
     }
@@ -109,7 +111,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_e| ValidationError::new("Order validation failed"))?;
+        self.validate()
+            .map_err(|_e| ValidationError::new("Order validation failed"))?;
 
         Ok(())
     }
@@ -121,7 +124,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_e| ValidationError::new("Order validation failed"))?;
+        self.validate()
+            .map_err(|_e| ValidationError::new("Order validation failed"))?;
 
         Ok(())
     }
@@ -133,7 +137,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_e| ValidationError::new("Order validation failed"))?;
+        self.validate()
+            .map_err(|_e| ValidationError::new("Order validation failed"))?;
 
         Ok(())
     }
@@ -145,7 +150,8 @@ impl Model {
         self.version += 1;
 
         // Revalidate after update
-        self.validate().map_err(|_e| ValidationError::new("Order validation failed"))?;
+        self.validate()
+            .map_err(|_e| ValidationError::new("Order validation failed"))?;
 
         Ok(())
     }

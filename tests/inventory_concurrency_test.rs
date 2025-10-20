@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use rust_decimal::Decimal;
+use stateset_api::events::{process_events, EventSender};
+use stateset_api::services::inventory::AdjustInventoryCommand;
 use stateset_api::{db, services::inventory::InventoryService};
-use stateset_api::services::inventory::{AdjustInventoryCommand};
-use stateset_api::events::{EventSender, process_events};
+use std::sync::Arc;
 use tokio::sync::mpsc;
-use uuid::Uuid;
 
 // This test is ignored by default because it requires a real SQLite/Postgres DB and migrations.
 // Run with: cargo test -- --ignored inventory_concurrency
@@ -22,7 +22,9 @@ async fn inventory_concurrency() {
         18080,
         "test".to_string(),
     );
-    let pool = db::establish_connection_from_app_config(&cfg).await.expect("db connect");
+    let pool = db::establish_connection_from_app_config(&cfg)
+        .await
+        .expect("db connect");
     let _ = db::run_migrations(&pool).await; // best-effort
 
     let db_arc = Arc::new(pool);
@@ -32,28 +34,49 @@ async fn inventory_concurrency() {
 
     let svc = InventoryService::new(db_arc.clone(), sender.clone());
 
-    // Seed one inventory row (sku=product, warehouse=location)
-    let product = Uuid::new_v4();
-    let location = Uuid::new_v4();
+    // Seed one inventory row (item master + location)
+    let item = svc
+        .ensure_item(
+            "ITEM-CONCURRENCY",
+            1,
+            Some("Concurrency Test Item".to_string()),
+            Some("EA".to_string()),
+        )
+        .await
+        .expect("ensure item");
+    let location_id = 1;
     svc.adjust_inventory(AdjustInventoryCommand {
-        product_id: Some(product),
-        location_id: Some(location),
-        adjustment_quantity: Some(10),
+        inventory_item_id: Some(item.inventory_item_id),
+        item_number: None,
+        location_id,
+        quantity_delta: Decimal::from(10),
         reason: Some("seed".into()),
-    }).await.expect("seed adjust");
+    })
+    .await
+    .expect("seed adjust");
 
     // Try 20 concurrent reservations of 1 unit each, expect only 10 successes
     let mut tasks = vec![];
     for _ in 0..20 {
         let svc = svc.clone();
-        let p = product;
-        let l = location;
+        let item_id = item.inventory_item_id;
+        let loc = location_id;
         tasks.push(tokio::spawn(async move {
-            svc.reserve_inventory_simple(&p, &l, 1).await.map(|_| ()).is_ok()
+            svc.reserve_inventory_simple(item_id, loc, Decimal::from(1))
+                .await
+                .map(|_| ())
+                .is_ok()
         }));
     }
     let mut success = 0;
-    for t in tasks { if t.await.unwrap_or(false) { success += 1; } }
-    assert_eq!(success, 10, "exactly 10 reservations should succeed; got {}", success);
+    for t in tasks {
+        if t.await.unwrap_or(false) {
+            success += 1;
+        }
+    }
+    assert_eq!(
+        success, 10,
+        "exactly 10 reservations should succeed; got {}",
+        success
+    );
 }
-
