@@ -23,7 +23,11 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(OutboxEvents::EventType).string().not_null())
-                    .col(ColumnDef::new(OutboxEvents::Payload).json_binary().not_null())
+                    .col(
+                        ColumnDef::new(OutboxEvents::Payload)
+                            .json_binary()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(OutboxEvents::Status)
                             .string()
