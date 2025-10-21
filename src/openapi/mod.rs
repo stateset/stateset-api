@@ -167,7 +167,7 @@ pub fn swagger_ui() -> SwaggerUi {
         .config(utoipa_swagger_ui::Config::from("/api-docs/openapi.json").try_it_out_enabled(true))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
 

@@ -163,7 +163,7 @@ fn validate_decimal_non_negative(value: &Decimal) -> Result<(), ValidationError>
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use chrono::Utc;

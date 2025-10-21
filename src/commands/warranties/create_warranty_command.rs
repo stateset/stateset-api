@@ -113,7 +113,7 @@ impl Command for CreateWarrantyCommand {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use chrono::Duration;

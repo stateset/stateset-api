@@ -4,11 +4,14 @@ use axum::{
     response::Response,
 };
 use chrono::Utc;
+use redis::Client;
 use serde_json::{json, Value};
 use stateset_api::{
     api::StateSetApi,
-    config, db,
-    events::{process_events, EventSender},
+    auth::{AuthConfig, AuthService},
+    config::{self, AppConfig},
+    db,
+    events::{self, process_events, EventSender},
     handlers::AppServices,
     health,
     proto::*,
@@ -16,29 +19,59 @@ use stateset_api::{
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower::ServiceExt;
+use uuid::Uuid;
 
 // Helper function to create test app state
 async fn create_test_app_state() -> stateset_api::AppState {
-    let config = config::AppConfig {
-        database_url: ":memory:".to_string(),
-        host: "127.0.0.1".to_string(),
-        port: 8080,
-        auto_migrate: false,
-        env: "test".to_string(),
-    };
-
-    let db_arc = Arc::new(
-        db::establish_connection(&config.database_url)
-            .await
-            .unwrap(),
+    let mut config = AppConfig::new(
+        "sqlite::memory:?cache=shared".to_string(),
+        "redis://127.0.0.1:6379".to_string(),
+        "test_secret_key_for_testing_purposes_only_32chars".to_string(),
+        3600,
+        86_400,
+        "127.0.0.1".to_string(),
+        18_080,
+        "test".to_string(),
     );
-    let (tx, _rx) = mpsc::channel(1000);
-    let event_sender = EventSender::new(tx);
+    config.auto_migrate = true;
 
-    // Create inventory service for tests
+    let pool = db::establish_connection_from_app_config(&config)
+        .await
+        .expect("failed to create test database");
+    if config.auto_migrate {
+        db::run_migrations(&pool)
+            .await
+            .expect("failed to run migrations in tests");
+    }
+
+    let db_arc = Arc::new(pool);
+    let (tx, rx) = mpsc::channel(1024);
+    let event_sender = EventSender::new(tx);
+    let _event_task = tokio::spawn(process_events(rx));
+
     let inventory_service = stateset_api::services::inventory::InventoryService::new(
         db_arc.clone(),
         event_sender.clone(),
+    );
+
+    let redis_client =
+        Arc::new(Client::open(config.redis_url.clone()).expect("invalid redis url for tests"));
+
+    let auth_cfg = AuthConfig::new(
+        config.jwt_secret.clone(),
+        "stateset-api".to_string(),
+        "stateset-auth".to_string(),
+        std::time::Duration::from_secs(config.jwt_expiration as u64),
+        std::time::Duration::from_secs(config.refresh_token_expiration as u64),
+        "sk_".to_string(),
+    );
+    let auth_service = Arc::new(AuthService::new(auth_cfg, db_arc.clone()));
+
+    let services = AppServices::new(
+        db_arc.clone(),
+        Arc::new(event_sender.clone()),
+        redis_client.clone(),
+        auth_service,
     );
 
     stateset_api::AppState {
@@ -46,6 +79,8 @@ async fn create_test_app_state() -> stateset_api::AppState {
         config,
         event_sender,
         inventory_service,
+        services,
+        redis: redis_client,
     }
 }
 
@@ -291,22 +326,23 @@ async fn test_inventory_management() {
 async fn test_returns_workflow() {
     let app = create_test_app().await;
 
+    let order_id = Uuid::new_v4();
     // Test creating a return
     let create_payload = json!({
-        "order_id": "order_123",
+        "order_id": order_id,
         "reason": "defective",
         "description": "Item arrived damaged",
         "return_type": "refund",
         "items": [
             {
-                "order_item_id": "item_123",
+                "order_item_id": Uuid::new_v4(),
                 "quantity": 1,
                 "reason": "damaged"
             }
         ]
     });
 
-    let response = app
+    let response_create = app
         .clone()
         .oneshot(
             Request::builder()
@@ -319,7 +355,16 @@ async fn test_returns_workflow() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(response_create.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(response_create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created_json: Value =
+        serde_json::from_slice(&body_bytes).expect("return create response json");
+    let return_id = created_json["data"]["id"]
+        .as_str()
+        .expect("return id present")
+        .to_string();
 
     // Test return approval
     let response = app
@@ -327,7 +372,7 @@ async fn test_returns_workflow() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/v1/returns/return_123/approve")
+                .uri(format!("/api/v1/returns/{}/approve", return_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -337,26 +382,13 @@ async fn test_returns_workflow() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test return restocking
-    let restock_payload = json!({
-        "return_id": "return_123",
-        "location_id": "loc_warehouse_001",
-        "items": [
-            {
-                "return_item_id": "ret_item_123",
-                "quantity": 1,
-                "condition": "damaged"
-            }
-        ]
-    });
-
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/v1/returns/return_123/restock")
-                .header("content-type", "application/json")
-                .body(Body::from(restock_payload.to_string()))
+                .uri(format!("/api/v1/returns/{}/restock", return_id))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
@@ -369,11 +401,14 @@ async fn test_returns_workflow() {
 async fn test_shipments_tracking() {
     let app = create_test_app().await;
 
+    let order_id = Uuid::new_v4();
+    let tracking_number = "1Z123456789";
     // Test creating a shipment
     let create_payload = json!({
-        "order_id": "order_123",
+        "order_id": order_id,
         "carrier": "UPS",
         "service_type": "Ground",
+        "tracking_number": tracking_number,
         "shipping_address": {
             "street1": "123 Main St",
             "city": "Anytown",
@@ -383,7 +418,7 @@ async fn test_shipments_tracking() {
         },
         "items": [
             {
-                "order_item_id": "item_123",
+                "order_item_id": Uuid::new_v4(),
                 "quantity": 1
             }
         ],
@@ -396,7 +431,7 @@ async fn test_shipments_tracking() {
         }
     });
 
-    let response = app
+    let response_create = app
         .clone()
         .oneshot(
             Request::builder()
@@ -409,14 +444,23 @@ async fn test_shipments_tracking() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(response_create.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(response_create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created_json: Value =
+        serde_json::from_slice(&body_bytes).expect("shipment create response json");
+    let shipment_id = created_json["data"]["id"]
+        .as_str()
+        .expect("shipment id present")
+        .to_string();
 
     // Test shipment tracking
     let response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/v1/shipments/ship_123/track")
+                .uri(format!("/api/v1/shipments/{}/track", shipment_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -430,7 +474,7 @@ async fn test_shipments_tracking() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/v1/shipments/track/1Z123456789")
+                .uri(format!("/api/v1/shipments/track/{}", tracking_number))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -445,7 +489,22 @@ async fn test_shipments_tracking() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/v1/shipments/ship_123/ship")
+                .uri(format!("/api/v1/shipments/{}/ship", shipment_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Test marking as delivered
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/shipments/{}/deliver", shipment_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -459,20 +518,20 @@ async fn test_shipments_tracking() {
 async fn test_warranties_management() {
     let app = create_test_app().await;
 
+    let product_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    let expiration_date = (Utc::now() + chrono::Duration::days(365)).to_rfc3339();
     // Test creating a warranty
     let create_payload = json!({
-        "product_id": "prod_abc",
-        "customer_id": "cust_123",
-        "order_id": "order_123",
+        "product_id": product_id,
+        "customer_id": customer_id,
         "serial_number": "SN123456",
         "warranty_type": "limited",
-        "duration_months": 12,
-        "terms": "Standard limited warranty covering manufacturing defects",
-        "coverage": ["manufacturing_defects", "parts"],
-        "exclusions": ["accidental_damage", "wear_and_tear"]
+        "expiration_date": expiration_date,
+        "terms": "Standard limited warranty covering manufacturing defects"
     });
 
-    let response = app
+    let response_create = app
         .clone()
         .oneshot(
             Request::builder()
@@ -485,16 +544,27 @@ async fn test_warranties_management() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(response_create.status(), StatusCode::CREATED);
+    let body_bytes = axum::body::to_bytes(response_create.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created_json: Value =
+        serde_json::from_slice(&body_bytes).expect("warranty create response json");
+    let warranty_id = created_json["data"]["id"]
+        .as_str()
+        .expect("warranty id present")
+        .to_string();
 
     // Test creating a warranty claim
     let claim_payload = json!({
-        "warranty_id": "warranty_123",
-        "claim_type": "repair",
-        "issue_description": "Device stopped working after 3 months of use"
+        "warranty_id": warranty_id,
+        "customer_id": customer_id,
+        "description": "Device stopped working after 3 months of use",
+        "evidence": [],
+        "contact_email": "customer@example.com"
     });
 
-    let response = app
+    let response_claim = app
         .clone()
         .oneshot(
             Request::builder()
@@ -507,16 +577,32 @@ async fn test_warranties_management() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(response_claim.status(), StatusCode::CREATED);
+    let claim_bytes = axum::body::to_bytes(response_claim.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let claim_json: Value =
+        serde_json::from_slice(&claim_bytes).expect("warranty claim response json");
+    let claim_id = claim_json["data"]["claim_id"]
+        .as_str()
+        .expect("claim id present")
+        .to_string();
 
     // Test approving a claim
+    let approve_payload = json!({
+        "approved_by": Uuid::new_v4(),
+        "resolution": "Approved for repair",
+        "notes": "Customer eligible for repair service"
+    });
+
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/v1/warranties/claims/claim_123/approve")
-                .body(Body::empty())
+                .uri(format!("/api/v1/warranties/claims/{}/approve", claim_id))
+                .header("content-type", "application/json")
+                .body(Body::from(approve_payload.to_string()))
                 .unwrap(),
         )
         .await
@@ -534,7 +620,7 @@ async fn test_warranties_management() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/v1/warranties/warranty_123/extend")
+                .uri(format!("/api/v1/warranties/{}/extend", warranty_id))
                 .header("content-type", "application/json")
                 .body(Body::from(extend_payload.to_string()))
                 .unwrap(),

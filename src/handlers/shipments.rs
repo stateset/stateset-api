@@ -1,731 +1,201 @@
-use crate::errors::ServiceError;
+use crate::{
+    commands::shipments::create_shipment_command::CreateShipmentCommand,
+    commands::shipments::track_shipment_command::TrackShipmentCommand, errors::ServiceError,
+    models::shipment, ApiResponse, ApiResult, AppState, PaginatedResponse,
+};
 use axum::{
-    extract::{Json, Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{delete, get, post, put},
-    Router,
+    extract::{Path, Query, State},
+    response::Json,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 use uuid::Uuid;
+use validator::Validate;
 
-// Generic trait for shipments handler state
-pub trait ShipmentsAppState: Clone + Send + Sync + 'static {}
-impl<T> ShipmentsAppState for T where T: Clone + Send + Sync + 'static {}
+#[derive(Debug, Deserialize, Default, ToSchema)]
+pub struct ShipmentListQuery {
+    pub page: Option<u64>,
+    pub limit: Option<u64>,
+    pub status: Option<String>,
+}
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Shipment {
-    pub id: String,
-    pub order_id: String,
-    pub tracking_number: Option<String>,
-    pub carrier: String,
-    pub service_type: String,
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ShipmentSummary {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub tracking_number: String,
     pub status: String,
+    pub shipping_method: String,
+    pub shipping_address: String,
+    pub recipient_name: String,
     pub estimated_delivery: Option<DateTime<Utc>>,
-    pub actual_delivery: Option<DateTime<Utc>>,
-    pub shipping_address: Address,
-    pub items: Vec<ShipmentItem>,
-    pub weight: Option<f64>,
-    pub dimensions: Option<Dimensions>,
-    pub cost: Option<f64>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
     pub shipped_at: Option<DateTime<Utc>>,
     pub delivered_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct ShipmentItem {
-    pub id: String,
-    pub order_item_id: String,
-    pub product_id: String,
-    pub quantity: i32,
-    pub serial_numbers: Option<Vec<String>>,
+impl From<shipment::Model> for ShipmentSummary {
+    fn from(model: shipment::Model) -> Self {
+        Self {
+            id: model.id,
+            order_id: model.order_id,
+            tracking_number: model.tracking_number,
+            status: model.status.to_string(),
+            shipping_method: model.shipping_method.to_string(),
+            shipping_address: model.shipping_address,
+            recipient_name: model.recipient_name,
+            estimated_delivery: model.estimated_delivery,
+            shipped_at: model.shipped_at,
+            delivered_at: model.delivered_at,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        }
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Address {
-    pub street1: String,
-    pub street2: Option<String>,
-    pub city: String,
-    pub state: String,
-    pub postal_code: String,
-    pub country: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Dimensions {
-    pub length: f64,
-    pub width: f64,
-    pub height: f64,
-    pub unit: String, // "in", "cm"
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct TrackingEvent {
-    pub id: String,
-    pub shipment_id: String,
-    pub status: String,
-    pub description: String,
-    pub location: Option<String>,
-    pub timestamp: DateTime<Utc>,
-    pub carrier_event_code: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateShipmentRequest {
-    pub order_id: String,
-    pub carrier: String,
-    pub service_type: String,
-    pub shipping_address: Address,
-    pub items: Vec<CreateShipmentItemRequest>,
-    pub weight: Option<f64>,
-    pub dimensions: Option<Dimensions>,
+    pub order_id: Uuid,
+    #[validate(length(min = 1))]
+    pub shipping_address: String,
+    #[validate(length(min = 1))]
+    pub shipping_method: String,
+    #[validate(length(min = 1))]
+    pub tracking_number: String,
+    #[validate(length(min = 1))]
+    pub recipient_name: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateShipmentItemRequest {
-    pub order_item_id: String,
-    pub quantity: i32,
-    pub serial_numbers: Option<Vec<String>>,
+pub async fn list_shipments(
+    State(state): State<AppState>,
+    Query(query): Query<ShipmentListQuery>,
+) -> ApiResult<PaginatedResponse<ShipmentSummary>> {
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+
+    let (records, total) = state.shipment_service().list_shipments(page, limit).await?;
+
+    let mut items: Vec<ShipmentSummary> = records.into_iter().map(ShipmentSummary::from).collect();
+    let filtered_total = if let Some(status) = query.status {
+        items.retain(|shipment| shipment.status.eq_ignore_ascii_case(&status));
+        items.len() as u64
+    } else {
+        total
+    };
+    let total_pages = (filtered_total + limit - 1) / limit;
+
+    Ok(Json(ApiResponse::success(PaginatedResponse {
+        items,
+        total: filtered_total,
+        page,
+        limit,
+        total_pages,
+    })))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateShipmentRequest {
-    pub status: Option<String>,
-    pub tracking_number: Option<String>,
-    pub estimated_delivery: Option<DateTime<Utc>>,
-    pub carrier: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct TrackingUpdateRequest {
-    pub status: String,
-    pub description: String,
-    pub location: Option<String>,
-    pub carrier_event_code: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct ShipmentFilters {
-    pub status: Option<String>,
-    pub carrier: Option<String>,
-    pub order_id: Option<String>,
-    pub tracking_number: Option<String>,
-    pub start_date: Option<String>,
-    pub end_date: Option<String>,
-    pub limit: Option<u32>,
-    pub offset: Option<u32>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateShipmentStatusBody {
-    pub status: String,
-}
-
-/// Create the shipments router
-pub fn shipments_router<S>() -> Router<S>
-where
-    S: ShipmentsAppState,
-{
-    Router::new()
-        .route("/", get(list_shipments::<S>).post(create_shipment::<S>))
-        .route(
-            "/{id}",
-            get(get_shipment::<S>)
-                .put(update_shipment::<S>)
-                .delete(delete_shipment::<S>),
-        )
-        .route("/{id}/ship", post(mark_shipped::<S>))
-        .route("/{id}/deliver", post(mark_delivered::<S>))
-        .route("/{id}/track", get(track_shipment::<S>))
-        .route("/{id}/tracking", post(add_tracking_event::<S>))
-        .route("/track/:tracking_number", get(track_by_number::<S>))
-}
-
-/// List shipments with optional filtering
-#[utoipa::path(
-    get,
-    path = "/api/v1/shipments",
-    params(ShipmentFilters),
-    responses(
-        (status = 200, description = "List shipments",
-            headers(
-                ("X-Request-Id" = String, description = "Unique request id"),
-                ("X-RateLimit-Limit" = String, description = "Requests allowed in current window"),
-                ("X-RateLimit-Remaining" = String, description = "Remaining requests in window"),
-                ("X-RateLimit-Reset" = String, description = "Seconds until reset"),
-            )
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn list_shipments<S>(
-    State(_state): State<S>,
-    Query(filters): Query<ShipmentFilters>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    // Mock data for now - replace with actual database queries
-    let mut shipments = vec![
-        Shipment {
-            id: "ship_001".to_string(),
-            order_id: "order_001".to_string(),
-            tracking_number: Some("1Z123456789".to_string()),
-            carrier: "UPS".to_string(),
-            service_type: "Ground".to_string(),
-            status: "in_transit".to_string(),
-            estimated_delivery: Some(Utc::now() + chrono::Duration::days(2)),
-            actual_delivery: None,
-            shipping_address: Address {
-                street1: "123 Main St".to_string(),
-                street2: None,
-                city: "Anytown".to_string(),
-                state: "CA".to_string(),
-                postal_code: "90210".to_string(),
-                country: "US".to_string(),
-            },
-            items: vec![ShipmentItem {
-                id: "ship_item_001".to_string(),
-                order_item_id: "order_item_001".to_string(),
-                product_id: "prod_abc".to_string(),
-                quantity: 1,
-                serial_numbers: None,
-            }],
-            weight: Some(2.5),
-            dimensions: Some(Dimensions {
-                length: 12.0,
-                width: 8.0,
-                height: 4.0,
-                unit: "in".to_string(),
-            }),
-            cost: Some(15.99),
-            created_at: Utc::now() - chrono::Duration::days(1),
-            updated_at: Utc::now() - chrono::Duration::hours(2),
-            shipped_at: Some(Utc::now() - chrono::Duration::hours(12)),
-            delivered_at: None,
-        },
-        Shipment {
-            id: "ship_002".to_string(),
-            order_id: "order_002".to_string(),
-            tracking_number: Some("1Z987654321".to_string()),
-            carrier: "FedEx".to_string(),
-            service_type: "Express".to_string(),
-            status: "delivered".to_string(),
-            estimated_delivery: Some(Utc::now() - chrono::Duration::hours(6)),
-            actual_delivery: Some(Utc::now() - chrono::Duration::hours(3)),
-            shipping_address: Address {
-                street1: "456 Oak Ave".to_string(),
-                street2: Some("Apt 2B".to_string()),
-                city: "Another City".to_string(),
-                state: "NY".to_string(),
-                postal_code: "10001".to_string(),
-                country: "US".to_string(),
-            },
-            items: vec![ShipmentItem {
-                id: "ship_item_002".to_string(),
-                order_item_id: "order_item_002".to_string(),
-                product_id: "prod_def".to_string(),
-                quantity: 2,
-                serial_numbers: Some(vec!["SN001".to_string(), "SN002".to_string()]),
-            }],
-            weight: Some(5.0),
-            dimensions: Some(Dimensions {
-                length: 16.0,
-                width: 12.0,
-                height: 8.0,
-                unit: "in".to_string(),
-            }),
-            cost: Some(29.99),
-            created_at: Utc::now() - chrono::Duration::days(2),
-            updated_at: Utc::now() - chrono::Duration::hours(3),
-            shipped_at: Some(Utc::now() - chrono::Duration::days(1)),
-            delivered_at: Some(Utc::now() - chrono::Duration::hours(3)),
-        },
-    ];
-
-    // Apply filters
-    if let Some(status) = &filters.status {
-        shipments.retain(|s| &s.status == status);
+pub async fn get_shipment(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<ShipmentSummary> {
+    match state.shipment_service().get_shipment(id).await? {
+        Some(model) => Ok(Json(ApiResponse::success(ShipmentSummary::from(model)))),
+        None => Err(ServiceError::NotFound(format!("Shipment {} not found", id))),
     }
-    if let Some(carrier) = &filters.carrier {
-        shipments.retain(|s| &s.carrier == carrier);
-    }
-    if let Some(order_id) = &filters.order_id {
-        shipments.retain(|s| &s.order_id == order_id);
-    }
-    if let Some(tracking_number) = &filters.tracking_number {
-        shipments.retain(|s| s.tracking_number.as_ref() == Some(tracking_number));
-    }
-
-    let response = json!({
-        "shipments": shipments,
-        "total": shipments.len(),
-        "limit": filters.limit.unwrap_or(50),
-        "offset": filters.offset.unwrap_or(0)
-    });
-
-    Ok((StatusCode::OK, Json(response)))
 }
 
-/// Create a new shipment
-#[utoipa::path(
-    post,
-    path = "/api/v1/shipments",
-    request_body = CreateShipmentRequest,
-    responses(
-        (status = 201, description = "Shipment created", body = Shipment,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse),
-        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn create_shipment<S>(
-    State(_state): State<S>,
+pub async fn create_shipment(
+    State(state): State<AppState>,
     Json(payload): Json<CreateShipmentRequest>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let shipment_id = Uuid::new_v4().to_string();
-    let now = Utc::now();
+) -> ApiResult<ShipmentSummary> {
+    payload
+        .validate()
+        .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
-    let shipment = Shipment {
-        id: shipment_id.clone(),
+    let shipping_method = parse_shipping_method(&payload.shipping_method)?;
+
+    let command = CreateShipmentCommand {
         order_id: payload.order_id,
-        tracking_number: None, // Will be assigned by carrier
-        carrier: payload.carrier,
-        service_type: payload.service_type,
-        status: "created".to_string(),
-        estimated_delivery: None, // Will be calculated based on service
-        actual_delivery: None,
-        shipping_address: payload.shipping_address,
-        items: payload
-            .items
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)| ShipmentItem {
-                id: format!("{}_item_{}", shipment_id, i),
-                order_item_id: item.order_item_id,
-                product_id: "prod_abc".to_string(), // Mock - get from order item
-                quantity: item.quantity,
-                serial_numbers: item.serial_numbers,
-            })
-            .collect(),
-        weight: payload.weight,
-        dimensions: payload.dimensions,
-        cost: None, // Will be calculated
-        created_at: now,
-        updated_at: now,
-        shipped_at: None,
-        delivered_at: None,
+        shipping_address: payload.shipping_address.clone(),
+        shipping_method,
+        tracking_number: payload.tracking_number.clone(),
+        recipient_name: payload.recipient_name.clone(),
     };
 
-    Ok((StatusCode::CREATED, Json(shipment)))
+    let shipment_id = state.shipment_service().create_shipment(command).await?;
+    let created = state
+        .shipment_service()
+        .get_shipment(shipment_id)
+        .await?
+        .ok_or_else(|| ServiceError::NotFound(format!("Shipment {} not found", shipment_id)))?;
+
+    Ok(Json(ApiResponse::success(ShipmentSummary::from(created))))
 }
 
-/// Get a specific shipment by ID
-#[utoipa::path(
-    get,
-    path = "/api/v1/shipments/{id}",
-    params(("id" = String, Path, description = "Shipment ID")),
-    responses(
-        (status = 200, description = "Shipment details", body = Shipment,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 404, description = "Not found", body = crate::errors::ErrorResponse),
-        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn get_shipment<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let shipment = Shipment {
-        id: id.clone(),
-        order_id: "order_001".to_string(),
-        tracking_number: Some("1Z123456789".to_string()),
-        carrier: "UPS".to_string(),
-        service_type: "Ground".to_string(),
-        status: "in_transit".to_string(),
-        estimated_delivery: Some(Utc::now() + chrono::Duration::days(2)),
-        actual_delivery: None,
-        shipping_address: Address {
-            street1: "123 Main St".to_string(),
-            street2: None,
-            city: "Anytown".to_string(),
-            state: "CA".to_string(),
-            postal_code: "90210".to_string(),
-            country: "US".to_string(),
-        },
-        items: vec![ShipmentItem {
-            id: format!("{}_item_1", id),
-            order_item_id: "order_item_001".to_string(),
-            product_id: "prod_abc".to_string(),
-            quantity: 1,
-            serial_numbers: None,
-        }],
-        weight: Some(2.5),
-        dimensions: Some(Dimensions {
-            length: 12.0,
-            width: 8.0,
-            height: 4.0,
-            unit: "in".to_string(),
-        }),
-        cost: Some(15.99),
-        created_at: Utc::now() - chrono::Duration::days(1),
-        updated_at: Utc::now() - chrono::Duration::hours(2),
-        shipped_at: Some(Utc::now() - chrono::Duration::hours(12)),
-        delivered_at: None,
+fn parse_shipping_method(value: &str) -> Result<shipment::ShippingMethod, ServiceError> {
+    let method = match value.to_ascii_lowercase().as_str() {
+        "standard" => shipment::ShippingMethod::Standard,
+        "express" => shipment::ShippingMethod::Express,
+        "overnight" => shipment::ShippingMethod::Overnight,
+        "twoday" | "two-day" | "two_day" => shipment::ShippingMethod::TwoDay,
+        "international" => shipment::ShippingMethod::International,
+        "custom" => shipment::ShippingMethod::Custom,
+        other => {
+            return Err(ServiceError::ValidationError(format!(
+                "Unsupported shipping method '{}'",
+                other
+            )))
+        }
     };
-
-    Ok((StatusCode::OK, Json(shipment)))
+    Ok(method)
 }
 
-/// Update a shipment
-#[utoipa::path(
-    put,
-    path = "/api/v1/shipments/{id}",
-    params(("id" = String, Path, description = "Shipment ID")),
-    request_body = UpdateShipmentRequest,
-    responses(
-        (status = 200, description = "Shipment updated", body = Shipment,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn update_shipment<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-    Json(payload): Json<UpdateShipmentRequest>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let shipment = Shipment {
-        id: id.clone(),
-        order_id: "order_001".to_string(),
-        tracking_number: payload.tracking_number.or(Some("1Z123456789".to_string())),
-        carrier: payload.carrier.unwrap_or_else(|| "UPS".to_string()),
-        service_type: "Ground".to_string(),
-        status: payload.status.unwrap_or_else(|| "in_transit".to_string()),
-        estimated_delivery: payload
-            .estimated_delivery
-            .or(Some(Utc::now() + chrono::Duration::days(2))),
-        actual_delivery: None,
-        shipping_address: Address {
-            street1: "123 Main St".to_string(),
-            street2: None,
-            city: "Anytown".to_string(),
-            state: "CA".to_string(),
-            postal_code: "90210".to_string(),
-            country: "US".to_string(),
-        },
-        items: vec![],
-        weight: Some(2.5),
-        dimensions: None,
-        cost: Some(15.99),
-        created_at: Utc::now() - chrono::Duration::days(1),
-        updated_at: Utc::now(),
-        shipped_at: Some(Utc::now() - chrono::Duration::hours(12)),
-        delivered_at: None,
+pub async fn mark_shipped(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<ShipmentSummary> {
+    let updated = state.shipment_service().mark_shipped(id).await?;
+    Ok(Json(ApiResponse::success(ShipmentSummary::from(updated))))
+}
+
+pub async fn mark_delivered(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<ShipmentSummary> {
+    let updated = state.shipment_service().mark_delivered(id).await?;
+    Ok(Json(ApiResponse::success(ShipmentSummary::from(updated))))
+}
+
+pub async fn track_shipment(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<serde_json::Value> {
+    let command = TrackShipmentCommand {
+        shipment_id: id,
+        circuit_breaker: None,
     };
-
-    Ok((StatusCode::OK, Json(shipment)))
-}
-
-/// Delete a shipment
-#[utoipa::path(
-    delete,
-    path = "/api/v1/shipments/{id}",
-    params(("id" = String, Path, description = "Shipment ID")),
-    responses(
-        (status = 204, description = "Shipment deleted"),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
-        (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn delete_shipment<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let _ = id; // placeholder until wired to DB
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// Mark shipment as shipped
-#[utoipa::path(
-    post,
-    path = "/api/v1/shipments/{id}/ship",
-    params(("id" = String, Path, description = "Shipment ID")),
-    responses(
-        (status = 200, description = "Shipment marked shipped",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn mark_shipped<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let response = json!({
-        "message": format!("Shipment {} has been marked as shipped", id),
+    let status = state.shipment_service().track_shipment(command).await?;
+    Ok(Json(ApiResponse::success(json!({
         "shipment_id": id,
-        "status": "shipped",
-        "shipped_at": Utc::now()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+        "status": status
+    }))))
 }
 
-/// Mark shipment as delivered
-#[utoipa::path(
-    post,
-    path = "/api/v1/shipments/{id}/deliver",
-    params(("id" = String, Path, description = "Shipment ID")),
-    responses(
-        (status = 200, description = "Shipment marked delivered",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn mark_delivered<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let response = json!({
-        "message": format!("Shipment {} has been marked as delivered", id),
-        "shipment_id": id,
-        "status": "delivered",
-        "delivered_at": Utc::now()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Track shipment by ID
-#[utoipa::path(
-    get,
-    path = "/api/v1/shipments/{id}/track",
-    params(("id" = String, Path, description = "Shipment ID")),
-    responses(
-        (status = 200, description = "Shipment tracking",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn track_shipment<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let tracking_events = vec![
-        TrackingEvent {
-            id: "track_001".to_string(),
-            shipment_id: id.clone(),
-            status: "label_created".to_string(),
-            description: "Shipping label created".to_string(),
-            location: Some("Origin Facility".to_string()),
-            timestamp: Utc::now() - chrono::Duration::days(1),
-            carrier_event_code: Some("MP".to_string()),
-        },
-        TrackingEvent {
-            id: "track_002".to_string(),
-            shipment_id: id.clone(),
-            status: "picked_up".to_string(),
-            description: "Package picked up by carrier".to_string(),
-            location: Some("Origin Facility".to_string()),
-            timestamp: Utc::now() - chrono::Duration::hours(18),
-            carrier_event_code: Some("PU".to_string()),
-        },
-        TrackingEvent {
-            id: "track_003".to_string(),
-            shipment_id: id.clone(),
-            status: "in_transit".to_string(),
-            description: "Package in transit".to_string(),
-            location: Some("Distribution Center".to_string()),
-            timestamp: Utc::now() - chrono::Duration::hours(12),
-            carrier_event_code: Some("IT".to_string()),
-        },
-    ];
-
-    let response = json!({
-        "shipment_id": id,
-        "tracking_events": tracking_events,
-        "current_status": "in_transit",
-        "estimated_delivery": Utc::now() + chrono::Duration::days(1)
-    });
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Track shipment by tracking number
-#[utoipa::path(
-    get,
-    path = "/api/v1/shipments/track/{tracking_number}",
-    params(("tracking_number" = String, Path, description = "Tracking Number")),
-    responses(
-        (status = 200, description = "Tracking by number",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn track_by_number<S>(
-    State(_state): State<S>,
+pub async fn track_by_number(
+    State(state): State<AppState>,
     Path(tracking_number): Path<String>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let tracking_events = vec![
-        TrackingEvent {
-            id: "track_001".to_string(),
-            shipment_id: "ship_001".to_string(),
-            status: "label_created".to_string(),
-            description: "Shipping label created".to_string(),
-            location: Some("Origin Facility".to_string()),
-            timestamp: Utc::now() - chrono::Duration::days(1),
-            carrier_event_code: Some("MP".to_string()),
-        },
-        TrackingEvent {
-            id: "track_002".to_string(),
-            shipment_id: "ship_001".to_string(),
-            status: "in_transit".to_string(),
-            description: "Package in transit".to_string(),
-            location: Some("Distribution Center".to_string()),
-            timestamp: Utc::now() - chrono::Duration::hours(12),
-            carrier_event_code: Some("IT".to_string()),
-        },
-    ];
-
-    let response = json!({
-        "tracking_number": tracking_number,
-        "shipment_id": "ship_001",
-        "tracking_events": tracking_events,
-        "current_status": "in_transit",
-        "estimated_delivery": Utc::now() + chrono::Duration::days(1)
-    });
-
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Add tracking event to shipment
-#[utoipa::path(
-    post,
-    path = "/api/v1/shipments/{id}/tracking",
-    params(("id" = String, Path, description = "Shipment ID")),
-    request_body = TrackingUpdateRequest,
-    responses(
-        (status = 201, description = "Tracking event added", body = TrackingEvent,
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn add_tracking_event<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-    Json(payload): Json<TrackingUpdateRequest>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let tracking_event = TrackingEvent {
-        id: Uuid::new_v4().to_string(),
-        shipment_id: id.clone(),
-        status: payload.status,
-        description: payload.description,
-        location: payload.location,
-        timestamp: Utc::now(),
-        carrier_event_code: payload.carrier_event_code,
-    };
-
-    Ok((StatusCode::CREATED, Json(tracking_event)))
-}
-
-/// Update shipment status
-#[utoipa::path(
-    put,
-    path = "/api/v1/shipments/{id}/status",
-    params(("id" = String, Path, description = "Shipment ID")),
-    request_body = UpdateShipmentStatusBody,
-    responses(
-        (status = 200, description = "Status updated",
-            headers(("X-Request-Id" = String, description = "Unique request id"))
-        ),
-        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
-        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
-    ),
-    tag = "shipments"
-)]
-pub async fn update_shipment_status<S>(
-    State(_state): State<S>,
-    Path(id): Path<String>,
-    Json(payload): Json<UpdateShipmentStatusBody>,
-) -> Result<impl IntoResponse, ServiceError>
-where
-    S: ShipmentsAppState,
-{
-    let new_status = payload.status.as_str();
-
-    let response = json!({
-        "message": format!("Shipment {} status updated to {}", id, new_status),
-        "shipment_id": id,
-        "status": new_status,
-        "updated_at": Utc::now()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+) -> ApiResult<ShipmentSummary> {
+    match state
+        .shipment_service()
+        .find_by_tracking_number(&tracking_number)
+        .await?
+    {
+        Some(model) => Ok(Json(ApiResponse::success(ShipmentSummary::from(model)))),
+        None => Err(ServiceError::NotFound(format!(
+            "Shipment with tracking number {} not found",
+            tracking_number
+        ))),
+    }
 }

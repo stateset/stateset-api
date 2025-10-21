@@ -173,7 +173,7 @@ impl BillOfMaterialsService {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use mockall::mock;

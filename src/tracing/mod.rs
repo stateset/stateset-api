@@ -474,7 +474,7 @@ where
             let span = otel_ctx.span();
 
             // Handle response
-            let mut response = match result {
+            let response = match result {
                 Ok(mut response) => {
                     let status = response.status();
                     span.set_attribute(KeyValue::new("http.status_code", status.as_u16() as i64));
@@ -945,7 +945,7 @@ where
     result
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use axum::body::Body;

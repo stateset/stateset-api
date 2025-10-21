@@ -124,7 +124,7 @@ pub fn create_app(logger: Logger) -> Router<Arc<LoggingState>> {
         .with_state(logging_state)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use axum::{

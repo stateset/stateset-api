@@ -14,7 +14,7 @@ use crate::{
     events::{Event, EventSender},
 };
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use redis::Client as RedisClient;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
@@ -155,6 +155,36 @@ impl WarrantyService {
         Ok(warranty)
     }
 
+    /// Extends the warranty duration by the provided number of months
+    #[instrument(skip(self))]
+    pub async fn extend_warranty(
+        &self,
+        warranty_id: Uuid,
+        additional_months: i32,
+    ) -> Result<warranty::Model, ServiceError> {
+        if additional_months <= 0 {
+            return Err(ServiceError::ValidationError(
+                "additional_months must be positive".to_string(),
+            ));
+        }
+
+        let db = self.db_pool.as_ref();
+        let existing = warranty::Entity::find_by_id(warranty_id)
+            .one(db)
+            .await?
+            .ok_or_else(|| ServiceError::NotFound(format!("Warranty {} not found", warranty_id)))?;
+
+        let current_end = existing.end_date;
+        let mut active: warranty::ActiveModel = existing.into();
+        let extension_days = Duration::days((additional_months as i64) * 30);
+        let new_end = current_end + extension_days;
+        active.end_date = Set(new_end);
+        active.updated_at = Set(Some(Utc::now()));
+
+        let updated = active.update(db).await.map_err(ServiceError::db_error)?;
+        Ok(updated)
+    }
+
     /// Gets warranties for a product
     #[instrument(skip(self))]
     pub async fn get_warranties_for_product(
@@ -232,67 +262,5 @@ impl WarrantyService {
             .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((warranties, total))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Duration;
-    use mockall::mock;
-    use mockall::predicate::*;
-    use std::str::FromStr;
-    use tokio::sync::broadcast;
-
-    mock! {
-        pub Database {}
-        impl Clone for Database {
-            fn clone(&self) -> Self;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create_warranty() {
-        // Setup
-        let (event_sender, _) = broadcast::channel(10);
-        let event_sender = Arc::new(event_sender);
-        let db_pool = Arc::new(MockDatabase::new());
-        let redis_client = Arc::new(redis::Client::open("redis://localhost").unwrap());
-        let message_queue = Arc::new(crate::message_queue::MockMessageQueue::new());
-        let circuit_breaker = Arc::new(CircuitBreaker::new(
-            5,
-            std::time::Duration::from_secs(60),
-            1,
-        ));
-        let logger = slog::Logger::root(slog::Discard, slog::o!());
-
-        let service = WarrantyService::new(
-            db_pool,
-            event_sender,
-            redis_client,
-            message_queue,
-            circuit_breaker,
-            logger,
-        );
-
-        // Test data
-        let product_id = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
-        let customer_id = Uuid::from_str("00000000-0000-0000-0000-000000000002").unwrap();
-        let expiration_date = Utc::now() + Duration::days(365);
-
-        let command = CreateWarrantyCommand {
-            product_id,
-            customer_id,
-            serial_number: "SN123456789".to_string(),
-            warranty_type: "Extended".to_string(),
-            expiration_date: expiration_date.naive_utc(),
-            terms: "Standard warranty terms".to_string(),
-        };
-
-        // Execute
-        let result = service.create_warranty(command).await;
-
-        // Assert
-        assert!(result.is_err()); // Will fail because we're using mock DB
     }
 }

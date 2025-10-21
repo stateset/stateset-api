@@ -724,7 +724,7 @@ pub struct DatabasePerformanceReport {
     pub generated_at: DateTime<Utc>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
 

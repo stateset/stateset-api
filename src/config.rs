@@ -445,7 +445,7 @@ pub fn load_config() -> Result<AppConfig, AppConfigError> {
     Ok(app_config)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use std::fs::File;

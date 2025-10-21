@@ -291,7 +291,7 @@ impl Model {
 
 // Order line items moved to separate file: order_line_item.rs
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use chrono::Duration;

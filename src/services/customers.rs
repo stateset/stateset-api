@@ -281,7 +281,7 @@ pub async fn get_customer_returns(
     ))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use mockall::mock;

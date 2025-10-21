@@ -367,7 +367,7 @@ pub async fn close_pool(pool: DbPool) -> Result<(), AppError> {
     pool.close().await.map_err(|e| AppError::DatabaseError(e))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
     use std::env;

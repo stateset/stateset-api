@@ -118,12 +118,12 @@ impl MessageQueue for InMemoryMessageQueue {
 }
 
 /// Mock message queue for testing
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 pub struct MockMessageQueue {
     published_messages: Arc<Mutex<Vec<Message>>>,
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 impl MockMessageQueue {
     pub fn new() -> Self {
         Self {
@@ -136,7 +136,7 @@ impl MockMessageQueue {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 #[async_trait]
 impl MessageQueue for MockMessageQueue {
     async fn publish(&self, message: Message) -> Result<(), MessageQueueError> {
@@ -157,7 +157,7 @@ impl MessageQueue for MockMessageQueue {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
 

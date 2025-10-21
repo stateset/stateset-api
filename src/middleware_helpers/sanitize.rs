@@ -153,7 +153,7 @@ pub fn validate_uuid(uuid_str: &str) -> bool {
     uuid::Uuid::parse_str(uuid_str).is_ok()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
 

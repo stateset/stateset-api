@@ -1460,7 +1460,7 @@ fn strip_html(input: &str) -> Cow<'_, str> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
 

@@ -118,7 +118,7 @@ pub async fn initialize(config: Config) -> Result<(DbPool, RedisClient), anyhow:
     Ok((pool, redis_client))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
 

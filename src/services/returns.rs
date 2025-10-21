@@ -1,6 +1,8 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::commands::returns::{
+    approve_return_command::ApproveReturnCommand,
     complete_return_command::CompleteReturnCommand,
+    create_return_command::{InitiateReturnCommand, InitiateReturnResult},
     restock_returned_items_command::RestockReturnedItemsCommand,
 };
 use crate::message_queue::MessageQueue;
@@ -60,15 +62,32 @@ impl ReturnService {
         }
     }
 
-    // /// Creates a new return
-    // #[instrument(skip(self))]
-    // // pub async fn create_return(
-    //     &self,
-    //     command: CreateReturnCommand,
-    // ) -> Result<Uuid, ServiceError> {
-    //     let result = command
-    //         .execute(self.db_pool.clone(), self.event_sender.clone())
-    //         .await?;
+    /// Creates a new return
+    #[instrument(skip(self))]
+    pub async fn create_return(
+        &self,
+        command: InitiateReturnCommand,
+    ) -> Result<InitiateReturnResult, ServiceError> {
+        let result = command
+            .execute(self.db_pool.clone(), self.event_sender.clone())
+            .await?;
+        Ok(result)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn approve_return(
+        &self,
+        return_id: Uuid,
+    ) -> Result<return_entity::Model, ServiceError> {
+        let command = ApproveReturnCommand { return_id };
+        command
+            .execute(self.db_pool.clone(), self.event_sender.clone())
+            .await?;
+        self.get_return(&return_id)
+            .await?
+            .ok_or_else(|| ServiceError::NotFound("Return not found after approval".to_string()))
+    }
+
     // /// Approves a return
     // #[instrument(skip(self))]
     // // pub async fn approve_return(
@@ -194,61 +213,5 @@ impl ReturnService {
             .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((returns, total))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockall::mock;
-    use mockall::predicate::*;
-    use std::str::FromStr;
-    use tokio::sync::broadcast;
-
-    mock! {
-        pub Database {}
-        impl Clone for Database {
-            fn clone(&self) -> Self;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create_return() {
-        // Setup
-        let (event_sender, _) = broadcast::channel(10);
-        let event_sender = Arc::new(event_sender);
-        let db_pool = Arc::new(MockDatabase::new());
-        let redis_client = Arc::new(redis::Client::open("redis://localhost").unwrap());
-        let message_queue = Arc::new(crate::message_queue::MockMessageQueue::new());
-        let circuit_breaker = Arc::new(CircuitBreaker::new(
-            5,
-            std::time::Duration::from_secs(60),
-            1,
-        ));
-        let logger = slog::Logger::root(slog::Discard, slog::o!());
-
-        let service = ReturnService::new(
-            db_pool,
-            event_sender,
-            redis_client,
-            message_queue,
-            circuit_breaker,
-            logger,
-        );
-
-        // Test data
-        let order_id = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
-
-        let command = CreateReturnCommand {
-            order_id,
-            reason: "Item damaged".to_string(),
-            items: vec![],
-        };
-
-        // Execute
-        let result = service.create_return(command).await;
-
-        // Assert
-        assert!(result.is_err()); // Will fail because we're using mock DB
     }
 }

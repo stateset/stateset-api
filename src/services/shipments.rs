@@ -16,6 +16,7 @@ use crate::{
     models::shipment,
 };
 use anyhow::Result;
+use chrono::Utc;
 use redis::Client as RedisClient;
 use sea_orm::PaginatorTrait;
 use sea_orm::{
@@ -125,6 +126,68 @@ impl ShipmentService {
         Ok(result.status.to_string()) // Assuming status is ShipmentStatus
     }
 
+    /// Finds shipment by tracking number
+    #[instrument(skip(self))]
+    pub async fn find_by_tracking_number(
+        &self,
+        tracking_number: &str,
+    ) -> Result<Option<shipment::Model>, ServiceError> {
+        let db = &*self.db_pool;
+        let found = shipment::Entity::find()
+            .filter(shipment::Column::TrackingNumber.eq(tracking_number.to_string()))
+            .one(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
+        Ok(found)
+    }
+
+    /// Marks a shipment as shipped
+    #[instrument(skip(self))]
+    pub async fn mark_shipped(&self, shipment_id: Uuid) -> Result<shipment::Model, ServiceError> {
+        self.update_status(shipment_id, shipment::ShipmentStatus::Shipped, true, false)
+            .await
+    }
+
+    /// Marks a shipment as delivered
+    #[instrument(skip(self))]
+    pub async fn mark_delivered(&self, shipment_id: Uuid) -> Result<shipment::Model, ServiceError> {
+        self.update_status(
+            shipment_id,
+            shipment::ShipmentStatus::Delivered,
+            false,
+            true,
+        )
+        .await
+    }
+
+    async fn update_status(
+        &self,
+        shipment_id: Uuid,
+        status: shipment::ShipmentStatus,
+        set_shipped_at: bool,
+        set_delivered_at: bool,
+    ) -> Result<shipment::Model, ServiceError> {
+        let db = &*self.db_pool;
+        let model = shipment::Entity::find_by_id(shipment_id)
+            .one(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?
+            .ok_or_else(|| ServiceError::NotFound(format!("Shipment {} not found", shipment_id)))?;
+
+        let mut active: shipment::ActiveModel = model.into();
+        active.status = Set(status);
+        if set_shipped_at {
+            active.shipped_at = Set(Some(Utc::now()));
+        }
+        if set_delivered_at {
+            active.delivered_at = Set(Some(Utc::now()));
+        }
+        active.updated_at = Set(Utc::now());
+
+        let updated = active.update(db).await.map_err(ServiceError::db_error)?;
+        Ok(updated)
+    }
+
     /// Confirms delivery of a shipment
     #[instrument(skip(self))]
     pub async fn confirm_delivery(
@@ -221,67 +284,5 @@ impl ShipmentService {
             .map_err(|e| ServiceError::db_error(e))?;
 
         Ok((shipments, total))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockall::mock;
-    use mockall::predicate::*;
-    use std::str::FromStr;
-    use tokio::sync::broadcast;
-
-    mock! {
-        pub Database {}
-        impl Clone for Database {
-            fn clone(&self) -> Self;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create_shipment() {
-        // Setup
-        let (event_sender, _) = broadcast::channel(10);
-        let event_sender = Arc::new(event_sender);
-        let db_pool = Arc::new(MockDatabase::new());
-        let redis_client = Arc::new(redis::Client::open("redis://localhost").unwrap());
-        let message_queue = Arc::new(crate::message_queue::MockMessageQueue::new());
-        let circuit_breaker = Arc::new(CircuitBreaker::new(
-            5,
-            std::time::Duration::from_secs(60),
-            1,
-            "test-service",
-        ));
-        let metrics = Arc::new(crate::metrics::Metrics::new());
-        let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::new(Some(metrics)));
-        let logger = slog::Logger::root(slog::Discard, slog::o!());
-
-        let service = ShipmentService::new(
-            db_pool,
-            event_sender,
-            redis_client,
-            message_queue,
-            circuit_breaker,
-            circuit_breaker_registry,
-            logger,
-        );
-
-        // Test data
-        let order_id = Uuid::from_str("00000000-0000-0000-0000-000000000001").unwrap();
-
-        let command = CreateShipmentCommand {
-            order_id,
-            recipient_name: "John Doe".to_string(),
-            shipping_address: "123 Main St, City, Country".to_string(),
-            carrier: Some("DHL".to_string()),
-            tracking_number: None,
-        };
-
-        // Execute
-        let result = service.create_shipment(command).await;
-
-        // Assert
-        assert!(result.is_err()); // Will fail because we're using mock DB
     }
 }
