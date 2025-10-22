@@ -38,23 +38,17 @@ cd /home/dom/stateset-api
 git add agentic_server/
 
 # Commit
-git commit -m "Release: Agentic Commerce Server v0.3.0
+git commit -m "Release: Agentic Commerce Server v0.4.0
 
-- Add API key authentication
-- Add HMAC signature verification
-- Add product catalog with inventory
-- Add tax calculation service
-- Add webhook delivery
-- Add Stripe SharedPaymentToken support
-- Add Redis session storage
-- Add idempotency enforcement
-- Add 14 Prometheus metrics
-- Add Docker Compose stack
-- 75% production ready"
+- Enforce inventory reservations across checkout lifecycle
+- Persist idempotent responses for replay-safe retries
+- Mask payment tokens within structured logs
+- Require fulfillment selection before payment readiness
+- Fix OpenAI feed uploads for CSV/TSV payloads"
 
 # Create and push tag
-git tag -a agentic-server-v0.3.0 -m "Agentic Commerce Server v0.3.0"
-git push origin agentic-server-v0.3.0
+git tag -a agentic-server-v0.4.0 -m "Agentic Commerce Server v0.4.0"
+git push origin agentic-server-v0.4.0
 git push origin api-improvements
 ```
 
@@ -66,39 +60,39 @@ git push origin api-improvements
 cd agentic_server
 
 # Create release directory
-mkdir -p release/agentic-commerce-server-v0.3.0
+mkdir -p release/agentic-commerce-server-v0.4.0
 
 # Copy binary
-cp target/release/agentic-commerce-server release/agentic-commerce-server-v0.3.0/
+cp target/release/agentic-commerce-server release/agentic-commerce-server-v0.4.0/
 
 # Copy configuration files
-cp docker-compose.yml release/agentic-commerce-server-v0.3.0/
-cp nginx.conf release/agentic-commerce-server-v0.3.0/
-cp prometheus.yml release/agentic-commerce-server-v0.3.0/
-cp Dockerfile release/agentic-commerce-server-v0.3.0/
-cp .env.example release/agentic-commerce-server-v0.3.0/
+cp docker-compose.yml release/agentic-commerce-server-v0.4.0/
+cp nginx.conf release/agentic-commerce-server-v0.4.0/
+cp prometheus.yml release/agentic-commerce-server-v0.4.0/
+cp Dockerfile release/agentic-commerce-server-v0.4.0/
+cp .env.example release/agentic-commerce-server-v0.4.0/
 
 # Copy scripts
-cp demo_test.sh release/agentic-commerce-server-v0.3.0/
-cp test_security.sh release/agentic-commerce-server-v0.3.0/
-cp test_e2e.sh release/agentic-commerce-server-v0.3.0/
+cp demo_test.sh release/agentic-commerce-server-v0.4.0/
+cp test_security.sh release/agentic-commerce-server-v0.4.0/
+cp test_e2e.sh release/agentic-commerce-server-v0.4.0/
 
 # Copy documentation
-cp README.md release/agentic-commerce-server-v0.3.0/
-cp QUICK_START_PRODUCTION.md release/agentic-commerce-server-v0.3.0/
-cp RELEASE_NOTES.md release/agentic-commerce-server-v0.3.0/
+cp README.md release/agentic-commerce-server-v0.4.0/
+cp QUICK_START_PRODUCTION.md release/agentic-commerce-server-v0.4.0/
+cp RELEASE_NOTES.md release/agentic-commerce-server-v0.4.0/
 
 # Copy spec
-cp ../agentic-checkout.yaml release/agentic-commerce-server-v0.3.0/
+cp ../agentic-checkout.yaml release/agentic-commerce-server-v0.4.0/
 
 # Create tarball
 cd release
-tar -czf agentic-commerce-server-v0.3.0-linux-x86_64.tar.gz agentic-commerce-server-v0.3.0/
+tar -czf agentic-commerce-server-v0.4.0-linux-x86_64.tar.gz agentic-commerce-server-v0.4.0/
 cd ..
 
 # Create checksums
 cd release
-sha256sum agentic-commerce-server-v0.3.0-linux-x86_64.tar.gz > SHA256SUMS
+sha256sum agentic-commerce-server-v0.4.0-linux-x86_64.tar.gz > SHA256SUMS
 cd ..
 ```
 
@@ -110,14 +104,14 @@ cd ..
 
 1. Go to https://github.com/stateset/stateset-api/releases/new
 
-2. **Tag:** `agentic-server-v0.3.0`
+2. **Tag:** `agentic-server-v0.4.0`
 
-3. **Title:** `Agentic Commerce Server v0.3.0 - Production Security & Services`
+3. **Title:** `Agentic Commerce Server v0.4.0 - Inventory Locking & Idempotent Replays`
 
 4. **Description:** Copy from `RELEASE_NOTES.md`
 
 5. **Attach Assets:**
-   - `agentic-commerce-server-v0.3.0-linux-x86_64.tar.gz`
+   - `agentic-commerce-server-v0.4.0-linux-x86_64.tar.gz`
    - `SHA256SUMS`
 
 6. Check **Set as a pre-release** (until 100% production ready)
@@ -149,14 +143,14 @@ gh release create agentic-server-v0.3.0 \
 ```bash
 # Download the release
 cd /tmp
-curl -L https://github.com/stateset/stateset-api/releases/download/agentic-server-v0.3.0/agentic-commerce-server-v0.3.0-linux-x86_64.tar.gz -o release.tar.gz
+curl -L https://github.com/stateset/stateset-api/releases/download/agentic-server-v0.4.0/agentic-commerce-server-v0.4.0-linux-x86_64.tar.gz -o release.tar.gz
 
 # Verify checksum
 sha256sum -c SHA256SUMS
 
 # Extract and test
 tar -xzf release.tar.gz
-cd agentic-commerce-server-v0.3.0
+cd agentic-commerce-server-v0.4.0
 ./agentic-commerce-server
 ```
 

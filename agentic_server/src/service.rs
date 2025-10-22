@@ -107,8 +107,16 @@ impl AgenticCheckoutService {
             ],
         };
 
+        if let Err(err) = self.reserve_line_items(&session.id, &session.line_items) {
+            self.product_catalog.release_reservation(&session.id);
+            return Err(err);
+        }
+
         // Store session in cache with 1 hour TTL
-        self.save_session(&session).await?;
+        if let Err(err) = self.save_session(&session).await {
+            self.product_catalog.release_reservation(&session.id);
+            return Err(err);
+        }
 
         self.event_sender
             .send(Event::CheckoutStarted {
@@ -152,6 +160,7 @@ impl AgenticCheckoutService {
         request: CheckoutSessionUpdateRequest,
     ) -> Result<CheckoutSession, ServiceError> {
         let mut session = self.get_session(session_id).await?;
+        let mut previous_line_items: Option<Vec<LineItem>> = None;
 
         // Check if already completed or canceled
         if session.status == "completed" || session.status == "canceled" {
@@ -177,7 +186,21 @@ impl AgenticCheckoutService {
         }
 
         if let Some(items) = items {
+            previous_line_items = Some(session.line_items.clone());
             session.line_items = self.build_line_items(&items).await?;
+
+            self.product_catalog.release_reservation(&session.id);
+            if let Err(err) = self.reserve_line_items(&session.id, &session.line_items) {
+                if let Some(ref prior) = previous_line_items {
+                    if let Err(reapply_err) = self.reserve_line_items(&session.id, prior) {
+                        warn!(
+                            "Failed to restore reservations for session {}: {}",
+                            session.id, reapply_err
+                        );
+                    }
+                }
+                return Err(err);
+            }
         }
 
         if let Some(address) = fulfillment_address {
@@ -212,7 +235,18 @@ impl AgenticCheckoutService {
         session.status = self.determine_status_from_session(&session);
 
         // Save updated session
-        self.save_session(&session).await?;
+        if let Err(err) = self.save_session(&session).await {
+            self.product_catalog.release_reservation(&session.id);
+            if let Some(ref prior) = previous_line_items {
+                if let Err(reapply_err) = self.reserve_line_items(&session.id, prior) {
+                    warn!(
+                        "Failed to restore reservations for session {} after save error: {}",
+                        session.id, reapply_err
+                    );
+                }
+            }
+            return Err(err);
+        }
 
         metrics::CHECKOUT_SESSIONS_UPDATED.inc();
         info!("Updated checkout session: {}", session.id);
@@ -300,9 +334,26 @@ impl AgenticCheckoutService {
         // Create order
         let order = self.create_order_from_session(&session).await?;
 
+        self.product_catalog
+            .commit_inventory(&session.id)
+            .map_err(|err| {
+                warn!(
+                    "Failed to commit inventory for session {}: {}",
+                    session.id, err
+                );
+                err
+            })?;
+
         // Update session status
         session.status = "completed".to_string();
-        self.save_session(&session).await?;
+        if let Err(err) = self.save_session(&session).await {
+            warn!(
+                "Failed to persist completed session {}, releasing reservations",
+                session.id
+            );
+            self.product_catalog.release_reservation(&session.id);
+            return Err(err);
+        }
 
         self.event_sender
             .send(Event::CheckoutCompleted {
@@ -332,8 +383,15 @@ impl AgenticCheckoutService {
             ));
         }
 
+        self.product_catalog.release_reservation(&session.id);
         session.status = "canceled".to_string();
-        self.save_session(&session).await?;
+        if let Err(err) = self.save_session(&session).await {
+            warn!(
+                "Failed to persist canceled session {}; reservations already released",
+                session.id
+            );
+            return Err(err);
+        }
 
         metrics::CHECKOUT_CANCELLATIONS.inc();
         info!("Canceled checkout session: {}", session.id);
@@ -504,12 +562,13 @@ impl AgenticCheckoutService {
         &self,
         request: &CheckoutSessionCreateRequest,
         _line_items: &[LineItem],
-        _fulfillment_option_id: Option<&str>,
+        fulfillment_option_id: Option<&str>,
     ) -> String {
         // Check if ready for payment
         if request.buyer.is_some()
             && request.fulfillment_address.is_some()
             && !_line_items.is_empty()
+            && fulfillment_option_id.is_some()
         {
             "ready_for_payment".to_string()
         } else {
@@ -534,9 +593,10 @@ impl AgenticCheckoutService {
         payment_data: &PaymentData,
         session: &CheckoutSession,
     ) -> Result<PaymentResult, ServiceError> {
+        let token_preview = Self::mask_payment_token(&payment_data.token);
         info!(
-            "Processing payment with provider: {} and token: {}",
-            payment_data.provider, payment_data.token
+            "Processing payment with provider: {} (token_preview={})",
+            payment_data.provider, token_preview
         );
 
         // Determine payment method type
@@ -682,8 +742,9 @@ impl AgenticCheckoutService {
         }
 
         info!(
-            "Creating PaymentIntent with SharedPaymentToken: {} for amount: {} (mock)",
-            payment_data.token, total_amount
+            "Creating PaymentIntent with SharedPaymentToken preview {} for amount: {} (mock)",
+            Self::mask_payment_token(&payment_data.token),
+            total_amount
         );
 
         Ok(PaymentResult {
@@ -699,8 +760,8 @@ impl AgenticCheckoutService {
         session: &CheckoutSession,
     ) -> Result<PaymentResult, ServiceError> {
         info!(
-            "Processing regular Stripe payment method (token prefix: {})",
-            payment_data.token.chars().take(6).collect::<String>()
+            "Processing regular Stripe payment method (token_preview={})",
+            Self::mask_payment_token(&payment_data.token)
         );
 
         let total_amount = session
@@ -742,6 +803,47 @@ impl AgenticCheckoutService {
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
         Ok(())
+    }
+
+    fn reserve_line_items(
+        &self,
+        session_id: &str,
+        line_items: &[LineItem],
+    ) -> Result<(), ServiceError> {
+        for line_item in line_items {
+            self.product_catalog.reserve_inventory(
+                &line_item.item.id,
+                line_item.item.quantity,
+                session_id,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn mask_payment_token(token: &str) -> String {
+        if token.is_empty() {
+            return "<empty>".to_string();
+        }
+
+        let chars: Vec<char> = token.chars().collect();
+
+        if chars.len() <= 4 {
+            return "***".to_string();
+        }
+
+        let prefix: String = chars.iter().take(4).collect();
+        let suffix: String = chars
+            .iter()
+            .rev()
+            .take(2)
+            .cloned()
+            .collect::<Vec<char>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        format!("{}***{}", prefix, suffix)
     }
 }
 

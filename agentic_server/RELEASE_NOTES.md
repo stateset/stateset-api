@@ -1,3 +1,23 @@
+# Agentic Commerce Server v0.4.0
+
+## 🚀 What's New in v0.4.0
+- **Inventory integrity enforced** – checkout sessions now reserve stock on create/update, commit inventory on completion, and release it immediately on cancel, preventing oversells in concurrent flows.
+- **Reliable idempotent replays** – Redis-stored responses capture full bodies (base64 + content type), allowing safe replays with proper headers and eliminating duplicate order creation on retries.
+- **Safer payment logging & readiness** – payment tokens are masked in logs and session readiness requires a selected fulfillment option, aligning agent prompts with completion requirements.
+- **Feed delivery compliance** – OpenAI feed pushes now send CSV/TSV bodies with the correct `Content-Type`, ensuring ingestion succeeds for non-JSON formats.
+
+## ✅ Upgrade Notes
+- No schema changes. Deploy alongside the existing Redis instance; cached idempotency entries remain compatible.
+- Restarting the service is recommended so the new versioned binary and tightened readiness checks take effect.
+
+## 🔍 Testing Checklist
+1. `cargo test` (requires crates.io access).
+2. `./demo_test.sh` for the delegated payment happy path.
+3. `./test_security.sh` to confirm auth, rate limiting, and validation protections.
+4. Optional: `./test_e2e.sh` for the full 21-step agentic flow.
+
+---
+
 # Agentic Commerce Server v0.3.0
 
 ## 🎉 Production-Ready ChatGPT Instant Checkout Server
