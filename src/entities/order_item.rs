@@ -35,11 +35,23 @@ pub enum Relation {
         to = "super::order::Column::Id"
     )]
     Order,
+    #[sea_orm(
+        belongs_to = "super::product::Entity",
+        from = "Column::ProductId",
+        to = "super::product::Column::Id"
+    )]
+    Product,
 }
 
 impl Related<super::order::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Order.def()
+    }
+}
+
+impl Related<super::product::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Product.def()
     }
 }
 

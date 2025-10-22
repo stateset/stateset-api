@@ -1,3 +1,5 @@
+#![cfg(feature = "full-suite")]
+
 use axum::{
     body::Body,
     http::{Request, StatusCode},

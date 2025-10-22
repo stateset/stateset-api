@@ -2,12 +2,16 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::{
     db::DbPool,
     errors::ServiceError,
-    models::{inventory_items, order, return_entity, shipment, suppliers, work_order},
+    models::{
+        inventory_items, order, order_line_item, return_entity, shipment, suppliers, work_order,
+    },
 };
 use anyhow::Result;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use redis::Client as RedisClient;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+};
 use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::collections::HashMap;
@@ -97,28 +101,36 @@ impl ReportService {
             .await
             .map_err(|e| ServiceError::db_error(e))?;
 
-        // Get total revenue
-        let orders = order::Entity::find()
+        // Get total revenue and orders grouped with their line items
+        let orders_with_items = order::Entity::find()
             .filter(order::Column::CreatedDate.gte(start_date))
             .filter(order::Column::CreatedDate.lte(end_date))
+            .find_with_related(order_line_item::Entity)
             .all(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?;
 
-        // TODO: Calculate total_revenue from order items when order total field is available
-        let total_revenue: f64 = 0.0; // orders.iter().filter_map(|o| o.total_amount).sum::<f64>();
+        let mut total_revenue_cents: i128 = 0; // sale_price is stored in cents
+        let mut orders_by_status: HashMap<String, i64> = HashMap::new();
+
+        for (order, line_items) in &orders_with_items {
+            *orders_by_status
+                .entry(order.order_status.to_string())
+                .or_insert(0) += 1;
+
+            for item in line_items {
+                let line_total_cents = i128::from(item.sale_price) * i128::from(item.quantity);
+                total_revenue_cents += line_total_cents;
+            }
+        }
+
+        let total_revenue: f64 = (total_revenue_cents as f64) / 100.0;
 
         let average_order_value = if total_orders > 0 {
             total_revenue / total_orders as f64
         } else {
             0.0
         };
-
-        // Group orders by status
-        let mut orders_by_status = HashMap::new();
-        for order in &orders {
-            *orders_by_status.entry(order.order_status.to_string()).or_insert(0) += 1;
-        }
 
         let period = format!("{} to {}", start_date.date(), end_date.date());
 

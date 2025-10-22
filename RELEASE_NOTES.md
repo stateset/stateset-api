@@ -1,3 +1,9 @@
+## v0.1.3
+
+- wire up SeaORM relationships between orders, shipments, payments, and products so downstream queries can eagerly load related records
+- upgrade the reporting service to compute revenue from order line items and surface order counts by status for richer dashboards
+- streamline the integration suite with a targeted relationship smoke test while modernizing shared middleware wiring
+
 ## v0.1.2
 
 - ship the new `agentic_server` binary, docs, and demo tooling to showcase the delegated checkout experience

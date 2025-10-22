@@ -151,6 +151,12 @@ pub enum Relation {
     /// An order has many line items.
     #[sea_orm(has_many = "super::order_line_item::Entity")]
     OrderLineItems,
+    /// An order has many invoices.
+    #[sea_orm(has_many = "super::invoices::Entity")]
+    Invoices,
+    /// An order has many payments.
+    #[sea_orm(has_many = "super::payment::Entity")]
+    Payments,
 
     /// An order belongs to a warehouse.
     #[sea_orm(
@@ -166,6 +172,18 @@ pub enum Relation {
 impl Related<super::order_line_item::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::OrderLineItems.def()
+    }
+}
+
+impl Related<super::invoices::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Invoices.def()
+    }
+}
+
+impl Related<super::payment::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Payments.def()
     }
 }
 

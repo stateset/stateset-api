@@ -237,19 +237,17 @@ async fn test_inventory_adjustments_with_item_master() {
     println!("Item Master | Location | On-Hand | Available | Allocated");
     println!("---------------------------------------------------------");
 
-    for item in [item1, item2, item3] {
-        if let Ok(balance) =
-            get_inventory_balance(&txn, item.inventory_item_id, location1.location_id).await
-        {
-            println!(
-                "{} | {} | {} | {} | {}",
-                item.item_number,
-                location1.location_code,
-                balance.quantity_on_hand,
-                balance.quantity_available,
-                balance.quantity_allocated
-            );
-        }
+    for item in [&item1, &item2, &item3] {
+        let balance =
+            get_inventory_balance(&txn, item.inventory_item_id, location1.location_id).await;
+        println!(
+            "{} | {} | {} | {} | {}",
+            &item.item_number,
+            &location1.location_name,
+            balance.quantity_on_hand,
+            balance.quantity_available,
+            balance.quantity_allocated
+        );
     }
 
     // Rollback transaction (test cleanup)
@@ -275,8 +273,8 @@ async fn create_test_item(
         item_type: Set(Some("FINISHED_GOOD".to_string())),
         status_code: Set(Some("ACTIVE".to_string())),
         lead_time_weeks: Set(Some(2)),
-        created_at: Set(Utc::now()),
-        updated_at: Set(Utc::now()),
+        created_at: Set(Utc::now().into()),
+        updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
 
@@ -289,11 +287,7 @@ async fn create_test_location(
     description: &str,
 ) -> inventory_location::Model {
     let location = inventory_location::ActiveModel {
-        location_code: Set(location_code.to_string()),
-        location_name: Set(description.to_string()),
-        location_type: Set("WAREHOUSE".to_string()),
-        created_at: Set(Utc::now().into()),
-        updated_at: Set(Utc::now().into()),
+        location_name: Set(format!("{} - {}", location_code, description)),
         ..Default::default()
     };
 
@@ -329,9 +323,8 @@ async fn create_initial_inventory(
 async fn create_test_sales_order(db: &DatabaseTransaction) -> sales_order_header::Model {
     let order = sales_order_header::ActiveModel {
         order_number: Set(format!("SO-{}", Uuid::new_v4())),
-        customer_id: Set(1),
-        order_date: Set(Utc::now().date_naive()),
-        status: Set("OPEN".to_string()),
+        ordered_date: Set(Some(Utc::now().date_naive())),
+        status_code: Set(Some("OPEN".to_string())),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
         ..Default::default()
@@ -351,13 +344,13 @@ async fn create_sales_order_line(
     quantity: i32,
 ) -> sales_order_line::Model {
     let line = sales_order_line::ActiveModel {
-        header_id: Set(header_id),
-        line_number: Set(1),
-        inventory_item_id: Set(item_id),
-        ordered_quantity: Set(Decimal::from(quantity)),
-        shipped_quantity: Set(Some(Decimal::from(quantity))),
-        unit_selling_price: Set(Decimal::from(100)),
-        ship_from_location_id: Set(location_id),
+        header_id: Set(Some(header_id)),
+        line_number: Set(Some(1)),
+        inventory_item_id: Set(Some(item_id)),
+        ordered_quantity: Set(Some(Decimal::from(quantity))),
+        unit_selling_price: Set(Some(Decimal::from(100))),
+        line_status: Set(Some("OPEN".to_string())),
+        location_id: Set(Some(location_id)),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
         ..Default::default()
@@ -371,9 +364,8 @@ async fn create_sales_order_line(
 async fn create_test_purchase_order(db: &DatabaseTransaction) -> purchase_order_headers::Model {
     let po = purchase_order_headers::ActiveModel {
         po_number: Set(format!("PO-{}", Uuid::new_v4())),
-        supplier_id: Set(1),
-        order_date: Set(Utc::now().date_naive()),
-        status: Set("APPROVED".to_string()),
+        vendor_id: Set(Some(1)),
+        approved_flag: Set(Some(true)),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
         ..Default::default()
@@ -391,11 +383,11 @@ async fn create_purchase_order_line(
     quantity: i32,
 ) -> purchase_order_lines::Model {
     let line = purchase_order_lines::ActiveModel {
-        po_header_id: Set(header_id),
-        line_num: Set(1),
-        inventory_item_id: Set(item_id),
-        quantity_ordered: Set(Decimal::from(quantity)),
-        unit_price: Set(Decimal::from(50)),
+        po_header_id: Set(Some(header_id)),
+        line_num: Set(Some(1)),
+        item_id: Set(Some(item_id)),
+        quantity: Set(Some(Decimal::from(quantity))),
+        unit_price: Set(Some(Decimal::from(50))),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
         ..Default::default()

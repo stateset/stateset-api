@@ -122,6 +122,7 @@ pub struct CreateOrderItem {
     #[validate(range(min = 1))]
     pub quantity: i32,
 
+    #[serde(alias = "price")]
     pub unit_price: Option<rust_decimal::Decimal>,
     pub tax_rate: Option<rust_decimal::Decimal>,
 }

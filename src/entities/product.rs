@@ -101,15 +101,15 @@ pub struct Model {
 /// Product entity relations
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    // #[sea_orm(has_many = "super::inventory_items::Entity")]
-    // InventoryItems, // Commented out - inventory_items module disabled
+    #[sea_orm(has_many = "super::order_item::Entity")]
+    OrderItems,
 }
 
-// impl Related<super::inventory_items::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::InventoryItems.def()
-//     }
-// }
+impl Related<super::order_item::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::OrderItems.def()
+    }
+}
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {

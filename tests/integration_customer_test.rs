@@ -10,6 +10,7 @@ mod tests {
     use stateset_api::{handlers::customers::*, services::commerce::customer_service::*, AppState};
     use std::sync::Arc;
     use tower::ServiceExt;
+    use validator::Validate;
 
     #[tokio::test]
     async fn test_customer_registration_flow() {

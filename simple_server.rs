@@ -13,7 +13,7 @@ async fn health() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(json!({
         "status": "healthy",
         "service": "stateset-api",
-        "version": "0.1.2",
+        "version": "0.1.3",
         "timestamp": chrono::Utc::now()
     })))
 }
@@ -21,7 +21,7 @@ async fn health() -> Result<Json<serde_json::Value>, StatusCode> {
 async fn api_info() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(json!({
         "name": "Stateset API",
-        "version": "0.1.2",
+        "version": "0.1.3",
         "description": "State-of-the-art supply chain and operations management API",
         "endpoints": {
             "/health": "Health check endpoint",

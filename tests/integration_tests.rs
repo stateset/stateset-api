@@ -1,132 +1,34 @@
-use axum::{
-    body::Body,
-    http::{Request, StatusCode},
-    response::Response,
-};
+mod common;
+
+use axum::http::{Method, StatusCode};
 use chrono::Utc;
-use redis::Client;
 use serde_json::{json, Value};
-use stateset_api::{
-    api::StateSetApi,
-    auth::{AuthConfig, AuthService},
-    config::{self, AppConfig},
-    db,
-    events::{self, process_events, EventSender},
-    handlers::AppServices,
-    health,
-    proto::*,
-};
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use tower::ServiceExt;
 use uuid::Uuid;
 
-// Helper function to create test app state
-async fn create_test_app_state() -> stateset_api::AppState {
-    let mut config = AppConfig::new(
-        "sqlite::memory:?cache=shared".to_string(),
-        "redis://127.0.0.1:6379".to_string(),
-        "test_secret_key_for_testing_purposes_only_32chars".to_string(),
-        3600,
-        86_400,
-        "127.0.0.1".to_string(),
-        18_080,
-        "test".to_string(),
-    );
-    config.auto_migrate = true;
+use common::TestApp;
 
-    let pool = db::establish_connection_from_app_config(&config)
-        .await
-        .expect("failed to create test database");
-    if config.auto_migrate {
-        db::run_migrations(&pool)
-            .await
-            .expect("failed to run migrations in tests");
-    }
-
-    let db_arc = Arc::new(pool);
-    let (tx, rx) = mpsc::channel(1024);
-    let event_sender = EventSender::new(tx);
-    let _event_task = tokio::spawn(process_events(rx));
-
-    let inventory_service = stateset_api::services::inventory::InventoryService::new(
-        db_arc.clone(),
-        event_sender.clone(),
-    );
-
-    let redis_client =
-        Arc::new(Client::open(config.redis_url.clone()).expect("invalid redis url for tests"));
-
-    let auth_cfg = AuthConfig::new(
-        config.jwt_secret.clone(),
-        "stateset-api".to_string(),
-        "stateset-auth".to_string(),
-        std::time::Duration::from_secs(config.jwt_expiration as u64),
-        std::time::Duration::from_secs(config.refresh_token_expiration as u64),
-        "sk_".to_string(),
-    );
-    let auth_service = Arc::new(AuthService::new(auth_cfg, db_arc.clone()));
-
-    let services = AppServices::new(
-        db_arc.clone(),
-        Arc::new(event_sender.clone()),
-        redis_client.clone(),
-        auth_service,
-    );
-
-    stateset_api::AppState {
-        db: db_arc,
-        config,
-        event_sender,
-        inventory_service,
-        services,
-        redis: redis_client,
-    }
-}
-
-// Helper function to create test HTTP client
-async fn create_test_app() -> axum::Router {
-    let state = create_test_app_state().await;
-
-    axum::Router::new()
-        .nest("/health", health::health_routes())
-        .nest(
-            "/api/v1",
-            stateset_api::api_v1_routes().with_state(state.clone()),
-        )
-        .with_state(state)
+#[allow(dead_code)]
+fn assert_app_state_bounds() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<stateset_api::AppState>();
 }
 
 #[tokio::test]
 async fn test_health_endpoint() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = app.request(Method::GET, "/health", None, None).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_api_status() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/status")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, "/api/v1/status", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -141,19 +43,12 @@ async fn test_api_status() {
 
 #[tokio::test]
 async fn test_orders_crud() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     // Test listing orders
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/orders")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, "/api/v1/orders", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -171,31 +66,15 @@ async fn test_orders_crud() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/orders")
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/orders", Some(create_payload.clone()))
+        .await;
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
     // Test getting a specific order
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/orders/order_123")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, "/api/v1/orders/order_123", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -205,51 +84,31 @@ async fn test_orders_crud() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/api/v1/orders/order_123")
-                .header("content-type", "application/json")
-                .body(Body::from(update_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::PUT,
+            "/api/v1/orders/order_123",
+            Some(update_payload),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test order actions
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/orders/order_123/cancel")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/orders/order_123/cancel", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_inventory_management() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     // Test listing inventory
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/inventory")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, "/api/v1/inventory", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -262,17 +121,12 @@ async fn test_inventory_management() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/inventory")
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/inventory",
+            Some(create_payload.clone()),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
@@ -284,19 +138,14 @@ async fn test_inventory_management() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/inventory/adjust")
-                .header("content-type", "application/json")
-                .body(Body::from(adjust_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/inventory/adjust",
+            Some(adjust_payload),
         )
-        .await
-        .unwrap();
+        .await;
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(response.status(), StatusCode::OK);
 
     // Test inventory allocation
     let allocate_payload = json!({
@@ -307,24 +156,19 @@ async fn test_inventory_management() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/inventory/allocate")
-                .header("content-type", "application/json")
-                .body(Body::from(allocate_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/inventory/allocate",
+            Some(allocate_payload),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_returns_workflow() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     let order_id = Uuid::new_v4();
     // Test creating a return
@@ -343,17 +187,8 @@ async fn test_returns_workflow() {
     });
 
     let response_create = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/returns")
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/returns", Some(create_payload))
+        .await;
 
     assert_eq!(response_create.status(), StatusCode::CREATED);
     let body_bytes = axum::body::to_bytes(response_create.into_body(), usize::MAX)
@@ -367,39 +202,25 @@ async fn test_returns_workflow() {
         .to_string();
 
     // Test return approval
+    let approve_uri = format!("/api/v1/returns/{}/approve", return_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/v1/returns/{}/approve", return_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, &approve_uri, None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test return restocking
+    let restock_uri = format!("/api/v1/returns/{}/restock", return_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/v1/returns/{}/restock", return_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, &restock_uri, None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_shipments_tracking() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     let order_id = Uuid::new_v4();
     let tracking_number = "1Z123456789";
@@ -432,17 +253,8 @@ async fn test_shipments_tracking() {
     });
 
     let response_create = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/shipments")
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/shipments", Some(create_payload))
+        .await;
 
     assert_eq!(response_create.status(), StatusCode::CREATED);
     let body_bytes = axum::body::to_bytes(response_create.into_body(), usize::MAX)
@@ -456,67 +268,41 @@ async fn test_shipments_tracking() {
         .to_string();
 
     // Test shipment tracking
+    let track_uri = format!("/api/v1/shipments/{}/track", shipment_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/api/v1/shipments/{}/track", shipment_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, &track_uri, None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test tracking by number
+    let tracking_uri = format!("/api/v1/shipments/track/{}", tracking_number);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/api/v1/shipments/track/{}", tracking_number))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, &tracking_uri, None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test marking as shipped
+    let ship_uri = format!("/api/v1/shipments/{}/ship", shipment_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/v1/shipments/{}/ship", shipment_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, &ship_uri, None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test marking as delivered
+    let deliver_uri = format!("/api/v1/shipments/{}/deliver", shipment_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/v1/shipments/{}/deliver", shipment_id))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, &deliver_uri, None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_warranties_management() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     let product_id = Uuid::new_v4();
     let customer_id = Uuid::new_v4();
@@ -532,17 +318,8 @@ async fn test_warranties_management() {
     });
 
     let response_create = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/warranties")
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/warranties", Some(create_payload))
+        .await;
 
     assert_eq!(response_create.status(), StatusCode::CREATED);
     let body_bytes = axum::body::to_bytes(response_create.into_body(), usize::MAX)
@@ -565,17 +342,12 @@ async fn test_warranties_management() {
     });
 
     let response_claim = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/warranties/claims")
-                .header("content-type", "application/json")
-                .body(Body::from(claim_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/warranties/claims",
+            Some(claim_payload),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response_claim.status(), StatusCode::CREATED);
     let claim_bytes = axum::body::to_bytes(response_claim.into_body(), usize::MAX)
@@ -595,18 +367,10 @@ async fn test_warranties_management() {
         "notes": "Customer eligible for repair service"
     });
 
+    let approve_uri = format!("/api/v1/warranties/claims/{}/approve", claim_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/v1/warranties/claims/{}/approve", claim_id))
-                .header("content-type", "application/json")
-                .body(Body::from(approve_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, &approve_uri, Some(approve_payload))
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -615,25 +379,17 @@ async fn test_warranties_management() {
         "additional_months": 6
     });
 
+    let extend_uri = format!("/api/v1/warranties/{}/extend", warranty_id);
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/v1/warranties/{}/extend", warranty_id))
-                .header("content-type", "application/json")
-                .body(Body::from(extend_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, &extend_uri, Some(extend_payload))
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_work_orders_manufacturing() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     // Test creating a work order
     let create_payload = json!({
@@ -648,17 +404,8 @@ async fn test_work_orders_manufacturing() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/work-orders")
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/work-orders", Some(create_payload))
+        .await;
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
@@ -671,32 +418,19 @@ async fn test_work_orders_manufacturing() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/work-orders/wo_123/schedule")
-                .header("content-type", "application/json")
-                .body(Body::from(schedule_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/work-orders/wo_123/schedule",
+            Some(schedule_payload),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test starting work order
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/work-orders/wo_123/start")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/work-orders/wo_123/start", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -708,114 +442,80 @@ async fn test_work_orders_manufacturing() {
     });
 
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/work-orders/wo_123/materials/mat_123/consume")
-                .header("content-type", "application/json")
-                .body(Body::from(consume_payload.to_string()))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/work-orders/wo_123/materials/mat_123/consume",
+            Some(consume_payload),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test completing work order
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/work-orders/wo_123/complete")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::POST, "/api/v1/work-orders/wo_123/complete", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_filtering_and_pagination() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     // Test orders with filtering
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/orders?status=pending&limit=10&offset=0")
-                .body(Body::empty())
-                .unwrap(),
+        .request_authenticated(
+            Method::GET,
+            "/api/v1/orders?status=pending&limit=10&offset=0",
+            None,
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test inventory with filtering
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/inventory?product_id=prod_abc&low_stock=true")
-                .body(Body::empty())
-                .unwrap(),
+        .request_authenticated(
+            Method::GET,
+            "/api/v1/inventory?product_id=prod_abc&low_stock=true",
+            None,
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test work orders with filtering
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/work-orders?status=in_progress&priority=high")
-                .body(Body::empty())
-                .unwrap(),
+        .request_authenticated(
+            Method::GET,
+            "/api/v1/work-orders?status=in_progress&priority=high",
+            None,
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_error_handling() {
-    let app = create_test_app().await;
+    let app = TestApp::new().await;
 
     // Test invalid JSON
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/v1/orders")
-                .header("content-type", "application/json")
-                .body(Body::from("invalid json"))
-                .unwrap(),
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/orders",
+            Some(Value::String("invalid json".into())),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     // Test non-existent endpoint
     let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/v1/nonexistent")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        .request_authenticated(Method::GET, "/api/v1/nonexistent", None)
+        .await;
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

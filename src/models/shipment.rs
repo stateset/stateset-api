@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
+use sea_orm::RelationTrait;
 use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -235,6 +236,12 @@ impl Related<super::shipment_item::Entity> for Entity {
 impl Related<super::shipment_event::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ShipmentEvents.def()
+    }
+}
+
+impl Related<crate::entities::order::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Order.def()
     }
 }
 

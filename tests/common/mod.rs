@@ -3,11 +3,13 @@ use std::time::Duration;
 
 use axum::{
     body::Body,
-    http::{Method, Request},
-    middleware, Router,
+    http::{Method, Request, StatusCode},
+    middleware,
+    routing::get,
+    Json, Router,
 };
 use chrono::Utc;
-use serde_json::Value;
+use serde_json::{json, Value};
 use stateset_api::{
     auth::{AuthConfig, AuthService, User},
     config::AppConfig,
@@ -116,16 +118,41 @@ impl TestApp {
             .expect("failed to generate test token");
 
         let auth_service_for_layer = auth_service.clone();
-        let router = stateset_api::api_v1_routes()
-            .layer(middleware::from_fn_with_state(
-                auth_service_for_layer,
-                |axum::extract::State(auth): axum::extract::State<Arc<AuthService>>,
-                 mut req,
-                 next| async move {
-                    req.extensions_mut().insert(auth);
-                    next.run(req).await
-                },
-            ))
+        let api_router = stateset_api::api_v1_routes().layer(middleware::from_fn_with_state(
+            auth_service_for_layer,
+            |axum::extract::State(auth): axum::extract::State<Arc<AuthService>>,
+             mut req: Request<Body>,
+             next: axum::middleware::Next| async move {
+                req.extensions_mut().insert(auth);
+                next.run(req).await
+            },
+        ));
+
+        let router = Router::new()
+            .route("/health", get(stateset_api::health::simple_health_check))
+            .route(
+                "/health/live",
+                get(|| async {
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "up",
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/health/ready",
+                get(|| async {
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "status": "up",
+                        })),
+                    )
+                }),
+            )
+            .nest("/api/v1", api_router)
             .with_state(state.clone());
 
         Self {
