@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf};
 
 use stateset_api::openapi::ApiDocV1;
+use utoipa::OpenApi;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let openapi = ApiDocV1::openapi();

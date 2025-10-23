@@ -5,9 +5,10 @@ use crate::errors::{AppError, ServiceError};
 use anyhow::Context;
 use futures::future::BoxFuture;
 use metrics::{counter, gauge, histogram};
+use sea_orm::sea_query::TableCreateStatement;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend,
-    DbErr, FromQueryResult, Statement, TransactionTrait,
+    DbErr, FromQueryResult, Schema, Statement, TransactionTrait,
 };
 use sea_orm_migration::MigratorTrait;
 use std::future::Future;
@@ -15,6 +16,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+use crate::entities::{
+    inventory_balance, inventory_location, inventory_transaction, item_master, order_fulfillments,
+    po_receipt_headers, po_receipt_lines, purchase_order_headers, purchase_order_lines,
+    sales_order_header, sales_order_line,
+};
 
 pub use query_builder::{QueryBuilder, SearchBuilder};
 
@@ -307,6 +314,258 @@ impl DatabaseAccess {
     }
 }
 
+async fn ensure_core_tables(pool: &DbPool) -> Result<(), AppError> {
+    match pool.get_database_backend() {
+        DbBackend::Sqlite => {
+            debug!("Ensuring core tables using SQLite schema helper");
+            ensure_core_tables_sqlite(pool).await
+        }
+        other => {
+            debug!(
+                backend = ?other,
+                "Ensuring core tables using generic schema helper"
+            );
+            ensure_core_tables_generic(pool).await
+        }
+    }
+}
+
+async fn ensure_core_tables_generic(pool: &DbPool) -> Result<(), AppError> {
+    let backend = pool.get_database_backend();
+    let schema = Schema::new(backend);
+
+    let mut tables: Vec<(&'static str, TableCreateStatement)> = vec![
+        (
+            "item_master",
+            schema.create_table_from_entity(item_master::Entity),
+        ),
+        (
+            "inventory_locations",
+            schema.create_table_from_entity(inventory_location::Entity),
+        ),
+        (
+            "inventory_balances",
+            schema.create_table_from_entity(inventory_balance::Entity),
+        ),
+        (
+            "inventory_transactions",
+            schema.create_table_from_entity(inventory_transaction::Entity),
+        ),
+        (
+            "sales_order_headers",
+            schema.create_table_from_entity(sales_order_header::Entity),
+        ),
+        (
+            "sales_order_lines",
+            schema.create_table_from_entity(sales_order_line::Entity),
+        ),
+        (
+            "purchase_order_headers",
+            schema.create_table_from_entity(purchase_order_headers::Entity),
+        ),
+        (
+            "purchase_order_lines",
+            schema.create_table_from_entity(purchase_order_lines::Entity),
+        ),
+        (
+            "po_receipt_headers",
+            schema.create_table_from_entity(po_receipt_headers::Entity),
+        ),
+        (
+            "po_receipt_lines",
+            schema.create_table_from_entity(po_receipt_lines::Entity),
+        ),
+        (
+            "order_fulfillments",
+            schema.create_table_from_entity(order_fulfillments::Entity),
+        ),
+    ];
+
+    for (name, mut table) in tables.drain(..) {
+        table.if_not_exists();
+        let statement = backend.build(&table);
+        if let Err(err) = pool.execute(statement).await {
+            warn!(
+                table = name,
+                "Failed to ensure existence of table `{}`: {}", name, err
+            );
+            return Err(AppError::DatabaseError(err));
+        }
+    }
+
+    Ok(())
+}
+
+async fn ensure_core_tables_sqlite(pool: &DbPool) -> Result<(), AppError> {
+    let statements: &[&str] = &[
+        r#"
+        CREATE TABLE IF NOT EXISTS item_master (
+            inventory_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL,
+            item_number TEXT NOT NULL,
+            description TEXT,
+            primary_uom_code TEXT,
+            item_type TEXT,
+            status_code TEXT,
+            lead_time_weeks INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS inventory_locations (
+            location_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_name TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS inventory_balances (
+            inventory_balance_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            inventory_item_id INTEGER NOT NULL,
+            location_id INTEGER NOT NULL,
+            quantity_on_hand NUMERIC NOT NULL DEFAULT 0,
+            quantity_allocated NUMERIC NOT NULL DEFAULT 0,
+            quantity_available NUMERIC NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (inventory_item_id) REFERENCES item_master(inventory_item_id),
+            FOREIGN KEY (location_id) REFERENCES inventory_locations(location_id),
+            UNIQUE (inventory_item_id, location_id)
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS inventory_transactions (
+            id TEXT PRIMARY KEY,
+            product_id TEXT NOT NULL,
+            location_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            previous_quantity INTEGER NOT NULL,
+            new_quantity INTEGER NOT NULL,
+            reference_id TEXT,
+            reference_type TEXT,
+            reason TEXT,
+            notes TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS sales_order_headers (
+            header_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_number TEXT NOT NULL,
+            order_type_id INTEGER,
+            sold_to_org_id INTEGER,
+            ordered_date TEXT,
+            status_code TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            location_id INTEGER,
+            FOREIGN KEY (location_id) REFERENCES inventory_locations(location_id)
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS sales_order_lines (
+            line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            header_id INTEGER,
+            line_number INTEGER,
+            inventory_item_id INTEGER,
+            ordered_quantity NUMERIC,
+            unit_selling_price NUMERIC,
+            line_status TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            location_id INTEGER,
+            FOREIGN KEY (header_id) REFERENCES sales_order_headers(header_id),
+            FOREIGN KEY (inventory_item_id) REFERENCES item_master(inventory_item_id),
+            FOREIGN KEY (location_id) REFERENCES inventory_locations(location_id)
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS purchase_order_headers (
+            po_header_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            po_number TEXT NOT NULL,
+            type_code TEXT,
+            vendor_id INTEGER,
+            agent_id INTEGER,
+            approved_flag INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS purchase_order_lines (
+            po_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            po_header_id INTEGER,
+            line_num INTEGER,
+            item_id INTEGER,
+            quantity NUMERIC,
+            unit_price NUMERIC,
+            line_type_id INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (po_header_id) REFERENCES purchase_order_headers(po_header_id),
+            FOREIGN KEY (item_id) REFERENCES item_master(inventory_item_id)
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS po_receipt_headers (
+            shipment_header_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_num TEXT NOT NULL,
+            vendor_id INTEGER,
+            shipment_num TEXT,
+            receipt_source TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS po_receipt_lines (
+            shipment_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shipment_header_id INTEGER,
+            item_id INTEGER,
+            po_header_id INTEGER,
+            po_line_id INTEGER,
+            quantity_received NUMERIC,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (shipment_header_id) REFERENCES po_receipt_headers(shipment_header_id),
+            FOREIGN KEY (item_id) REFERENCES item_master(inventory_item_id),
+            FOREIGN KEY (po_header_id) REFERENCES purchase_order_headers(po_header_id),
+            FOREIGN KEY (po_line_id) REFERENCES purchase_order_lines(po_line_id)
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS order_fulfillments (
+            fulfillment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sales_order_header_id INTEGER,
+            sales_order_line_id INTEGER,
+            shipped_date TEXT,
+            released_status TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (sales_order_header_id) REFERENCES sales_order_headers(header_id),
+            FOREIGN KEY (sales_order_line_id) REFERENCES sales_order_lines(line_id)
+        );
+        "#,
+    ];
+
+    for sql in statements {
+        if let Err(err) = pool
+            .execute(Statement::from_string(
+                DbBackend::Sqlite,
+                sql.trim().to_owned(),
+            ))
+            .await
+        {
+            warn!("Failed to execute schema statement for SQLite: {}", err);
+            return Err(AppError::DatabaseError(err));
+        }
+    }
+
+    Ok(())
+}
+
 /// Runs database migrations
 ///
 /// # Arguments
@@ -317,22 +576,48 @@ impl DatabaseAccess {
 pub async fn run_migrations(pool: &DbPool) -> Result<(), AppError> {
     info!("Running database migrations");
     let start = std::time::Instant::now();
+    let backend = pool.get_database_backend();
 
     // Execute migrations using our embedded migrator
-    let result = crate::migrator::Migrator::up(pool, None)
-        .await
-        .map_err(AppError::DatabaseError);
+    let migrate_result = if backend == DbBackend::Sqlite {
+        info!("SQLite backend detected; skipping embedded migrator scripts");
+        Ok(())
+    } else {
+        crate::migrator::Migrator::up(pool, None).await
+    };
 
     let elapsed = start.elapsed();
-    match &result {
-        Ok(_) => info!(
-            "Database migrations completed successfully in {:?}",
-            elapsed
+    match &migrate_result {
+        Ok(_) => {
+            if backend != DbBackend::Sqlite {
+                info!(
+                    "Embedded database migrations completed successfully in {:?}",
+                    elapsed
+                );
+            }
+        }
+        Err(e) => error!(
+            "Embedded database migrations failed after {:?}: {}",
+            elapsed, e
         ),
-        Err(e) => error!("Database migrations failed after {:?}: {}", elapsed, e),
     }
 
-    result
+    let ensure_start = std::time::Instant::now();
+    let ensure_result = ensure_core_tables(pool).await;
+    let ensure_elapsed = ensure_start.elapsed();
+
+    match &ensure_result {
+        Ok(_) => info!("Verified core inventory tables in {:?}", ensure_elapsed),
+        Err(e) => error!(
+            "Ensuring core inventory tables failed after {:?}: {}",
+            ensure_elapsed, e
+        ),
+    }
+
+    migrate_result.map_err(AppError::DatabaseError)?;
+    ensure_result?;
+
+    Ok(())
 }
 
 /// Checks if the database connection is active

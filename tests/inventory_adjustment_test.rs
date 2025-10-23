@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sea_orm::{Set, TransactionTrait, *};
+use sea_orm::{EntityTrait, Set, TransactionTrait};
 use stateset_api::{
-    db::create_db_pool,
+    db::{create_db_pool, run_migrations},
     entities::{
         inventory_balance::{self, Entity as InventoryBalance},
         inventory_location::{self, Entity as InventoryLocation},
@@ -18,14 +18,27 @@ use stateset_api::{
         InventoryAdjustmentService, PurchaseOrderReceiptLine, SalesOrderAdjustmentType,
     },
 };
-use std::sync::Arc;
+use std::{env, sync::Arc};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+fn dec(value: i32) -> Decimal {
+    Decimal::new((value as i64) * 10_000, 4)
+}
+
+fn dec_zero() -> Decimal {
+    dec(0)
+}
+
 #[tokio::test]
 async fn test_inventory_adjustments_with_item_master() {
+    env::set_var("APP__DATABASE_URL", "sqlite::memory:?cache=shared");
+
     // Setup database connection
     let db_pool = Arc::new(create_db_pool().await.expect("Failed to create DB pool"));
+    run_migrations(db_pool.as_ref())
+        .await
+        .expect("Failed to run migrations");
     let db = db_pool.as_ref();
 
     // Setup event sender
@@ -96,8 +109,8 @@ async fn test_inventory_adjustments_with_item_master() {
     // Verify allocation
     let inv1_after_alloc =
         get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
-    assert_eq!(inv1_after_alloc.quantity_available, Decimal::from(98));
-    assert_eq!(inv1_after_alloc.quantity_allocated, Decimal::from(2));
+    assert_eq!(inv1_after_alloc.quantity_available, dec(98));
+    assert_eq!(inv1_after_alloc.quantity_allocated, dec(2));
 
     // Step 5: Test Sales Order Shipment
     println!("\n=== Testing Sales Order Shipment ===");
@@ -118,8 +131,8 @@ async fn test_inventory_adjustments_with_item_master() {
     // Verify shipment
     let inv1_after_ship =
         get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
-    assert_eq!(inv1_after_ship.quantity_on_hand, Decimal::from(98));
-    assert_eq!(inv1_after_ship.quantity_allocated, Decimal::from(0));
+    assert_eq!(inv1_after_ship.quantity_on_hand, dec(98));
+    assert_eq!(inv1_after_ship.quantity_allocated, dec(0));
 
     // Step 6: Test Purchase Order Receipt
     println!("\n=== Testing Purchase Order Receipt ===");
@@ -132,12 +145,12 @@ async fn test_inventory_adjustments_with_item_master() {
     let receipt_lines = vec![
         PurchaseOrderReceiptLine {
             po_line_id: po_line1.po_line_id,
-            quantity_received: Decimal::from(50),
+            quantity_received: dec(50),
             location_id: location1.location_id,
         },
         PurchaseOrderReceiptLine {
             po_line_id: po_line2.po_line_id,
-            quantity_received: Decimal::from(100),
+            quantity_received: dec(100),
             location_id: location1.location_id,
         },
     ];
@@ -159,8 +172,8 @@ async fn test_inventory_adjustments_with_item_master() {
     // Verify receipt
     let inv1_after_receipt =
         get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
-    assert_eq!(inv1_after_receipt.quantity_on_hand, Decimal::from(148)); // 98 + 50
-    assert_eq!(inv1_after_receipt.quantity_available, Decimal::from(148));
+    assert_eq!(inv1_after_receipt.quantity_on_hand, dec(148)); // 98 + 50
+    assert_eq!(inv1_after_receipt.quantity_available, dec(148));
 
     // Step 7: Test Order Cancellation (Deallocation)
     println!("\n=== Testing Order Cancellation ===");
@@ -214,7 +227,7 @@ async fn test_inventory_adjustments_with_item_master() {
     // Verify return
     let inv1_after_return =
         get_inventory_balance(&txn, item1.inventory_item_id, location1.location_id).await;
-    assert_eq!(inv1_after_return.quantity_on_hand, Decimal::from(150)); // 148 + 2 returned
+    assert_eq!(inv1_after_return.quantity_on_hand, dec(150)); // 148 + 2 returned
 
     // Step 9: Query and display transaction history
     println!("\n=== Transaction History ===");
@@ -254,6 +267,8 @@ async fn test_inventory_adjustments_with_item_master() {
     txn.rollback()
         .await
         .expect("Failed to rollback transaction");
+
+    env::remove_var("APP__DATABASE_URL");
 
     println!("\n✅ All inventory adjustment tests passed successfully!");
 }
@@ -303,19 +318,20 @@ async fn create_initial_inventory(
     location_id: i32,
     quantity: i32,
 ) {
+    let now = Utc::now().to_rfc3339();
     let inventory = inventory_balance::ActiveModel {
         inventory_item_id: Set(item_id),
         location_id: Set(location_id),
-        quantity_on_hand: Set(Decimal::from(quantity)),
-        quantity_allocated: Set(Decimal::ZERO),
-        quantity_available: Set(Decimal::from(quantity)),
+        quantity_on_hand: Set(dec(quantity)),
+        quantity_allocated: Set(dec_zero()),
+        quantity_available: Set(dec(quantity)),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
         ..Default::default()
     };
 
-    inventory
-        .insert(db)
+    inventory_balance::Entity::insert(inventory)
+        .exec(db)
         .await
         .expect("Failed to create initial inventory");
 }
@@ -347,8 +363,8 @@ async fn create_sales_order_line(
         header_id: Set(Some(header_id)),
         line_number: Set(Some(1)),
         inventory_item_id: Set(Some(item_id)),
-        ordered_quantity: Set(Some(Decimal::from(quantity))),
-        unit_selling_price: Set(Some(Decimal::from(100))),
+        ordered_quantity: Set(Some(dec(quantity))),
+        unit_selling_price: Set(Some(dec(100))),
         line_status: Set(Some("OPEN".to_string())),
         location_id: Set(Some(location_id)),
         created_at: Set(Utc::now().into()),
@@ -386,8 +402,8 @@ async fn create_purchase_order_line(
         po_header_id: Set(Some(header_id)),
         line_num: Set(Some(1)),
         item_id: Set(Some(item_id)),
-        quantity: Set(Some(Decimal::from(quantity))),
-        unit_price: Set(Some(Decimal::from(50))),
+        quantity: Set(Some(dec(quantity))),
+        unit_price: Set(Some(dec(50))),
         created_at: Set(Utc::now().into()),
         updated_at: Set(Utc::now().into()),
         ..Default::default()
@@ -397,7 +413,6 @@ async fn create_purchase_order_line(
         .await
         .expect("Failed to create purchase order line")
 }
-
 async fn get_inventory_balance(
     db: &DatabaseTransaction,
     item_id: i64,
