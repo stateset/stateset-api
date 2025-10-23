@@ -9,13 +9,16 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
+use rust_decimal::Decimal;
 use serde_json::{json, Value};
+use stateset_api::entities::commerce::product_variant;
 use stateset_api::{
     auth::{AuthConfig, AuthService, User},
     config::AppConfig,
     db,
     events::{self, EventSender},
     handlers::AppServices,
+    services::commerce::product_catalog_service::{CreateProductInput, CreateVariantInput},
     AppState,
 };
 use tokio::sync::mpsc;
@@ -211,6 +214,39 @@ impl TestApp {
         body: Option<Value>,
     ) -> axum::response::Response {
         self.request(method, uri, body, Some(self.token())).await
+    }
+
+    pub async fn seed_product_variant(&self, sku: &str, price: Decimal) -> product_variant::Model {
+        use std::collections::HashMap;
+
+        let catalog = self.state.services.product_catalog.clone();
+        let product = catalog
+            .create_product(CreateProductInput {
+                name: format!("Test Product {}", sku),
+                slug: format!("test-product-{}", sku.to_lowercase()),
+                description: "Test product seeded for integration tests".to_string(),
+                attributes: Vec::new(),
+                seo: json!({}),
+            })
+            .await
+            .expect("seed product for tests");
+
+        catalog
+            .create_variant(CreateVariantInput {
+                product_id: product.id,
+                sku: sku.to_string(),
+                name: format!("Variant {}", sku),
+                price,
+                compare_at_price: None,
+                cost: Some(price),
+                weight: None,
+                dimensions: None,
+                options: HashMap::new(),
+                inventory_tracking: true,
+                position: 0,
+            })
+            .await
+            .expect("seed product variant for tests")
     }
 }
 

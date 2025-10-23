@@ -21,13 +21,15 @@ async fn test_create_order_endpoint() {
     let app = TestApp::new().await;
 
     let customer_id = Uuid::new_v4();
-    let product_id = Uuid::new_v4();
+    let variant = app
+        .seed_product_variant("SKU-INT-001", Decimal::new(4_999, 2))
+        .await;
 
     let payload = json!({
         "customer_id": customer_id.to_string(),
         "items": [
             {
-                "product_id": product_id.to_string(),
+                "product_id": variant.id.to_string(),
                 "quantity": 2,
                 "unit_price": "49.99"
             }
@@ -68,6 +70,81 @@ async fn test_create_order_endpoint() {
         .await
         .expect("query order items");
     assert_eq!(items.len(), 1);
+}
+
+#[tokio::test]
+async fn test_create_order_rejects_unknown_variant() {
+    let app = TestApp::new().await;
+    let customer_id = Uuid::new_v4();
+
+    let payload = json!({
+        "customer_id": customer_id.to_string(),
+        "items": [
+            {
+                "product_id": Uuid::new_v4().to_string(),
+                "quantity": 1,
+                "unit_price": "10.00"
+            }
+        ]
+    });
+
+    let response = app
+        .request_authenticated(Method::POST, "/api/v1/orders", Some(payload))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_create_order_accepts_sku_identifier() {
+    let app = TestApp::new().await;
+    let customer_id = Uuid::new_v4();
+    let variant = app
+        .seed_product_variant("SKU-ALIAS-01", Decimal::new(2_499, 2))
+        .await;
+
+    let payload = json!({
+        "customer_id": customer_id.to_string(),
+        "items": [
+            {
+                "product_id": variant.sku,
+                "quantity": 1,
+                "unit_price": "24.99"
+            }
+        ]
+    });
+
+    let response = app
+        .request_authenticated(Method::POST, "/api/v1/orders", Some(payload))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn test_create_order_rejects_price_mismatch() {
+    let app = TestApp::new().await;
+    let customer_id = Uuid::new_v4();
+    let variant = app
+        .seed_product_variant("SKU-MISMATCH", Decimal::new(1_999, 2))
+        .await;
+
+    let payload = json!({
+        "customer_id": customer_id.to_string(),
+        "items": [
+            {
+                "product_id": variant.id.to_string(),
+                "quantity": 1,
+                "unit_price": "25.00"
+            }
+        ]
+    });
+
+    let response = app
+        .request_authenticated(Method::POST, "/api/v1/orders", Some(payload))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

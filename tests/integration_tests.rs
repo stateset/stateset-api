@@ -44,6 +44,10 @@ async fn test_api_status() {
 #[tokio::test]
 async fn test_orders_crud() {
     let app = TestApp::new().await;
+    let variant = app
+        .seed_product_variant("SKU-CRUD-01", rust_decimal::Decimal::new(2_999, 2))
+        .await;
+    let customer_id = Uuid::new_v4();
 
     // Test listing orders
     let response = app
@@ -54,12 +58,12 @@ async fn test_orders_crud() {
 
     // Test creating an order
     let create_payload = json!({
-        "customer_id": "cust_123",
+        "customer_id": customer_id.to_string(),
         "items": [
             {
-                "product_id": "prod_abc",
+                "product_id": variant.id.to_string(),
                 "quantity": 2,
-                "price": 49.99
+                "price": 29.99
             }
         ],
         "notes": "Test order"
@@ -71,9 +75,18 @@ async fn test_orders_crud() {
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let create_json: Value = serde_json::from_slice(&body).unwrap();
+    let order_id = create_json["data"]["id"]
+        .as_str()
+        .expect("order id present")
+        .to_string();
+
     // Test getting a specific order
     let response = app
-        .request_authenticated(Method::GET, "/api/v1/orders/order_123", None)
+        .request_authenticated(Method::GET, &format!("/api/v1/orders/{}", order_id), None)
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -86,7 +99,7 @@ async fn test_orders_crud() {
     let response = app
         .request_authenticated(
             Method::PUT,
-            "/api/v1/orders/order_123",
+            &format!("/api/v1/orders/{}", order_id),
             Some(update_payload),
         )
         .await;
@@ -95,7 +108,11 @@ async fn test_orders_crud() {
 
     // Test order actions
     let response = app
-        .request_authenticated(Method::POST, "/api/v1/orders/order_123/cancel", None)
+        .request_authenticated(
+            Method::POST,
+            &format!("/api/v1/orders/{}/cancel", order_id),
+            None,
+        )
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
