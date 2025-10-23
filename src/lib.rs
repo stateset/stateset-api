@@ -534,3 +534,4 @@ pub mod prelude {
 // Note: AppState automatically implements ReturnsAppState, ShipmentsAppState,
 // WarrantiesAppState, and WorkOrdersAppState through blanket implementations
 // in the respective handler modules
+use crate::services::commerce::checkout_service::CheckoutSession;

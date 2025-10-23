@@ -307,7 +307,7 @@ impl CheckoutService {
 }
 
 /// Checkout session
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckoutSession {
     pub id: Uuid,
     pub cart_id: Uuid,

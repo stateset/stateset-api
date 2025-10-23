@@ -2,10 +2,10 @@ use crate::handlers::common::{
     created_response, map_service_error, success_response, validate_input,
 };
 use crate::{
-    auth::AuthenticatedUser,
-    errors::ApiError,
+    errors::{ApiError, ServiceError},
     services::commerce::checkout_service::{
-        Address, CheckoutSession, CustomerInfoInput, PaymentInfo, ShippingMethod,
+        Address, CheckoutSession, CustomerInfoInput, PaymentInfo, PaymentMethod, ShippingMethod,
+        ShippingRate,
     },
     AppState,
 };
@@ -15,9 +15,89 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use serde_json::{from_str, to_string};
+use std::fmt;
 use uuid::Uuid;
 use validator::Validate;
+
+const CHECKOUT_SESSION_TTL_SECS: usize = 60 * 30;
+
+fn checkout_session_key(id: &Uuid) -> String {
+    format!("checkout_session:{}", id)
+}
+
+fn cache_error(context: &str, err: impl fmt::Display) -> ApiError {
+    ApiError::ServiceError(ServiceError::CacheError(format!("{}: {}", context, err)))
+}
+
+fn serialization_error(context: &str, err: impl fmt::Display) -> ApiError {
+    ApiError::ServiceError(ServiceError::SerializationError(format!(
+        "{}: {}",
+        context, err
+    )))
+}
+
+async fn redis_connection(state: &AppState) -> Result<redis::aio::Connection, ApiError> {
+    state
+        .redis
+        .get_async_connection()
+        .await
+        .map_err(|e| cache_error("failed to acquire redis connection", e))
+}
+
+async fn persist_session(state: &AppState, session: &CheckoutSession) -> Result<(), ApiError> {
+    let mut conn = redis_connection(state).await?;
+    let payload = to_string(session)
+        .map_err(|e| serialization_error("failed to serialize checkout session", e))?;
+    conn.set_ex(
+        checkout_session_key(&session.id),
+        payload,
+        CHECKOUT_SESSION_TTL_SECS,
+    )
+    .await
+    .map_err(|e| cache_error("failed to store checkout session", e))?;
+    Ok(())
+}
+
+async fn load_session(state: &AppState, session_id: &Uuid) -> Result<CheckoutSession, ApiError> {
+    let key = checkout_session_key(session_id);
+    let mut conn = redis_connection(state).await?;
+    let payload: Option<String> = conn
+        .get(&key)
+        .await
+        .map_err(|e| cache_error("failed to load checkout session", e))?;
+
+    let payload = match payload {
+        Some(value) => value,
+        None => {
+            return Err(ApiError::NotFound(format!(
+                "Checkout session {} not found",
+                session_id
+            )))
+        }
+    };
+
+    let session: CheckoutSession = from_str(&payload)
+        .map_err(|e| serialization_error("failed to deserialize checkout session", e))?;
+
+    let _: () = conn
+        .expire(&key, CHECKOUT_SESSION_TTL_SECS)
+        .await
+        .map_err(|e| cache_error("failed to refresh checkout session TTL", e))?;
+
+    Ok(session)
+}
+
+async fn remove_session(state: &AppState, session_id: &Uuid) -> Result<(), ApiError> {
+    let mut conn = redis_connection(state).await?;
+    let _: () = conn
+        .del(checkout_session_key(session_id))
+        .await
+        .map_err(|e| cache_error("failed to delete checkout session", e))?;
+    Ok(())
+}
 
 /// Creates the router for checkout endpoints
 pub fn checkout_routes() -> Router<AppState> {
@@ -42,146 +122,130 @@ async fn start_checkout(
         .await
         .map_err(map_service_error)?;
 
+    persist_session(&state, &session).await?;
+
     Ok(created_response(CheckoutSessionResponse::from(session)))
 }
 
 /// Get checkout session
 async fn get_checkout_session(
-    State(_state): State<AppState>,
-    Path(_session_id): Path<Uuid>,
-) -> Result<axum::response::Response, ApiError> {
-    // For now, we'll need to store sessions in memory or cache
-    // This is a simplified version
-    Err(ApiError::NotFound(
-        "Session storage not implemented yet".to_string(),
-    ))
+    State(state): State<AppState>,
+    Path(session_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let session = load_session(&state, &session_id).await?;
+
+    Ok(success_response(CheckoutSessionResponse::from(session)))
 }
 
 /// Set customer info
 async fn set_customer_info(
-    State(_state): State<AppState>,
-    Path(_session_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(session_id): Path<Uuid>,
     Json(payload): Json<CustomerInfoRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     validate_input(&payload)?;
 
-    // This would retrieve and update the session
-    // For now, returning success
-    Ok(success_response(serde_json::json!({
-        "message": "Customer info updated"
-    })))
+    let mut session = load_session(&state, &session_id).await?;
+
+    let input = CustomerInfoInput {
+        email: payload.email.clone(),
+        subscribe_newsletter: payload.subscribe_newsletter,
+    };
+
+    state
+        .services
+        .checkout
+        .set_customer_info(&mut session, input)
+        .await
+        .map_err(map_service_error)?;
+
+    persist_session(&state, &session).await?;
+
+    Ok(success_response(CheckoutSessionResponse::from(session)))
 }
 
 /// Set shipping address
 async fn set_shipping_address(
-    State(_state): State<AppState>,
-    Path(_session_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(session_id): Path<Uuid>,
     Json(payload): Json<AddressRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     validate_input(&payload)?;
 
-    let _address = Address {
-        first_name: payload.first_name,
-        last_name: payload.last_name,
-        company: payload.company,
-        address_line_1: payload.address_line_1,
-        address_line_2: payload.address_line_2,
-        city: payload.city,
-        province: payload.province,
-        country_code: payload.country_code,
-        postal_code: payload.postal_code,
-        phone: payload.phone,
+    let mut session = load_session(&state, &session_id).await?;
+
+    let address = Address {
+        first_name: payload.first_name.clone(),
+        last_name: payload.last_name.clone(),
+        company: payload.company.clone(),
+        address_line_1: payload.address_line_1.clone(),
+        address_line_2: payload.address_line_2.clone(),
+        city: payload.city.clone(),
+        province: payload.province.clone(),
+        country_code: payload.country_code.clone(),
+        postal_code: payload.postal_code.clone(),
+        phone: payload.phone.clone(),
     };
 
-    // This would update the session
-    Ok(success_response(serde_json::json!({
-        "message": "Shipping address updated"
-    })))
+    state
+        .services
+        .checkout
+        .set_shipping_address(&mut session, address)
+        .await
+        .map_err(map_service_error)?;
+
+    persist_session(&state, &session).await?;
+
+    Ok(success_response(CheckoutSessionResponse::from(session)))
 }
 
 /// Set shipping method
 async fn set_shipping_method(
-    State(_state): State<AppState>,
-    Path(_session_id): Path<Uuid>,
+    State(state): State<AppState>,
+    Path(session_id): Path<Uuid>,
     Json(payload): Json<ShippingMethodRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // This would update session and calculate shipping
-    let mock_rate = crate::services::commerce::checkout_service::ShippingRate {
-        method: payload.method.clone(),
-        amount: rust_decimal::Decimal::from(10),
-        estimated_days: 3,
-    };
+    let mut session = load_session(&state, &session_id).await?;
 
-    Ok(success_response(mock_rate))
+    let rate: ShippingRate = state
+        .services
+        .checkout
+        .set_shipping_method(&mut session, payload.method.clone())
+        .await
+        .map_err(map_service_error)?;
+
+    persist_session(&state, &session).await?;
+
+    Ok(success_response(rate))
 }
 
 /// Complete checkout
 async fn complete_checkout(
     State(state): State<AppState>,
-    Path(_session_id): Path<Uuid>,
+    Path(session_id): Path<Uuid>,
     Json(payload): Json<CompleteCheckoutRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     validate_input(&payload)?;
 
-    // TODO: Re-implement session management
-    // let session = state
-    //     .services
-    //     .session_manager
-    //     .get_session(&payload.payment_token)
-    //     .await
-    //     .map_err(map_service_error)?;
+    let session = load_session(&state, &session_id).await?;
 
-    // if session.cart.items.is_empty() {
-    //     return Err(ApiError::BadRequest {
-    //         message: "Cannot proceed to checkout with an empty cart".to_string(),
-    //         error_code: Some("EMPTY_CART".to_string()),
-    //     });
-    // }
+    let payment_info = PaymentInfo {
+        method: payload.payment_method.clone(),
+        token: payload.payment_token.clone(),
+    };
 
-    // // Ensure all items are in stock
-    // for item in &session.cart.items {
-    //     let stock = get_stock_level(item.product_id, &state.db).await?;
-    //     if item.quantity > stock {
-    //         return Err(ApiError::BadRequest {
-    //             message: format!(
-    //                 "Insufficient stock for product {}: requested {}, available {}",
-    //                 item.product_id, item.quantity, stock
-    //             ),
-    //             error_code: Some("INSUFFICIENT_STOCK".to_string()),
-    //         });
-    //     }
-    // }
+    let order = state
+        .services
+        .checkout
+        .complete_checkout(session, payment_info)
+        .await
+        .map_err(map_service_error)?;
 
-    // // Create an order
-    // let order_id = create_order_from_cart(&session, &state.db).await?;
-
-    // // Clear the cart
-    // session.cart.items.clear();
-    // state
-    //     .services
-    //     .session_manager
-    //     .save_session(&session)
-    //     .await
-    //     .map_err(|e| {
-    //         error!("Failed to save session: {}", e);
-    //         ApiError::InternalServerError {
-    //             message: "Failed to update session".to_string(),
-    //         }
-    //     })?;
+    remove_session(&state, &session_id).await?;
 
     Ok(created_response(
-        serde_json::json!({ "order_id": Uuid::new_v4() }),
+        serde_json::json!({ "order_id": order.id }),
     ))
-}
-
-async fn get_stock_level(_product_id: Uuid, _db: &crate::db::DbPool) -> Result<i32, ApiError> {
-    // Dummy implementation
-    Ok(100)
-}
-
-async fn create_order_from_cart(_session: &(), _db: &crate::db::DbPool) -> Result<Uuid, ApiError> {
-    // Dummy implementation
-    Ok(Uuid::new_v4())
 }
 
 // Request/Response DTOs
@@ -199,6 +263,11 @@ pub struct CheckoutSessionResponse {
     pub subtotal: rust_decimal::Decimal,
     pub total: rust_decimal::Decimal,
     pub currency: String,
+    pub customer_email: Option<String>,
+    pub shipping_address: Option<Address>,
+    pub billing_address: Option<Address>,
+    pub shipping_method: Option<ShippingMethod>,
+    pub payment_method: Option<PaymentMethod>,
 }
 
 impl From<CheckoutSession> for CheckoutSessionResponse {
@@ -210,6 +279,11 @@ impl From<CheckoutSession> for CheckoutSessionResponse {
             subtotal: session.cart.subtotal,
             total: session.cart.total,
             currency: session.cart.currency,
+            customer_email: session.customer_email,
+            shipping_address: session.shipping_address,
+            billing_address: session.billing_address,
+            shipping_method: session.shipping_method,
+            payment_method: session.payment_method,
         }
     }
 }

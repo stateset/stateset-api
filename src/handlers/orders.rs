@@ -133,6 +133,8 @@ pub struct OrderItem {
     pub id: String,
     pub product_id: String,
     pub product_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sku: Option<String>,
     pub quantity: i32,
     pub unit_price: rust_decimal::Decimal,
     pub total_price: rust_decimal::Decimal,
@@ -284,27 +286,72 @@ pub async fn create_order(
         ));
     }
 
-    // Compute totals from items
-    let mut items: Vec<OrderItem> = Vec::new();
-    for (i, it) in request.items.iter().enumerate() {
-        let unit_price = it
-            .unit_price
-            .unwrap_or_else(|| rust_decimal::Decimal::new(1999, 2));
-        let total_price = unit_price * rust_decimal::Decimal::from(it.quantity);
-        items.push(OrderItem {
-            id: format!("item_{}", i + 1),
-            product_id: it.product_id.clone(),
-            product_name: "Sample Product".to_string(),
-            quantity: it.quantity,
-            unit_price,
-            total_price,
-            tax_amount: it.tax_rate.map(|rate| total_price * rate),
+    // Parse and validate identifiers
+    let customer_uuid = Uuid::parse_str(&request.customer_id).map_err(|_| {
+        ServiceError::ValidationError("customer_id must be a valid UUID".to_string())
+    })?;
+
+    struct PreparedItem {
+        api_item: OrderItem,
+        variant_id: Uuid,
+        sku: String,
+        tax_rate: Option<rust_decimal::Decimal>,
+    }
+
+    // Compute totals and validate items against catalog data
+    let mut total_amount = rust_decimal::Decimal::ZERO;
+    let mut prepared_items: Vec<PreparedItem> = Vec::with_capacity(request.items.len());
+    for (index, item) in request.items.iter().enumerate() {
+        let variant_id = Uuid::parse_str(&item.product_id).map_err(|_| {
+            ServiceError::ValidationError(format!("items[{index}].product_id must be a valid UUID"))
+        })?;
+
+        let variant = match state.services.product_catalog.get_variant(variant_id).await {
+            Ok(variant) => variant,
+            Err(ServiceError::NotFound(_)) => {
+                return Err(ServiceError::ValidationError(format!(
+                    "items[{index}].product_id references an unknown product variant"
+                )))
+            }
+            Err(err) => return Err(err),
+        };
+
+        if let Some(provided_price) = item.unit_price {
+            if provided_price != variant.price {
+                return Err(ServiceError::ValidationError(format!(
+                    "items[{index}].unit_price ({}) does not match catalog price ({}) for SKU {}",
+                    provided_price, variant.price, variant.sku
+                )));
+            }
+        }
+
+        let unit_price = item.unit_price.unwrap_or(variant.price);
+        let total_price = unit_price * rust_decimal::Decimal::from(item.quantity);
+        let tax_amount = item.tax_rate.map(|rate| total_price * rate);
+
+        total_amount += total_price;
+        prepared_items.push(PreparedItem {
+            api_item: OrderItem {
+                id: format!("item_{}", index + 1),
+                product_id: variant.id.to_string(),
+                product_name: if !variant.name.is_empty() {
+                    variant.name.clone()
+                } else {
+                    variant.id.to_string()
+                },
+                sku: Some(variant.sku.clone()),
+                quantity: item.quantity,
+                unit_price,
+                total_price,
+                tax_amount,
+            },
+            variant_id,
+            sku: variant.sku.clone(),
+            tax_rate: item.tax_rate,
         });
     }
-    let total_amount: rust_decimal::Decimal = items.iter().map(|it| it.total_price).sum();
 
     // Persist minimal order header via service
-    let customer_uuid = Uuid::parse_str(&request.customer_id).unwrap_or_else(|_| Uuid::new_v4());
     let created = state
         .services
         .order
@@ -331,28 +378,18 @@ pub async fn create_order(
 
     // Persist items for this order
     let created_id = created.id;
-    for it in &items {
-        // Treat provided product_id as SKU; attempt to parse UUID if client sent one
-        let product_uuid = Uuid::parse_str(&it.product_id).ok();
+    for prepared in &prepared_items {
         let _ = state
             .services
             .order
             .add_order_item(
                 created_id,
-                it.product_id.clone(),
-                product_uuid,
-                Some(it.product_name.clone()),
-                it.quantity,
-                it.unit_price,
-                it.tax_amount
-                    .map(|t| {
-                        if it.total_price.is_zero() {
-                            rust_decimal::Decimal::ZERO
-                        } else {
-                            (t / it.total_price)
-                        }
-                    })
-                    .or(Some(rust_decimal::Decimal::ZERO)),
+                prepared.sku.clone(),
+                Some(prepared.variant_id),
+                Some(prepared.api_item.product_name.clone()),
+                prepared.api_item.quantity,
+                prepared.api_item.unit_price,
+                prepared.tax_rate,
             )
             .await?;
     }
@@ -364,12 +401,13 @@ pub async fn create_order(
         .into_iter()
         .map(|m| OrderItem {
             id: m.id.to_string(),
-            product_id: if !m.sku.is_empty() {
-                m.sku
-            } else {
+            product_id: m.product_id.to_string(),
+            product_name: if m.name.is_empty() {
                 m.product_id.to_string()
+            } else {
+                m.name
             },
-            product_name: m.name,
+            sku: if m.sku.is_empty() { None } else { Some(m.sku) },
             quantity: m.quantity,
             unit_price: m.unit_price,
             total_price: m.total_price,
@@ -700,14 +738,26 @@ pub async fn get_order_items(
     let items = svc.get_order_items(order_id).await?;
     let mapped: Vec<OrderItem> = items
         .into_iter()
-        .map(|m| OrderItem {
-            id: m.id.to_string(),
-            product_id: m.product_id.to_string(),
-            product_name: m.name,
-            quantity: m.quantity,
-            unit_price: m.unit_price,
-            total_price: m.total_price,
-            tax_amount: Some(m.tax_amount),
+        .map(|m| {
+            let sku = if m.sku.is_empty() {
+                None
+            } else {
+                Some(m.sku.clone())
+            };
+            OrderItem {
+                id: m.id.to_string(),
+                product_id: m.product_id.to_string(),
+                product_name: if m.name.is_empty() {
+                    m.product_id.to_string()
+                } else {
+                    m.name
+                },
+                sku,
+                quantity: m.quantity,
+                unit_price: m.unit_price,
+                total_price: m.total_price,
+                tax_amount: Some(m.tax_amount),
+            }
         })
         .collect();
     Ok(Json(ApiResponse::success(mapped)))
@@ -795,14 +845,22 @@ pub async fn add_order_item(
         )
         .await?;
 
+    let sku = if saved.sku.is_empty() {
+        None
+    } else {
+        Some(saved.sku.clone())
+    };
+    let product_name = if saved.name.is_empty() {
+        saved.product_id.to_string()
+    } else {
+        saved.name.clone()
+    };
+
     let item = OrderItem {
         id: saved.id.to_string(),
-        product_id: if !saved.sku.is_empty() {
-            saved.sku
-        } else {
-            saved.product_id.to_string()
-        },
-        product_name: saved.name,
+        product_id: saved.product_id.to_string(),
+        product_name,
+        sku,
         quantity: saved.quantity,
         unit_price: saved.unit_price,
         total_price: saved.total_price,
@@ -826,6 +884,7 @@ fn create_mock_order() -> OrderResponse {
                 id: "item_1".to_string(),
                 product_id: "prod_123".to_string(),
                 product_name: "Sample Product 1".to_string(),
+                sku: Some("SKU-123".to_string()),
                 quantity: 2,
                 unit_price: rust_decimal::Decimal::new(1999, 2),
                 total_price: rust_decimal::Decimal::new(3998, 2),
@@ -835,6 +894,7 @@ fn create_mock_order() -> OrderResponse {
                 id: "item_2".to_string(),
                 product_id: "prod_456".to_string(),
                 product_name: "Sample Product 2".to_string(),
+                sku: Some("SKU-456".to_string()),
                 quantity: 1,
                 unit_price: rust_decimal::Decimal::new(2999, 2),
                 total_price: rust_decimal::Decimal::new(2999, 2),
@@ -870,6 +930,7 @@ fn create_mock_orders() -> Vec<OrderResponse> {
                 id: "item_3".to_string(),
                 product_id: "prod_789".to_string(),
                 product_name: "Sample Product 3".to_string(),
+                sku: Some("SKU-789".to_string()),
                 quantity: 1,
                 unit_price: rust_decimal::Decimal::new(4499, 2),
                 total_price: rust_decimal::Decimal::new(4499, 2),

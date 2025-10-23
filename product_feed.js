@@ -173,17 +173,37 @@ async function fetchShopifyProducts(shop, shopify_access_token, limit = 250) {
 /**
  * Push feed to OpenAI's endpoint
  */
-async function pushFeedToOpenAI(feed, openai_endpoint, openai_api_key) {
+async function pushFeedToOpenAI(feed, format, openai_endpoint, openai_api_key) {
   try {
     console.log('Pushing feed to OpenAI endpoint...');
+
+    let contentType;
+    let body;
+
+    switch (format.toLowerCase()) {
+      case 'json':
+        contentType = 'application/json';
+        body = JSON.stringify(feed);
+        break;
+      case 'csv':
+        contentType = 'text/csv';
+        body = feed;
+        break;
+      case 'tsv':
+        contentType = 'text/tab-separated-values';
+        body = feed;
+        break;
+      default:
+        throw new Error(`Unsupported format for OpenAI push: ${format}`);
+    }
     
     const response = await fetch(openai_endpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': contentType,
         'Authorization': `Bearer ${openai_api_key}`
       },
-      body: JSON.stringify(feed)
+      body
     });
     
     if (!response.ok) {
@@ -326,7 +346,7 @@ const createAgenticCommerceFeed = async (req, res) => {
     let openaiResponse = null;
     if (pushToOpenAI && openai_endpoint && openai_api_key) {
       try {
-        openaiResponse = await pushFeedToOpenAI(feedOutput, openai_endpoint, openai_api_key);
+        openaiResponse = await pushFeedToOpenAI(feedOutput, format, openai_endpoint, openai_api_key);
       } catch (error) {
         console.error('Failed to push to OpenAI:', error);
         // Continue anyway and return the feed

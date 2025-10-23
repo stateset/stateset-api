@@ -131,6 +131,35 @@ impl ProductCatalogService {
             .map_err(Into::into)
     }
 
+    /// Get a product variant by its identifier
+    #[instrument(skip(self))]
+    pub async fn get_variant(
+        &self,
+        variant_id: Uuid,
+    ) -> Result<product_variant::Model, ServiceError> {
+        ProductVariant::find_by_id(variant_id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Product variant {} not found", variant_id))
+            })
+    }
+
+    /// Get a product variant by SKU
+    #[instrument(skip(self))]
+    pub async fn get_variant_by_sku(
+        &self,
+        sku: &str,
+    ) -> Result<product_variant::Model, ServiceError> {
+        ProductVariant::find()
+            .filter(product_variant::Column::Sku.eq(sku))
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Product variant with SKU {} not found", sku))
+            })
+    }
+
     /// Search products
     #[instrument(skip(self))]
     pub async fn search_products(
