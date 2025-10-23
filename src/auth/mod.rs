@@ -11,6 +11,10 @@
  * The module also provides role-based access control (RBAC) and permission verification.
  */
 
+use argon2::{
+    password_hash::{PasswordHash, PasswordVerifier},
+    Argon2,
+};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::{
@@ -26,13 +30,15 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use metrics::counter;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 // Entity modules
@@ -55,6 +61,12 @@ pub use permissions::*;
 pub use rate_limit::*;
 pub use rbac::*;
 pub use types::*;
+
+use self::api_key::Entity as ApiKeyEntity;
+use self::api_key_permission::Entity as ApiKeyPermissionEntity;
+use self::refresh_token::Entity as RefreshTokenEntity;
+use self::user::Entity as UserEntity;
+use self::user_role::Entity as UserRoleEntity;
 
 /// Claim structure for JWT tokens
 #[derive(Debug, Serialize, Deserialize)]
@@ -193,9 +205,9 @@ impl AuthService {
         let access_jti = Uuid::new_v4().to_string();
         let refresh_jti = Uuid::new_v4().to_string();
 
-        // Get user roles and permissions
+        // Get user roles and derive permissions
         let roles = self.get_user_roles(user.id).await?;
-        let permissions = self.get_user_permissions(user.id).await?;
+        let permissions = self.build_permissions(user.id, &roles);
 
         // Create access token claims
         let access_claims = Claims {
@@ -344,54 +356,67 @@ impl AuthService {
 
     /// Get a user by ID
     async fn get_user(&self, user_id: Uuid) -> Result<User, AuthError> {
-        // This would fetch the user from the database
-        // For now, we'll just return a mock user
-        Ok(User {
-            id: user_id,
-            name: "Test User".to_string(),
-            email: "test@example.com".to_string(),
-            password_hash: "".to_string(),
-            tenant_id: Some("tenant1".to_string()),
-            active: true,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        })
+        let model = UserEntity::find_by_id(user_id)
+            .one(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+            .ok_or(AuthError::UserNotFound)?;
+
+        Ok(model.into())
     }
 
-    /// Get user roles
-    async fn get_user_roles(&self, _user_id: Uuid) -> Result<Vec<String>, AuthError> {
-        // In production, fetch roles from DB. For local/testing, allow env override.
-        let mut roles = vec!["user".to_string()];
+    /// Fetch explicit user roles from storage and environment overrides.
+    async fn get_user_roles(&self, user_id: Uuid) -> Result<Vec<String>, AuthError> {
+        let mut roles: HashSet<String> = UserRoleEntity::find()
+            .filter(user_role::Column::UserId.eq(user_id))
+            .all(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+            .into_iter()
+            .map(|r| r.role_name)
+            .collect();
+
         if let Ok(raw) = std::env::var("AUTH_DEFAULT_ROLES") {
-            for r in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                if !roles.iter().any(|x| x == r) {
-                    roles.push(r.to_string());
-                }
+            for role in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                roles.insert(role.to_string());
             }
         }
+
         if std::env::var("AUTH_ADMIN")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false)
         {
-            if !roles.iter().any(|x| x == "admin") {
-                roles.push("admin".to_string());
-            }
+            roles.insert("admin".to_string());
         }
+
+        if roles.is_empty() {
+            roles.insert("user".to_string());
+        }
+
+        let mut roles: Vec<String> = roles.into_iter().collect();
+        roles.sort_unstable();
         Ok(roles)
     }
 
-    /// Get user permissions
-    async fn get_user_permissions(&self, _user_id: Uuid) -> Result<Vec<String>, AuthError> {
-        // In production, fetch permissions from DB. For local/testing, allow env override.
-        let mut perms = vec!["orders:read".to_string(), "orders:create".to_string()];
-        if let Ok(raw) = std::env::var("AUTH_DEFAULT_PERMISSIONS") {
-            for p in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                if !perms.iter().any(|x| x == p) {
-                    perms.push(p.to_string());
-                }
+    /// Build the permission set for a user given their resolved roles.
+    fn build_permissions(&self, _user_id: Uuid, roles: &[String]) -> Vec<String> {
+        let mut permissions: HashSet<String> = HashSet::new();
+
+        for role in roles {
+            if let Some(role_def) = rbac::ROLES.get(&role.to_lowercase()) {
+                permissions.extend(role_def.permissions.iter().cloned());
             }
         }
-        Ok(perms)
+
+        if let Ok(raw) = std::env::var("AUTH_DEFAULT_PERMISSIONS") {
+            for permission in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                permissions.insert(permission.to_string());
+            }
+        }
+
+        let mut permissions: Vec<String> = permissions.into_iter().collect();
+        permissions.sort_unstable();
+        permissions
     }
 
     /// Store a refresh token
@@ -401,50 +426,203 @@ impl AuthService {
         token_id: &str,
         expiry: DateTime<Utc>,
     ) -> Result<(), AuthError> {
-        // This would store the refresh token in the database
-        // For now, we'll just log it
-        debug!("Stored refresh token: {} for user: {}", token_id, user_id);
+        let user_exists = UserEntity::find_by_id(user_id)
+            .one(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+            .is_some();
+
+        if !user_exists {
+            debug!(
+                "Skipping refresh token persistence for unknown user {}",
+                user_id
+            );
+            return Ok(());
+        }
+
+        let model = refresh_token::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            user_id: Set(user_id),
+            token_id: Set(token_id.to_string()),
+            created_at: Set(Utc::now()),
+            expires_at: Set(expiry),
+            revoked: Set(false),
+        };
+
+        model
+            .insert(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
         Ok(())
     }
 
     /// Verify a refresh token
     async fn verify_refresh_token(&self, user_id: Uuid, token_id: &str) -> Result<bool, AuthError> {
-        // This would verify the refresh token in the database
-        // For now, we'll just return true
-        Ok(true)
+        let record = RefreshTokenEntity::find()
+            .filter(refresh_token::Column::UserId.eq(user_id))
+            .filter(refresh_token::Column::TokenId.eq(token_id))
+            .one(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        match record {
+            Some(token) if !token.revoked && token.expires_at > Utc::now() => Ok(true),
+            _ => Ok(false),
+        }
     }
 
     /// Revoke a refresh token
     async fn revoke_refresh_token(&self, user_id: Uuid, token_id: &str) -> Result<(), AuthError> {
-        // This would remove the refresh token from the database
-        // For now, we'll just log it
-        debug!("Revoked refresh token: {} for user: {}", token_id, user_id);
+        if let Some(record) = RefreshTokenEntity::find()
+            .filter(refresh_token::Column::UserId.eq(user_id))
+            .filter(refresh_token::Column::TokenId.eq(token_id))
+            .one(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+        {
+            let mut active: refresh_token::ActiveModel = record.into();
+            active.revoked = Set(true);
+            active
+                .update(&*self.db)
+                .await
+                .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        }
+
         Ok(())
     }
 
     /// Validate API key
     pub async fn validate_api_key(&self, api_key: &str) -> Result<ApiKey, AuthError> {
-        // Check if the API key has the correct prefix
         if !api_key.starts_with(&self.config.api_key_prefix) {
             return Err(AuthError::InvalidApiKey);
         }
 
-        // Here you would look up the API key in your database
-        // For this example, we'll create a mock API key
-        let api_key_info = ApiKey {
-            id: Uuid::new_v4(),
-            name: "Test API Key".to_string(),
-            key: api_key.to_string(),
-            user_id: Uuid::new_v4(),
-            roles: vec!["api_user".to_string()],
-            permissions: vec!["orders:read".to_string(), "orders:create".to_string()],
-            tenant_id: Some("tenant1".to_string()),
-            created_at: Utc::now(),
-            expires_at: Some(Utc::now() + ChronoDuration::days(30)),
-            last_used_at: Some(Utc::now()),
-        };
+        let hash = Self::hash_api_key(api_key);
 
-        Ok(api_key_info)
+        let record = ApiKeyEntity::find()
+            .filter(api_key::Column::KeyHash.eq(hash))
+            .filter(api_key::Column::Revoked.eq(false))
+            .one(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+            .ok_or(AuthError::InvalidApiKey)?;
+
+        if let Some(expires_at) = record.expires_at {
+            if expires_at < Utc::now() {
+                return Err(AuthError::ExpiredApiKey);
+            }
+        }
+
+        let mut roles = self.get_user_roles(record.user_id).await?;
+        if roles.is_empty() {
+            roles.push("api".to_string());
+        }
+
+        let mut permissions: HashSet<String> = self
+            .build_permissions(record.user_id, &roles)
+            .into_iter()
+            .collect();
+
+        let key_specific_permissions = ApiKeyPermissionEntity::find()
+            .filter(api_key_permission::Column::ApiKeyId.eq(record.id))
+            .all(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        for perm in key_specific_permissions {
+            permissions.insert(perm.permission);
+        }
+
+        let mut permissions: Vec<String> = permissions.into_iter().collect();
+        permissions.sort_unstable();
+
+        let now = Utc::now();
+        let mut active: api_key::ActiveModel = record.clone().into();
+        active.last_used_at = Set(Some(now));
+        active
+            .update(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(ApiKey {
+            id: record.id,
+            name: record.name,
+            key: api_key.to_string(),
+            user_id: record.user_id,
+            roles,
+            permissions,
+            tenant_id: record.tenant_id,
+            created_at: record.created_at,
+            expires_at: record.expires_at,
+            last_used_at: Some(now),
+        })
+    }
+
+    /// Authenticate a user by credentials.
+    pub async fn authenticate_user(&self, email: &str, password: &str) -> Result<User, AuthError> {
+        let credentials = email.trim();
+        if credentials.is_empty() || password.is_empty() {
+            return Err(AuthError::InvalidCredentials);
+        }
+
+        let model = self
+            .find_user_by_email(credentials)
+            .await?
+            .ok_or(AuthError::InvalidCredentials)?;
+
+        if !model.active {
+            return Err(AuthError::InvalidCredentials);
+        }
+
+        let verified = self.verify_password(&model.password_hash, password)?;
+        if !verified {
+            return Err(AuthError::InvalidCredentials);
+        }
+
+        Ok(model.into())
+    }
+
+    async fn find_user_by_email(&self, email: &str) -> Result<Option<user::Model>, AuthError> {
+        UserEntity::find()
+            .filter(user::Column::Email.eq(email))
+            .one(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))
+    }
+
+    fn verify_password(&self, stored_hash: &str, candidate: &str) -> Result<bool, AuthError> {
+        if stored_hash.trim().is_empty() {
+            return Ok(false);
+        }
+
+        if stored_hash.starts_with("hashed_") {
+            // Legacy/dev-only hashing helper used in a few tests.
+            let expected = format!("hashed_{}", candidate);
+            let matches = stored_hash == expected;
+            if matches {
+                warn!("Using legacy test password hash; please migrate to Argon2");
+            }
+            return Ok(matches);
+        }
+
+        let parsed = PasswordHash::new(stored_hash)
+            .map_err(|e| AuthError::InternalError(format!("invalid password hash: {}", e)))?;
+
+        match Argon2::default().verify_password(candidate.as_bytes(), &parsed) {
+            Ok(_) => Ok(true),
+            Err(argon2::password_hash::Error::Password) => Ok(false),
+            Err(e) => Err(AuthError::InternalError(format!(
+                "password verification failed: {}",
+                e
+            ))),
+        }
+    }
+
+    fn hash_api_key(value: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(value.as_bytes());
+        hex::encode(hasher.finalize())
     }
 
     /// Generate a secure API key
@@ -503,6 +681,21 @@ pub struct User {
     pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl From<user::Model> for User {
+    fn from(model: user::Model) -> Self {
+        Self {
+            id: model.id,
+            name: model.name,
+            email: model.email,
+            password_hash: model.password_hash,
+            tenant_id: model.tenant_id,
+            active: model.active,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        }
+    }
 }
 
 /// Authentication error types
@@ -851,22 +1044,10 @@ pub async fn login_handler(
     State(auth_service): State<Arc<AuthService>>,
     Json(credentials): Json<LoginCredentials>,
 ) -> Result<Json<TokenPair>, AuthError> {
-    // In a real implementation, you would validate the credentials
-    // against your database and get the user
+    let user = auth_service
+        .authenticate_user(&credentials.email, &credentials.password)
+        .await?;
 
-    // For now, just create a mock user
-    let user = User {
-        id: Uuid::new_v4(),
-        name: "Test User".to_string(),
-        email: credentials.email,
-        password_hash: "".to_string(),
-        tenant_id: Some("tenant1".to_string()),
-        active: true,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    // Generate tokens for the user
     let token_pair = auth_service.generate_token(&user).await?;
 
     Ok(Json(token_pair))
