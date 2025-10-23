@@ -36,6 +36,7 @@ pub mod bom_line;
 pub mod inventory_balance;
 pub mod inventory_location;
 pub mod item_master;
+pub mod manufacturing;
 pub mod manufacturing_work_orders;
 pub mod order_fulfillments;
 pub mod po_receipt_headers;

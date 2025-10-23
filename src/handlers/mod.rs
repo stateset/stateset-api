@@ -8,7 +8,7 @@ pub mod shipments;
 pub mod warranties;
 pub mod work_orders;
 // pub mod asn; // File removed due to compilation issues
-// pub mod bom; // Disabled due to missing service dependencies
+pub mod bom;
 pub mod cash_sales;
 pub mod customers;
 pub mod notifications;
@@ -48,6 +48,7 @@ pub struct AppServices {
     pub returns: Arc<crate::services::returns::ReturnService>,
     pub shipments: Arc<crate::services::shipments::ShipmentService>,
     pub warranties: Arc<crate::services::warranties::WarrantyService>,
+    pub bill_of_materials: Arc<crate::services::billofmaterials::BillOfMaterialsService>,
     // pub reports: Arc<crate::services::reports::ReportService>,
 }
 
@@ -99,6 +100,12 @@ impl AppServices {
         let cash_sales = Arc::new(crate::services::cash_sale::CashSaleService::new(
             db_pool.clone(),
         ));
+        let bill_of_materials = Arc::new(
+            crate::services::billofmaterials::BillOfMaterialsService::new(
+                db_pool.clone(),
+                event_sender.clone(),
+            ),
+        );
         let returns = Arc::new(crate::services::returns::ReturnService::new(
             db_pool.clone(),
             event_sender.clone(),
@@ -136,6 +143,7 @@ impl AppServices {
             returns,
             shipments,
             warranties,
+            bill_of_materials,
         }
     }
 }

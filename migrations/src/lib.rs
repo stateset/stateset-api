@@ -7,6 +7,7 @@ mod m20230101_000012_create_inventory_transactions_table;
 mod m20240101_000014_create_outbox_table;
 mod m20240901_000013_create_auth_tables;
 mod m20241005_000015_update_order_timestamps;
+mod m20241105_000016_create_manufacturing_tables;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20240901_000013_create_auth_tables::Migration),
             Box::new(m20240101_000014_create_outbox_table::Migration),
             Box::new(m20241005_000015_update_order_timestamps::Migration),
+            Box::new(m20241105_000016_create_manufacturing_tables::Migration),
         ]
     }
 }

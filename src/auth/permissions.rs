@@ -36,6 +36,7 @@ impl Resources {
     pub const ORDERS: &'static str = "orders";
     pub const PRODUCTS: &'static str = "products";
     pub const INVENTORY: &'static str = "inventory";
+    pub const BOMS: &'static str = "boms";
     pub const RETURNS: &'static str = "returns";
     pub const SHIPMENTS: &'static str = "shipments";
     pub const CUSTOMERS: &'static str = "customers";
@@ -88,6 +89,9 @@ pub mod consts {
     pub const WORKORDERS_CREATE: &str = "workorders:create";
     pub const WORKORDERS_UPDATE: &str = "workorders:update";
     pub const WORKORDERS_DELETE: &str = "workorders:delete";
+
+    // Manufacturing BOMs
+    pub const BOMS_MANAGE: &str = "boms:manage";
 }
 
 /// Format a permission string
@@ -158,6 +162,16 @@ lazy_static! {
                 description: "Full control over orders".to_string(),
                 resource_type: Resources::ORDERS.to_string(),
                 action: Actions::ALL.to_string(),
+            },
+        );
+
+        perms.insert(
+            format_permission(Resources::BOMS, Actions::MANAGE),
+            Permission {
+                name: format_permission(Resources::BOMS, Actions::MANAGE),
+                description: "Manage bill of materials".to_string(),
+                resource_type: Resources::BOMS.to_string(),
+                action: Actions::MANAGE.to_string(),
             },
         );
 

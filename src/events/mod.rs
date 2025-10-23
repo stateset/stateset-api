@@ -177,10 +177,28 @@ pub enum Event {
     },
 
     // BOM events
-    BOMCreated(i32),
-    BOMDeleted(i32),
-    BOMDuplicated(i32),
+    BOMCreated {
+        bom_id: Uuid,
+        product_id: Uuid,
+        revision: String,
+    },
+    BOMUpdated {
+        bom_id: Uuid,
+    },
+    BOMAudited {
+        bom_id: Uuid,
+    },
+    BOMDeleted {
+        bom_id: Uuid,
+    },
+    BOMDuplicated {
+        bom_id: Uuid,
+    },
     ComponentAddedToBOM {
+        bom_id: Uuid,
+        component_id: Uuid,
+    },
+    ComponentRemovedFromBOM {
         bom_id: Uuid,
         component_id: Uuid,
     },

@@ -365,6 +365,8 @@ pub fn api_v1_routes() -> Router<AppState> {
         )
         .with_permission(perm::WORKORDERS_DELETE);
 
+    let manufacturing_boms = handlers::bom::bom_routes().with_permission(perm::BOMS_MANAGE);
+
     // Admin outbox routes
     let outbox_admin = handlers::outbox_admin::router().with_permission("admin:outbox");
 
@@ -419,6 +421,8 @@ pub fn api_v1_routes() -> Router<AppState> {
         .merge(work_orders_create)
         .merge(work_orders_update)
         .merge(work_orders_delete)
+        // Manufacturing BOM API
+        .nest("/manufacturing/boms", manufacturing_boms)
         // Payments API
         .nest("/payments", payments)
         .merge(payment_webhook)
