@@ -1,6 +1,5 @@
-use async_trait::async_trait;
 use sea_orm::entity::prelude::*;
-use sea_orm::{DatabaseConnection, Set};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};

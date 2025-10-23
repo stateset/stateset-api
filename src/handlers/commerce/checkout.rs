@@ -51,7 +51,7 @@ async fn persist_session(state: &AppState, session: &CheckoutSession) -> Result<
     let mut conn = redis_connection(state).await?;
     let payload = to_string(session)
         .map_err(|e| serialization_error("failed to serialize checkout session", e))?;
-    conn.set_ex(
+    conn.set_ex::<_, _, ()>(
         checkout_session_key(&session.id),
         payload,
         CHECKOUT_SESSION_TTL_SECS,

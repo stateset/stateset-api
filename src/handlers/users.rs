@@ -1,6 +1,5 @@
 use super::common::{
-    created_response, map_service_error, no_content_response, success_response, validate_input,
-    PaginationParams,
+    created_response, no_content_response, success_response, validate_input, PaginationParams,
 };
 use crate::{
     auth::AuthenticatedUser,
@@ -9,14 +8,13 @@ use crate::{
 };
 use axum::{
     extract::{Json, Path, Query, State},
-    http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;

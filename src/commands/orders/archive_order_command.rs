@@ -17,7 +17,6 @@ use sea_orm::{Set, TransactionError, TransactionTrait, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
-use uuid::Uuid;
 use validator::Validate;
 
 lazy_static! {

@@ -1,12 +1,10 @@
 use crate::models::machine::MachineError;
 use crate::models::machine::MaintenanceType;
-use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
+use sea_orm::ActiveModelBehavior;
 use sea_orm::QueryOrder;
-use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 /// Maintenance Record entity model

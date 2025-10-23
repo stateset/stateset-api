@@ -4,9 +4,9 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
     models::{
-        asn_entity::{self, Entity as ASN},
-        asn_item_entity::{self, Entity as CreateASNItem},
-        asn_package_entity, ASNStatus,
+        asn_entity::{self},
+        asn_item_entity::{self},
+        ASNStatus,
     },
 };
 use chrono::{DateTime, Utc};

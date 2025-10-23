@@ -1,8 +1,8 @@
 use crate::{
     entities::{
         commerce::{cart, cart_item, Cart, CartItem},
-        order::{self, Entity as Order},
-        order_item::{self, Entity as OrderItem},
+        order::{self},
+        order_item::{self},
     },
     errors::ServiceError,
     events::{Event, EventSender},

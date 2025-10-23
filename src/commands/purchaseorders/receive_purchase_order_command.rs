@@ -5,12 +5,7 @@ use tracing::{info, instrument};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{
-    commands::Command,
-    db::DbPool,
-    errors::ServiceError,
-    events::{Event, EventSender},
-};
+use crate::{commands::Command, db::DbPool, errors::ServiceError, events::EventSender};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ReceivePurchaseOrderCommand {

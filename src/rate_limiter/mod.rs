@@ -40,18 +40,18 @@
  */
 use axum::{
     extract::Request,
-    http::{HeaderMap, Response, StatusCode},
+    http::{Response, StatusCode},
     middleware::Next,
     response::IntoResponse,
 };
 use dashmap::DashMap;
 use metrics::counter;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 // In-memory rate limiter implementation
 #[derive(Debug, Error)]

@@ -5,11 +5,10 @@ use crate::{
     events::{Event, EventSender},
     models::{
         shipment::{self, ShippingCarrier},
-        Shipment, ShipmentStatus,
+        ShipmentStatus,
     },
 };
-use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionError, TransactionTrait,
 };

@@ -1,10 +1,8 @@
 use crate::{
-    commands::Command,
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
     models::{
-        r#return::ReturnStatus,
         return_entity::{self, Entity as Return, Model as ReturnEntity},
         return_history_entity::{self, Entity as ReturnHistory},
         return_note_entity::{self, Entity as ReturnNote},
@@ -12,15 +10,11 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{
-    entity::*, query::*, DatabaseConnection, DatabaseTransaction, Set, TransactionError,
-    TransactionTrait,
-};
+use sea_orm::{entity::*, query::*, DatabaseTransaction, Set, TransactionError, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::error;
 use uuid::Uuid;
-use validator::{Validate, ValidationError};
 
 /// Command to mark a return as completed
 #[derive(Debug, Clone, Serialize, Deserialize)]

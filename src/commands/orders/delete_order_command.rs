@@ -10,7 +10,7 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::order_entity::{self, Entity as Order},
+    models::order_entity::{self},
 };
 
 #[derive(Debug, Serialize, Deserialize)]

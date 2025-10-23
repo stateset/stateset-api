@@ -10,11 +10,11 @@ use crate::{
     AppState,
 };
 use axum::{
-    extract::{Json, Path, State},
+    extract::{Json, State},
     routing::{get, post, put},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use uuid::Uuid;
 use validator::Validate;
 

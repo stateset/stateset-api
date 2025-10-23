@@ -7,8 +7,7 @@ use crate::{
     errors::ServiceError,
     models::shipment::{self, ShipmentStatus},
 };
-use async_trait::async_trait;
-use sea_orm::{entity::*, query::*, ActiveValue, ColumnTrait, EntityTrait};
+use sea_orm::{entity::*, query::*, ActiveValue, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};

@@ -1,6 +1,5 @@
 use crate::errors::AppError;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Deserialize, Serialize, Validate)]

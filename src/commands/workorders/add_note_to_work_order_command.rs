@@ -5,7 +5,6 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
 };
-use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, DatabaseTransaction, EntityTrait, Set, TransactionError, TransactionTrait,

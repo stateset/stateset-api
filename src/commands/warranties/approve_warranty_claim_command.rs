@@ -8,7 +8,7 @@ use crate::{
 use async_trait::async_trait;
 use chrono::Utc;
 use lazy_static::lazy_static;
-use prometheus::{Counter, IntCounter};
+use prometheus::IntCounter;
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

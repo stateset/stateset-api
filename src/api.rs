@@ -6,10 +6,6 @@ use tonic::{Request, Response, Status};
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
-use crate::services::{
-    returns::ReturnService, shipments::ShipmentService, warranties::WarrantyService,
-    work_orders::WorkOrderService,
-};
 use crate::{
     db::{DatabaseAccess, DbPool},
     errors::grpc::IntoGrpcStatus,
@@ -17,7 +13,7 @@ use crate::{
     proto::{inventory::*, order::*, return_order::*, shipment::*, warranty::*, work_order::*},
     services::inventory::{
         AdjustInventoryCommand, InventoryService as InvService, InventorySnapshot, LocationBalance,
-        ReservationOutcome, ReserveInventoryCommand,
+        ReserveInventoryCommand,
     },
     services::order_status::OrderStatusService,
     services::orders::{

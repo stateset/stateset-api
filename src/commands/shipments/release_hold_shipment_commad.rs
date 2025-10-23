@@ -1,7 +1,4 @@
-use async_trait::async_trait;
-use sea_orm::{
-    entity::prelude::*, ActiveValue::Set, DatabaseConnection, DatabaseTransaction, TransactionTrait,
-};
+use sea_orm::{entity::prelude::*, ActiveValue::Set, DatabaseTransaction, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};

@@ -1,4 +1,3 @@
-use crate::errors::AppError;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 

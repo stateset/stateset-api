@@ -1,15 +1,13 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ActiveModelBehavior, ActiveValue, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelBehavior, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 use thiserror::Error;
-use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 /// Custom error type for machine operations

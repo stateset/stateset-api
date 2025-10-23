@@ -7,7 +7,7 @@ use axum::{
 use http_body_util::BodyExt as _;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tracing::{error, warn};
 
 #[derive(Serialize, Deserialize)]

@@ -1,6 +1,6 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
+use sea_orm::ActiveModelBehavior;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use uuid::Uuid;

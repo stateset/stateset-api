@@ -3,7 +3,7 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::order_item_entity::{self, Entity as OrderItem},
+    models::order_item_entity::{self},
 };
 use bigdecimal::BigDecimal;
 use chrono::Utc;

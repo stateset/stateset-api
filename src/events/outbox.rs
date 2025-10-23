@@ -1,10 +1,9 @@
 use crate::errors::ServiceError;
 use crate::events::{Event, EventSender};
-use chrono::Utc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement};
 use serde_json::Value;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::{sleep, Duration};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 

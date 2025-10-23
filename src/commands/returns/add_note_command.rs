@@ -2,14 +2,14 @@ use crate::{
     commands::Command,
     db::DbPool,
     errors::ServiceError,
-    events::{Event, EventSender},
+    events::EventSender,
     models::return_note_entity::{self, Entity as ReturnNote},
 };
 use chrono::{DateTime, Utc};
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{error, instrument};
 use uuid::Uuid;
 use validator::Validate;
 

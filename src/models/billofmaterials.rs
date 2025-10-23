@@ -1,10 +1,8 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveValue, Set};
+use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 /// Bill of Materials main entity

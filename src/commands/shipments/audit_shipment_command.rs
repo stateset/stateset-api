@@ -1,13 +1,11 @@
 use crate::{
     commands::Command, db::DbPool, errors::ServiceError, events::EventSender, models::shipment,
 };
-use async_trait::async_trait;
 use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
-use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuditShipmentCommand {

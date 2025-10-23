@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Product variant entity for handling variations
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]

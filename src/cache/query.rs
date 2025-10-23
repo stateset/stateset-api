@@ -1,13 +1,13 @@
 use super::{CacheError, InMemoryCache};
 use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryTrait, Select, Statement,
+    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
+    QueryTrait, Select,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// A wrapper around SeaORM queries that provides caching functionality
 #[derive(Clone)]

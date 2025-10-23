@@ -2,8 +2,7 @@ use crate::{
     db::DbPool,
     entities::{
         inventory_balance::{self, Entity as InventoryBalance},
-        inventory_transaction::{self, Entity as InventoryTransaction, TransactionType},
-        item_master::{self, Entity as ItemMaster},
+        inventory_transaction::{self, TransactionType},
         purchase_order_lines::{self, Entity as PurchaseOrderLine},
         sales_order_line::{self, Entity as SalesOrderLine},
     },
@@ -14,7 +13,7 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{Set, TransactionTrait, *};
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 pub struct InventoryAdjustmentService {
@@ -133,7 +132,7 @@ impl InventoryAdjustmentService {
         db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
                 // Find inventory balance for the item
-                let mut inventory = InventoryBalance::find()
+                let inventory = InventoryBalance::find()
                     .filter(
                         inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id),
                     )
@@ -237,7 +236,7 @@ impl InventoryAdjustmentService {
         let order_line = order_line.clone();
         db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
-                let mut inventory = InventoryBalance::find()
+                let inventory = InventoryBalance::find()
                     .filter(
                         inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id),
                     )
@@ -333,7 +332,7 @@ impl InventoryAdjustmentService {
         let order_line = order_line.clone();
         db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
-                let mut inventory = InventoryBalance::find()
+                let inventory = InventoryBalance::find()
                     .filter(
                         inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id),
                     )
@@ -438,7 +437,7 @@ impl InventoryAdjustmentService {
         let order_line = order_line.clone();
         db.transaction::<_, InventoryAdjustmentResult, ServiceError>(move |txn| {
             Box::pin(async move {
-                let mut inventory = InventoryBalance::find()
+                let inventory = InventoryBalance::find()
                     .filter(
                         inventory_balance::Column::InventoryItemId.eq(order_line.inventory_item_id),
                     )

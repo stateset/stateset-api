@@ -5,14 +5,12 @@ use crate::{
     errors::ServiceError,
     models::{inventory_transaction_entity, manufacturing_cost_entity, purchase_order_item_entity},
 };
-use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{error, info, instrument};

@@ -1,7 +1,6 @@
 use crate::commands::Command;
 use crate::events::{Event, EventSender};
 use crate::{db::DbPool, errors::ServiceError, models::work_order_entity};
-use async_trait::async_trait;
 use sea_orm::{ActiveModelTrait, DatabaseTransaction, EntityTrait, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

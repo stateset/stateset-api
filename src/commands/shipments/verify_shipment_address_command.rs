@@ -3,8 +3,7 @@ use crate::{
     events::{Event, EventSender},
 };
 use crate::{db::DbPool, errors::ServiceError, models::shipment};
-use async_trait::async_trait;
-use sea_orm::{entity::*, query::*, ColumnTrait, EntityTrait};
+use sea_orm::{entity::*, query::*, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};

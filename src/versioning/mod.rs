@@ -15,11 +15,10 @@
  * - Graceful handling of unsupported versions
  */
 
-use async_trait::async_trait;
 use axum::{
     http::{
         header::{HeaderValue, ACCEPT},
-        HeaderMap, Request, StatusCode,
+        Request, StatusCode,
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -28,7 +27,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// API version identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

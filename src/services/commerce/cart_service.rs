@@ -1,7 +1,5 @@
 use crate::{
-    entities::commerce::{
-        cart, cart_item, product_variant, Cart, CartItem, CartModel, ProductVariant,
-    },
+    entities::commerce::{cart, cart_item, Cart, CartItem, CartModel, ProductVariant},
     errors::ServiceError,
     events::{Event, EventSender},
 };

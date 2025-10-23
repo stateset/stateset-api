@@ -31,8 +31,7 @@ pub mod services;
 pub mod tracing;
 pub mod versioning;
 
-use axum::{extract::State, middleware, response::Json, routing::get, Router};
-use redis::AsyncCommands;
+use axum::{extract::State, response::Json, routing::get, Router};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -534,4 +533,3 @@ pub mod prelude {
 // Note: AppState automatically implements ReturnsAppState, ShipmentsAppState,
 // WarrantiesAppState, and WorkOrdersAppState through blanket implementations
 // in the respective handler modules
-use crate::services::commerce::checkout_service::CheckoutSession;

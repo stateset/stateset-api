@@ -8,7 +8,7 @@ use crate::{
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{error, instrument};
 use uuid::Uuid;
 use validator::Validate;
 

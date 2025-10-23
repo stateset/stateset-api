@@ -1,8 +1,7 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::RelationTrait;
-use sea_orm::{ActiveModelBehavior, ActiveValue, Set};
+use sea_orm::{ActiveModelBehavior, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;

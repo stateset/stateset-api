@@ -1,12 +1,11 @@
-use super::common::PaginationParams;
 use crate::auth::AuthenticatedUser;
 use crate::errors::ServiceError;
 use crate::handlers::AppState;
 use axum::{
-    extract::{Json, Path, Query, State},
+    extract::{Json, Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
     Router,
 };
 use serde::{Deserialize, Serialize};

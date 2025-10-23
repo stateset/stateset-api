@@ -4,7 +4,6 @@ use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{info, instrument};
-use uuid::Uuid;
 
 use crate::{
     commands::Command,

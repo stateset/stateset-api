@@ -5,7 +5,6 @@ use crate::{
     errors::ServiceError,
     models::{bill_of_materials_entity, bom_item_entity, inventory_item_entity, work_order_entity},
 };
-use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use futures::stream::{self, StreamExt};
 use futures::TryStreamExt;
@@ -13,7 +12,7 @@ use lazy_static::lazy_static;
 use prometheus::IntCounter;
 use rust_decimal::Decimal as RustDecimal;
 use sea_orm::QueryOrder;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;

@@ -14,7 +14,7 @@ use prometheus::IntCounter;
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 use uuid::Uuid;
 use validator::Validate;
 

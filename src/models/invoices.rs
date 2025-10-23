@@ -3,8 +3,7 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 // Invoice Model (updated to include relation to line items)
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Validate)]

@@ -1,13 +1,11 @@
-use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
+use sea_orm::DatabaseConnection;
 use sea_orm::QueryOrder;
-use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
-use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 /// Custom validator for non-negative decimal values

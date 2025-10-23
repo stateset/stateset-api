@@ -1,8 +1,6 @@
-use axum::{extract::Query, http::StatusCode, response::Json};
-use chrono::{DateTime, Utc};
+use axum::{extract::Query, response::Json};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use serde::Deserialize;
 
 use crate::{errors::ServiceError, services::analytics::AnalyticsService, ApiResponse, AppState};
 

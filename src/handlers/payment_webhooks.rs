@@ -3,8 +3,7 @@ use axum::{body::Bytes, extract::State, http::HeaderMap, response::IntoResponse}
 use hmac::{Hmac, Mac};
 use serde_json::Value;
 use sha2::Sha256;
-use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 type HmacSha256 = Hmac<Sha256>;
 

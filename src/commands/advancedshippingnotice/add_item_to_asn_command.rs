@@ -3,7 +3,7 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
-    models::asn_items::{self, Entity as ASNItem},
+    models::asn_items::{self},
 };
 use lazy_static::lazy_static;
 use prometheus::IntCounter;

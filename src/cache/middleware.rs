@@ -4,14 +4,13 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use bytes::Bytes;
 use dashmap::DashMap;
 use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tower::{Layer, Service};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use super::{Cache, CacheError};
 

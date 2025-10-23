@@ -1,10 +1,7 @@
 use crate::models::billofmaterials::{LineItemStatus, LineType, SupplyType};
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 /// Line item model for Bill of Materials

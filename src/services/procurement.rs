@@ -15,17 +15,16 @@ use crate::{
     commands::Command,
     db::DbPool,
     errors::ServiceError,
-    events::{Event, EventSender},
-    models::{purchase_order, supplier},
+    events::EventSender,
+    models::purchase_order,
 };
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use redis::Client as RedisClient;
-use rust_decimal::Decimal;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use slog::Logger;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::instrument;
 use uuid::Uuid;
 
 /// Service for managing procurement processes

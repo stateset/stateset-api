@@ -1,5 +1,5 @@
 use crate::{
-    errors::{ApiError, ServiceError},
+    errors::ApiError,
     handlers::common::{created_response, success_response},
 };
 
@@ -21,9 +21,9 @@ use axum::{
     Router,
 };
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 /// JWT Claims structure

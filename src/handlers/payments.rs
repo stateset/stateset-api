@@ -9,7 +9,7 @@ use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{get, post},
     Router,
 };
 use rust_decimal::Decimal;

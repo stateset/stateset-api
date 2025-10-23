@@ -12,19 +12,17 @@ use crate::{
     commands::Command,
     db::DbPool,
     errors::ServiceError,
-    events::{Event, EventSender},
+    events::EventSender,
     models::shipment,
 };
 use anyhow::Result;
 use chrono::Utc;
 use redis::Client as RedisClient;
 use sea_orm::PaginatorTrait;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use slog::Logger;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::instrument;
 use uuid::Uuid;
 
 /// Service for managing shipments
@@ -262,8 +260,6 @@ impl ShipmentService {
         page: u64,
         limit: u64,
     ) -> Result<(Vec<shipment::Model>, u64), ServiceError> {
-        use sea_orm::Paginator;
-
         let db = &*self.db_pool;
 
         // Create a paginator for the shipments

@@ -1,16 +1,14 @@
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
-    QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
 use std::sync::Arc;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, instrument};
 
 use crate::{
     entities::{
-        inventory_balance::{self, Entity as InventoryBalanceEntity},
-        item_master::{self, Entity as ItemMasterEntity},
         order_fulfillments::{self, Entity as OrderFulfillmentEntity},
         sales_order_header::{self, Entity as SalesOrderHeaderEntity},
         sales_order_line::{self, Entity as SalesOrderLineEntity},

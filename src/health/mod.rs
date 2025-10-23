@@ -18,7 +18,7 @@ use axum::{
     Router,
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -26,8 +26,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
-
-use crate::db;
 
 /// Basic health status
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

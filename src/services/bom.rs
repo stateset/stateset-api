@@ -1,17 +1,17 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DbErr, EntityTrait,
-    ModelTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
 use std::sync::Arc;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, instrument};
 
 use crate::{
     entities::{
         bom_header::{self, Entity as BomHeaderEntity},
         bom_line::{self, Entity as BomLineEntity},
-        item_master::{self, Entity as ItemMasterEntity},
+        item_master::Entity as ItemMasterEntity,
     },
     errors::ServiceError,
     services::inventory_sync::{InventorySyncService, TransactionType},

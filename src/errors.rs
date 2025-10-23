@@ -5,8 +5,6 @@ use axum::{
 };
 use sea_orm::error::DbErr;
 use serde::Serialize;
-use serde_json;
-use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

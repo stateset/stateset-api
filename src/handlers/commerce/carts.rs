@@ -2,7 +2,6 @@ use crate::handlers::common::{
     created_response, map_service_error, no_content_response, success_response, validate_input,
 };
 use crate::{
-    auth::AuthenticatedUser,
     errors::ApiError,
     services::commerce::cart_service::{AddToCartInput, CreateCartInput},
     AppState,
@@ -12,7 +11,7 @@ use axum::{
     routing::{delete, get, post, put},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use uuid::Uuid;
 use validator::Validate;
 

@@ -7,7 +7,7 @@ use futures::future::BoxFuture;
 use metrics::{counter, gauge, histogram};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend,
-    DbErr, EntityTrait, FromQueryResult, Statement, TransactionTrait,
+    DbErr, FromQueryResult, Statement, TransactionTrait,
 };
 use sea_orm_migration::MigratorTrait;
 use std::future::Future;

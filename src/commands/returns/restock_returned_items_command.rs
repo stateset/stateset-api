@@ -7,9 +7,7 @@ use crate::{
         inventory_item_entity::{self, Entity as Inventory},
         return_item_entity::{self, Entity as ReturnedItem},
     },
-    proto::return_order::ReturnItem,
 };
-use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, Set, TransactionError, TransactionTrait, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

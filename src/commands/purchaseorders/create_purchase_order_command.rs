@@ -4,8 +4,8 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
     models::{
-        purchase_order_entity::{self, Entity as PurchaseOrder, PurchaseOrderStatus},
-        purchase_order_item_entity::{self, Entity as PurchaseOrderItem},
+        purchase_order_entity::{self, PurchaseOrderStatus},
+        purchase_order_item_entity::{self},
     },
 };
 use chrono::{DateTime, Utc};

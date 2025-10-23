@@ -6,19 +6,17 @@ use crate::{
     errors::ServiceError,
     models::{cogs_data_entity, work_order_entity},
 };
-use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use futures::stream::{self, StreamExt};
 use lazy_static::lazy_static;
 use prometheus::IntCounter;
 use rust_decimal::Decimal as RustDecimal;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, Order, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
-use uuid::Uuid;
 use validator::Validate;
 
 lazy_static! {

@@ -5,7 +5,6 @@ use crate::{
     errors::ServiceError,
     models::{inventory_item_entity, manufacturing_order_entity, purchase_order_entity},
 };
-use async_trait::async_trait;
 use bigdecimal::{BigDecimal, Zero};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use lazy_static::lazy_static;

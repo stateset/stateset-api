@@ -10,7 +10,7 @@ use tracing::{error, info, instrument, warn};
 use crate::{
     entities::{
         bom_header::{self, Entity as BomHeaderEntity},
-        item_master::{self, Entity as ItemMasterEntity},
+        item_master::Entity as ItemMasterEntity,
         manufacturing_work_orders::{self, Entity as WorkOrderEntity},
     },
     errors::ServiceError,

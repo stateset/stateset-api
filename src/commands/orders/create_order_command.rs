@@ -4,15 +4,15 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
     models::{
-        order_entity::{self, Entity as Order},
-        order_item_entity::{self, Entity as OrderItemEntity},
+        order_entity::{self},
+        order_item_entity::{self},
         OrderItemStatus, OrderStatus,
     },
 };
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
-use prometheus::{Counter, IntCounter};
+use prometheus::IntCounter;
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;

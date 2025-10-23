@@ -1,14 +1,10 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 // use phonelib::PhoneValidator; // Commented out - dependency not available
 use sea_orm::entity::prelude::*;
-use sea_orm::{
-    ActiveModelBehavior, ActiveValue, Condition, DatabaseConnection, QueryOrder, QuerySelect, Set,
-};
+use sea_orm::{ActiveModelBehavior, Condition, DatabaseConnection, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
-use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 /// Custom error type for supplier operations

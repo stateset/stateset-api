@@ -11,7 +11,6 @@
  * The module also provides role-based access control (RBAC) and permission verification.
  */
 
-use async_trait::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::{
@@ -705,7 +704,7 @@ where
 /// Permission middleware to check if a user has the required permission
 pub async fn permission_middleware(
     State(required_permission): State<String>,
-    mut request: Request,
+    request: Request,
     next: Next,
 ) -> Result<Response, AuthError> {
     // Extract the authenticated user
@@ -731,7 +730,7 @@ pub async fn permission_middleware(
 /// Role middleware to check if a user has the required role
 pub async fn role_middleware(
     State(required_role): State<String>,
-    mut request: Request,
+    request: Request,
     next: Next,
 ) -> Result<Response, AuthError> {
     // Extract the authenticated user

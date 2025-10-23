@@ -11,18 +11,18 @@ use crate::{
     db::DbPool,
     entities::warranty,
     errors::ServiceError,
-    events::{Event, EventSender},
+    events::EventSender,
 };
 use anyhow::Result;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use redis::Client as RedisClient;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     QuerySelect, Set,
 };
 use slog::Logger;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::instrument;
 use uuid::Uuid;
 
 /// Service for managing warranties

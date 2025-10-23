@@ -1,7 +1,6 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::message_queue::MessageQueue;
 use crate::{
-    auth::Claims,
     commands::workorders::{
         assign_work_order_command::AssignWorkOrderCommand,
         // cancel_work_order_command::CancelWorkOrderCommand,
@@ -15,19 +14,18 @@ use crate::{
     commands::Command,
     db::DbPool,
     errors::ServiceError,
-    events::{Event, EventSender},
+    events::EventSender,
     models::work_order,
 };
 use anyhow::Result;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use redis::Client as RedisClient;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use slog::Logger;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::instrument;
 use uuid::Uuid;
 
 /// Service for managing work orders

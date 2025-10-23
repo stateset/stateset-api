@@ -4,20 +4,21 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use chrono::Utc;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::auth::consts as perm;
+use crate::entities::commerce::product_variant;
 use crate::{
     auth::AuthUser, errors::ServiceError, ApiResponse, AppState, ListQuery, PaginatedResponse,
 };
 // Commands are not directly used by handlers at this time
+use crate::services::commerce::product_catalog_service::ProductCatalogService;
 use crate::services::orders as svc_orders;
-use std::str::FromStr;
 
 fn map_status_str(s: &str) -> OrderStatus {
     match s.to_lowercase().as_str() {
@@ -47,6 +48,30 @@ async fn resolve_order_id(state: &AppState, id: &str) -> Result<Uuid, ServiceErr
         "Order with ID {} not found",
         id
     )))
+}
+
+async fn resolve_variant_identifier(
+    catalog: &ProductCatalogService,
+    identifier: &str,
+    context: &str,
+) -> Result<product_variant::Model, ServiceError> {
+    if let Ok(uuid) = Uuid::parse_str(identifier) {
+        match catalog.get_variant(uuid).await {
+            Ok(variant) => Ok(variant),
+            Err(ServiceError::NotFound(_)) => Err(ServiceError::ValidationError(format!(
+                "{context} references an unknown product variant ({identifier})"
+            ))),
+            Err(err) => Err(err),
+        }
+    } else {
+        match catalog.get_variant_by_sku(identifier).await {
+            Ok(variant) => Ok(variant),
+            Err(ServiceError::NotFound(_)) => Err(ServiceError::ValidationError(format!(
+                "{context} references an unknown SKU ({identifier})"
+            ))),
+            Err(err) => Err(err),
+        }
+    }
 }
 
 fn map_service_order(o: svc_orders::OrderResponse) -> OrderResponse {
@@ -116,6 +141,8 @@ pub struct UpdateOrderRequest {
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateOrderItem {
+    /// Variant identifier; accepts either a UUID or SKU string.
+    #[serde(alias = "sku")]
     #[validate(length(min = 1))]
     pub product_id: String,
 
@@ -294,39 +321,49 @@ pub async fn create_order(
     struct PreparedItem {
         api_item: OrderItem,
         variant_id: Uuid,
-        sku: String,
-        tax_rate: Option<rust_decimal::Decimal>,
+        storage_sku: String,
+        tax_rate: Option<Decimal>,
     }
 
     // Compute totals and validate items against catalog data
-    let mut total_amount = rust_decimal::Decimal::ZERO;
+    let mut total_amount = Decimal::ZERO;
     let mut prepared_items: Vec<PreparedItem> = Vec::with_capacity(request.items.len());
     for (index, item) in request.items.iter().enumerate() {
-        let variant_id = Uuid::parse_str(&item.product_id).map_err(|_| {
-            ServiceError::ValidationError(format!("items[{index}].product_id must be a valid UUID"))
-        })?;
+        let context = format!("items[{index}].product_id");
+        let variant = resolve_variant_identifier(
+            state.services.product_catalog.as_ref(),
+            &item.product_id,
+            &context,
+        )
+        .await?;
 
-        let variant = match state.services.product_catalog.get_variant(variant_id).await {
-            Ok(variant) => variant,
-            Err(ServiceError::NotFound(_)) => {
-                return Err(ServiceError::ValidationError(format!(
-                    "items[{index}].product_id references an unknown product variant"
-                )))
-            }
-            Err(err) => return Err(err),
+        let storage_sku = if variant.sku.is_empty() {
+            variant.id.to_string()
+        } else {
+            variant.sku.clone()
+        };
+        let display_sku = if variant.sku.is_empty() {
+            None
+        } else {
+            Some(variant.sku.clone())
+        };
+        let product_name = if variant.name.is_empty() {
+            storage_sku.clone()
+        } else {
+            variant.name.clone()
         };
 
         if let Some(provided_price) = item.unit_price {
             if provided_price != variant.price {
                 return Err(ServiceError::ValidationError(format!(
                     "items[{index}].unit_price ({}) does not match catalog price ({}) for SKU {}",
-                    provided_price, variant.price, variant.sku
+                    provided_price, variant.price, storage_sku
                 )));
             }
         }
 
         let unit_price = item.unit_price.unwrap_or(variant.price);
-        let total_price = unit_price * rust_decimal::Decimal::from(item.quantity);
+        let total_price = unit_price * Decimal::from(item.quantity);
         let tax_amount = item.tax_rate.map(|rate| total_price * rate);
 
         total_amount += total_price;
@@ -334,19 +371,15 @@ pub async fn create_order(
             api_item: OrderItem {
                 id: format!("item_{}", index + 1),
                 product_id: variant.id.to_string(),
-                product_name: if !variant.name.is_empty() {
-                    variant.name.clone()
-                } else {
-                    variant.id.to_string()
-                },
-                sku: Some(variant.sku.clone()),
+                product_name,
+                sku: display_sku,
                 quantity: item.quantity,
                 unit_price,
                 total_price,
                 tax_amount,
             },
-            variant_id,
-            sku: variant.sku.clone(),
+            variant_id: variant.id,
+            storage_sku,
             tax_rate: item.tax_rate,
         });
     }
@@ -384,7 +417,7 @@ pub async fn create_order(
             .order
             .add_order_item(
                 created_id,
-                prepared.sku.clone(),
+                prepared.storage_sku.clone(),
                 Some(prepared.variant_id),
                 Some(prepared.api_item.product_name.clone()),
                 prepared.api_item.quantity,
@@ -823,25 +856,50 @@ pub async fn add_order_item(
 
     let order_id = resolve_order_id(&state, &id).await?;
 
-    let unit_price = request
-        .unit_price
-        .unwrap_or_else(|| rust_decimal::Decimal::new(1999, 2));
-    let total_price = unit_price * rust_decimal::Decimal::from(request.quantity);
-    let tax_rate = request.tax_rate;
+    let variant = resolve_variant_identifier(
+        state.services.product_catalog.as_ref(),
+        &request.product_id,
+        "product_id",
+    )
+    .await?;
 
-    // Treat product_id as SKU by default; parse UUID if provided
-    let product_uuid = Uuid::parse_str(&request.product_id).ok();
+    if let Some(provided_price) = request.unit_price {
+        if provided_price != variant.price {
+            let sku_display = if variant.sku.is_empty() {
+                variant.id.to_string()
+            } else {
+                variant.sku.clone()
+            };
+            return Err(ServiceError::ValidationError(format!(
+                "unit_price ({}) does not match catalog price ({}) for SKU {}",
+                provided_price, variant.price, sku_display
+            )));
+        }
+    }
+
+    let unit_price = request.unit_price.unwrap_or(variant.price);
+    let storage_sku = if variant.sku.is_empty() {
+        variant.id.to_string()
+    } else {
+        variant.sku.clone()
+    };
+    let product_name = if variant.name.is_empty() {
+        storage_sku.clone()
+    } else {
+        variant.name.clone()
+    };
+
     let saved = state
         .services
         .order
         .add_order_item(
             order_id,
-            request.product_id.clone(),
-            product_uuid,
-            Some("Sample Product".to_string()),
+            storage_sku,
+            Some(variant.id),
+            Some(product_name),
             request.quantity,
             unit_price,
-            tax_rate,
+            request.tax_rate,
         )
         .await?;
 

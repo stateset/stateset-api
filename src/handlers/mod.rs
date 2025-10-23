@@ -28,7 +28,6 @@ use crate::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry},
     db::DbPool,
 };
-use sea_orm::DatabaseConnection;
 use slog::Logger;
 use std::sync::Arc;
 use std::time::Duration;

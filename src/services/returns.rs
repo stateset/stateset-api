@@ -17,18 +17,16 @@ use crate::{
     commands::Command,
     db::DbPool,
     errors::ServiceError,
-    events::{Event, EventSender},
+    events::EventSender,
     models::return_entity,
 };
 use anyhow::Result;
 use redis::Client as RedisClient;
 use sea_orm::PaginatorTrait;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-};
+use sea_orm::{EntityTrait, QueryOrder};
 use slog::Logger;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{error, instrument};
 use uuid::Uuid;
 
 /// Service for managing returns
@@ -192,8 +190,6 @@ impl ReturnService {
         page: u64,
         limit: u64,
     ) -> Result<(Vec<return_entity::Model>, u64), ServiceError> {
-        use sea_orm::Paginator;
-
         let db = &*self.db_pool;
 
         // Create a paginator for the returns

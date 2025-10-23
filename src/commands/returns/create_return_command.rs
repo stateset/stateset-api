@@ -5,7 +5,7 @@ use crate::{
     events::{Event, EventSender},
     models::{
         r#return::ReturnStatus,
-        return_entity::{self, Entity as Return},
+        return_entity::{self},
     },
 };
 use sea_orm::{Set, *};

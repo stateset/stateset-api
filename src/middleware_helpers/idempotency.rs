@@ -52,7 +52,7 @@ pub struct StoredResponse {
 // Simple idempotency middleware: for mutating methods with Idempotency-Key header,
 // reject repeated keys within TTL. This is a protective baseline; a full solution would
 // persist the response and replay it.
-pub async fn idempotency_middleware(mut req: Request, next: Next) -> Response {
+pub async fn idempotency_middleware(req: Request, next: Next) -> Response {
     static TTL_SECS: u64 = 600; // 10 minutes
     static HEADER: &str = "idempotency-key";
 

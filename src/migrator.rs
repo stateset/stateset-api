@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, Database};
 use sea_orm_migration::prelude::*;
 use std::time::Duration;
 use tracing::{error, info};
@@ -27,7 +27,7 @@ impl MigratorTrait for Migrator {
 // Migration implementations
 
 mod m20230101_000001_create_orders_table {
-    use sea_orm::DbBackend;
+
     use sea_orm_migration::prelude::*;
 
     pub struct Migration;
@@ -169,7 +169,7 @@ mod m20230101_000001_create_orders_table {
 }
 
 mod m20230101_000002_create_order_items_table {
-    use sea_orm::DbBackend;
+
     use sea_orm_migration::prelude::*;
 
     pub struct Migration;

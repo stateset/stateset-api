@@ -8,10 +8,7 @@ use crate::{
         shipment_note,
     },
 };
-use async_trait::async_trait;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionError, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};

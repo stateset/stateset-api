@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Instant};
-use tracing::debug;
 
 /// Rate limit configuration
 #[derive(Clone, Debug)]

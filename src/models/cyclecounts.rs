@@ -1,11 +1,7 @@
-use crate::models::cycle_count_line_item::{
-    CycleCountError as LineItemCycleCountError, LineItemStatus,
-};
-use async_trait::async_trait;
+use crate::models::cycle_count_line_item::LineItemStatus;
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
-use sea_orm::QueryOrder;
 use sea_orm::{DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use std::fmt;

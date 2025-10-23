@@ -1,14 +1,14 @@
 use crate::commands::Command;
 use crate::{
     db::DbPool,
-    entities::warranty::{self, Entity as Warranty},
+    entities::warranty::{self},
     errors::ServiceError,
     events::{Event, EventSender},
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
-use prometheus::{Counter, IntCounter};
+use prometheus::IntCounter;
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

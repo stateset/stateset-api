@@ -7,7 +7,7 @@ use axum::{
 
 // Adds a minimal, safe set of security headers to all responses.
 // CSP kept relaxed since this is an API; adjust if serving docs or static content.
-pub async fn security_headers_middleware(mut req: Request, next: Next) -> Response {
+pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     let mut res = next.run(req).await;
 
     let headers = res.headers_mut();

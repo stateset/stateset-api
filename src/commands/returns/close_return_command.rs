@@ -1,5 +1,4 @@
 use crate::{
-    commands::Command,
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
@@ -10,17 +9,12 @@ use crate::{
         return_note_entity::{self, Entity as ReturnNote},
     },
 };
-use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{
-    entity::*, query::*, DatabaseConnection, DatabaseTransaction, Set, TransactionError,
-    TransactionTrait,
-};
+use sea_orm::{entity::*, query::*, DatabaseTransaction, Set, TransactionError, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
-use validator::{Validate, ValidationError};
 
 /// Command to close a return
 #[derive(Debug, Clone, Serialize, Deserialize)]

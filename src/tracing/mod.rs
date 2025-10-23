@@ -1,23 +1,17 @@
 use axum::{
     body::{Body, Bytes, HttpBody},
-    extract::Extension,
     http::{HeaderMap, Request, Response, StatusCode},
-    middleware::Next,
-    response::IntoResponse,
     BoxError,
 };
 use futures::{future::BoxFuture, Future, FutureExt, StreamExt};
 use metrics::{counter, histogram};
 use opentelemetry::{
     global,
-    trace::{FutureExt as OtelFutureExt, Span, TraceContextExt, Tracer, TracerProvider},
+    trace::{FutureExt as OtelFutureExt, Span, TraceContextExt, Tracer},
     Context as OtelContext, KeyValue,
 };
-use pin_project_lite::pin_project;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{self, Value as JsonValue};
-use slog::Logger;
 use std::convert::Infallible;
 use std::{
     collections::HashMap,
@@ -35,10 +29,10 @@ use thiserror::Error;
 use tokio::time::Instant as TokioInstant;
 use tower::{Layer, Service};
 use tower_http::{classify::StatusInRangeAsFailures, trace::TraceLayer};
-use tracing::{instrument, Level};
+use tracing::instrument;
 
 // Re-export tracing macros for use in lib.rs
-use http_body_util::{combinators::Frame, BodyExt};
+use http_body_util::BodyExt;
 use tower_http::trace::{
     DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest,
     DefaultOnResponse,
