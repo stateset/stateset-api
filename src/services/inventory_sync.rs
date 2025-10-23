@@ -188,8 +188,8 @@ impl InventorySyncService {
 
         // Send inventory update event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::InventoryUpdated {
+            sender
+                .send_or_log(Event::InventoryUpdated {
                     item_id,
                     location_id,
                     new_quantity: updated_balance.quantity_on_hand,

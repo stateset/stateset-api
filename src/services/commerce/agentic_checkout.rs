@@ -85,7 +85,7 @@ impl AgenticCheckoutService {
         self.save_session(&session).await?;
 
         self.event_sender
-            .send(Event::CheckoutStarted {
+            .send_or_log(Event::CheckoutStarted {
                 cart_id: Uuid::nil(), // Not cart-based
                 session_id: Uuid::parse_str(&session.id).unwrap(),
             })
@@ -235,7 +235,7 @@ impl AgenticCheckoutService {
         self.save_session(&session).await?;
 
         self.event_sender
-            .send(Event::CheckoutCompleted {
+            .send_or_log(Event::CheckoutCompleted {
                 session_id: Uuid::parse_str(&session.id).unwrap(),
                 order_id: Uuid::parse_str(&order.id).unwrap(),
             })

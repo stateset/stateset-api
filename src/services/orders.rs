@@ -147,7 +147,9 @@ impl OrderService {
         })?;
 
         if let Some(event_sender) = &self.event_sender {
-            let _ = event_sender.send(Event::OrderCreated(order_id)).await;
+            event_sender
+                .send_or_log(Event::OrderCreated(order_id))
+                .await;
         }
 
         Ok(self.model_to_response(model))
@@ -383,7 +385,7 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::OrderUpdated(order_id)).await;
+            sender.send_or_log(Event::OrderUpdated(order_id)).await;
         }
 
         Ok(saved)

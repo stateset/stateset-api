@@ -121,3 +121,7 @@ path = "src/bin/orders_mock_server.rs"
 [[bin]]
 name = "migration"
 path = "src/bin/migration.rs"
+
+[[bin]]
+name = "openapi-export"
+path = "src/bin/openapi_export.rs"

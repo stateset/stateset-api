@@ -84,7 +84,7 @@ impl CustomerService {
             .await?;
 
         self.event_sender
-            .send(Event::CustomerCreated(customer_id))
+            .send_or_log(Event::CustomerCreated(customer_id))
             .await;
 
         info!("Customer registered: {}", customer_id);
@@ -159,7 +159,7 @@ impl CustomerService {
         let customer = customer.update(&*self.db).await?;
 
         self.event_sender
-            .send(Event::CustomerUpdated(customer_id))
+            .send_or_log(Event::CustomerUpdated(customer_id))
             .await;
 
         Ok(customer)

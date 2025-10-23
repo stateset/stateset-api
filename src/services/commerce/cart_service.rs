@@ -51,7 +51,9 @@ impl CartService {
 
         let cart = cart.insert(&*self.db).await?;
 
-        self.event_sender.send(Event::CartCreated(cart_id)).await;
+        self.event_sender
+            .send_or_log(Event::CartCreated(cart_id))
+            .await;
 
         info!("Created cart: {}", cart_id);
         Ok(cart)
@@ -127,7 +129,7 @@ impl CartService {
         txn.commit().await?;
 
         self.event_sender
-            .send(Event::CartItemAdded {
+            .send_or_log(Event::CartItemAdded {
                 cart_id,
                 variant_id: input.variant_id,
             })

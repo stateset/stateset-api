@@ -346,7 +346,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Create app state
-    let state = AppState {
+    let _state = AppState {
         db: db_arc.clone(),
         config: config.clone(),
         event_sender: event_sender.clone(),

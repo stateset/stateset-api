@@ -157,8 +157,8 @@ impl PurchaseReceiptService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::PurchaseOrderReceived {
+            sender
+                .send_or_log(Event::PurchaseOrderReceived {
                     po_line_id,
                     item_id,
                     quantity: quantity_received,
@@ -249,8 +249,8 @@ impl PurchaseReceiptService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::PurchaseOrderReturned {
+            sender
+                .send_or_log(Event::PurchaseOrderReturned {
                     receipt_line_id,
                     item_id,
                     quantity: return_quantity,

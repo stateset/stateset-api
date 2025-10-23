@@ -68,7 +68,7 @@ impl CheckoutService {
         cart_update.update(&*self.db).await?;
 
         self.event_sender
-            .send(Event::CheckoutStarted {
+            .send_or_log(Event::CheckoutStarted {
                 cart_id,
                 session_id,
             })
@@ -239,13 +239,15 @@ impl CheckoutService {
         txn.commit().await?;
 
         self.event_sender
-            .send(Event::CheckoutCompleted {
+            .send_or_log(Event::CheckoutCompleted {
                 session_id: session.id,
                 order_id,
             })
             .await;
 
-        self.event_sender.send(Event::OrderCreated(order_id)).await;
+        self.event_sender
+            .send_or_log(Event::OrderCreated(order_id))
+            .await;
 
         info!(
             "Checkout completed: order {} created from cart {}",

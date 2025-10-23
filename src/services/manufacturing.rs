@@ -121,8 +121,8 @@ impl ManufacturingService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::WorkOrderCreated {
+            sender
+                .send_or_log(Event::WorkOrderCreated {
                     work_order_id: created.work_order_id,
                     item_id,
                     quantity: quantity_to_build,
@@ -203,8 +203,8 @@ impl ManufacturingService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::WorkOrderStarted {
+            sender
+                .send_or_log(Event::WorkOrderStarted {
                     work_order_id,
                     item_id,
                 })
@@ -286,8 +286,8 @@ impl ManufacturingService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::WorkOrderCompleted {
+            sender
+                .send_or_log(Event::WorkOrderCompleted {
                     work_order_id,
                     item_id,
                     quantity_completed: completed_quantity,

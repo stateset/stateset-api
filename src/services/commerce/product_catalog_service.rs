@@ -67,7 +67,7 @@ impl ProductCatalogService {
 
         // Publish event
         self.event_sender
-            .send(Event::ProductCreated(product_id))
+            .send_or_log(Event::ProductCreated(product_id))
             .await;
 
         info!("Created product: {}", product_id);

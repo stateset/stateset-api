@@ -316,8 +316,8 @@ impl SalesFulfillmentService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::SalesOrderFulfilled {
+            sender
+                .send_or_log(Event::SalesOrderFulfilled {
                     order_id: header_id,
                     line_id,
                     item_id,
@@ -438,8 +438,8 @@ impl SalesFulfillmentService {
 
         // Send event
         if let Some(sender) = &self.event_sender {
-            let _ = sender
-                .send(Event::SalesOrderReturned {
+            sender
+                .send_or_log(Event::SalesOrderReturned {
                     fulfillment_id,
                     item_id,
                     quantity: return_quantity,

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use metrics::counter;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -45,10 +46,24 @@ impl EventSender {
 
     /// Sends an event asynchronously
     pub async fn send(&self, event: Event) -> Result<(), String> {
-        self.sender
-            .send(event)
-            .await
-            .map_err(|e| format!("Failed to send event: {}", e))
+        match self.sender.send(event).await {
+            Ok(_) => {
+                counter!("events_sent_total", 1);
+                Ok(())
+            }
+            Err(e) => {
+                counter!("events_send_failures_total", 1);
+                Err(format!("Failed to send event: {}", e))
+            }
+        }
+    }
+
+    /// Attempts to send an event and logs a warning if delivery fails.
+    pub async fn send_or_log(&self, event: Event) {
+        let event_for_log = event.clone();
+        if let Err(err) = self.send(event).await {
+            warn!(error = %err, event = ?event_for_log, "failed to emit event");
+        }
     }
 }
 
