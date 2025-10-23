@@ -11,8 +11,8 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
-    PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, ModelTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -242,7 +242,7 @@ impl BillOfMaterialsService {
             .map_err(ServiceError::db_error)?;
 
         let models = paginator
-            .fetch_page(page as usize)
+            .fetch_page(page)
             .await
             .map_err(ServiceError::db_error)?;
 
@@ -281,7 +281,7 @@ impl BillOfMaterialsService {
             model.name = name;
         }
         if let Some(desc) = input.description {
-            model.description = desc;
+            model.description = Some(desc);
         }
         if let Some(revision) = input.revision {
             model.revision = revision;
