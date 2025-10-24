@@ -3,12 +3,35 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
 };
+use chrono::{DateTime, Utc};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::{info, instrument};
 use uuid::Uuid;
+use validator::validate_email;
+
+const SESSION_TTL_SECS: u64 = 3600;
+const MAX_LINE_ITEMS: usize = 50;
+const MAX_ITEM_QUANTITY: i32 = 99;
+const MAX_ITEM_ID_LENGTH: usize = 128;
+const MAX_NAME_LENGTH: usize = 120;
+const MAX_ADDRESS_FIELD_LENGTH: usize = 120;
+const MAX_EMAIL_LENGTH: usize = 254;
+const MIN_IDEMPOTENCY_KEY_LENGTH: usize = 8;
+const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 255;
+
+fn default_session_timestamp() -> DateTime<Utc> {
+    Utc::now()
+}
+
+fn default_session_expiry() -> DateTime<Utc> {
+    Utc::now() + chrono::Duration::seconds(SESSION_TTL_SECS as i64)
+}
 
 /// Agentic checkout service for ChatGPT-driven checkout flow
 #[derive(Clone)]
@@ -16,6 +39,9 @@ pub struct AgenticCheckoutService {
     db: Arc<DatabaseConnection>,
     cache: Arc<InMemoryCache>,
     event_sender: Arc<EventSender>,
+    session_ttl: Duration,
+    session_locks: Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>,
+    idempotency_locks: Arc<AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>>,
 }
 
 impl AgenticCheckoutService {
@@ -28,6 +54,9 @@ impl AgenticCheckoutService {
             db,
             cache,
             event_sender,
+            session_ttl: Duration::from_secs(SESSION_TTL_SECS),
+            session_locks: Arc::new(AsyncMutex::new(HashMap::new())),
+            idempotency_locks: Arc::new(AsyncMutex::new(HashMap::new())),
         }
     }
 
@@ -36,12 +65,68 @@ impl AgenticCheckoutService {
     pub async fn create_session(
         &self,
         request: CheckoutSessionCreateRequest,
-    ) -> Result<CheckoutSession, ServiceError> {
-        // Validate items exist and calculate totals
+        idempotency_key: Option<&str>,
+    ) -> Result<CreateSessionResult, ServiceError> {
+        self.validate_create_request(&request)?;
+
+        let hashed_idempotency = match idempotency_key {
+            Some(key) => Some(self.hash_idempotency_key(key)?),
+            None => None,
+        };
+
+        if let Some(ref hash) = hashed_idempotency {
+            let idempotency_lock = self.acquire_idempotency_lock(hash).await;
+            let guard = idempotency_lock.lock().await;
+            let result = self
+                .create_session_inner(request, hashed_idempotency.as_deref())
+                .await;
+            drop(guard);
+            self.release_idempotency_lock(hash, idempotency_lock).await;
+            result
+        } else {
+            self.create_session_inner(request, None).await
+        }
+    }
+
+    async fn create_session_inner(
+        &self,
+        request: CheckoutSessionCreateRequest,
+        hashed_idempotency: Option<&str>,
+    ) -> Result<CreateSessionResult, ServiceError> {
+        if let Some(hash) = hashed_idempotency {
+            let cache_key = self.idempotency_cache_key(hash);
+            if let Some(existing_session_id) = self
+                .cache
+                .get(&cache_key)
+                .await
+                .map_err(|e| ServiceError::CacheError(e.to_string()))?
+            {
+                match self.get_session(&existing_session_id).await {
+                    Ok(session) => {
+                        return Ok(CreateSessionResult {
+                            session,
+                            was_created: false,
+                        });
+                    }
+                    Err(ServiceError::NotFound(_)) => {
+                        self.cache
+                            .delete(&cache_key)
+                            .await
+                            .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+        }
+
         let line_items = self.build_line_items(&request.items).await?;
 
         let session_id = Uuid::new_v4();
         let currency = "USD".to_string();
+        let now = Utc::now();
+        let expires_at = now
+            + chrono::Duration::from_std(self.session_ttl)
+                .unwrap_or_else(|_| chrono::Duration::seconds(SESSION_TTL_SECS as i64));
 
         // Calculate totals
         let totals =
@@ -79,10 +164,25 @@ impl AgenticCheckoutService {
                     url: "https://merchant.example.com/privacy".to_string(),
                 },
             ],
+            created_at: now,
+            updated_at: None,
+            expires_at,
+            completed_at: None,
+            canceled_at: None,
         };
 
         // Store session in cache with 1 hour TTL
         self.save_session(&session).await?;
+        if let Some(hash) = hashed_idempotency {
+            self.cache
+                .set(
+                    &self.idempotency_cache_key(hash),
+                    &session.id,
+                    Some(self.session_ttl),
+                )
+                .await
+                .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+        }
 
         self.event_sender
             .send_or_log(Event::CheckoutStarted {
@@ -92,7 +192,10 @@ impl AgenticCheckoutService {
             .await;
 
         info!("Created checkout session: {}", session.id);
-        Ok(session)
+        Ok(CreateSessionResult {
+            session,
+            was_created: true,
+        })
     }
 
     /// Get checkout session
@@ -108,8 +211,23 @@ impl AgenticCheckoutService {
 
         match cached {
             Some(data) => {
-                let session: CheckoutSession = serde_json::from_str(&data)
+                let mut session: CheckoutSession = serde_json::from_str(&data)
                     .map_err(|e| ServiceError::SerializationError(e.to_string()))?;
+
+                if session.status != "completed" && session.status != "canceled" {
+                    if let Ok(ttl_duration) = chrono::Duration::from_std(self.session_ttl) {
+                        let now = Utc::now();
+                        if session.expires_at > now {
+                            let remaining = session.expires_at - now;
+                            if remaining < ttl_duration / 2 {
+                                session.expires_at = now + ttl_duration;
+                                session.updated_at = Some(now);
+                                self.save_session(&session).await?;
+                            }
+                        }
+                    }
+                }
+
                 Ok(session)
             }
             None => Err(ServiceError::NotFound(format!(
@@ -126,59 +244,75 @@ impl AgenticCheckoutService {
         session_id: &str,
         request: CheckoutSessionUpdateRequest,
     ) -> Result<CheckoutSession, ServiceError> {
-        let mut session = self.get_session(session_id).await?;
+        let session_lock = self.acquire_session_lock(session_id).await;
+        let guard = session_lock.lock().await;
 
-        // Check if already completed or canceled
-        if session.status == "completed" || session.status == "canceled" {
-            return Err(ServiceError::InvalidOperation(
-                "Cannot update completed or canceled session".to_string(),
-            ));
-        }
+        let result = {
+            let request = request;
+            async move {
+                let mut session = self.get_session(session_id).await?;
 
-        // Update fields if provided
-        if let Some(buyer) = request.buyer {
-            session.buyer = Some(buyer);
-        }
+                Self::ensure_session_open(&session)?;
+                self.validate_update_request(&request)?;
 
-        if let Some(items) = request.items {
-            session.line_items = self.build_line_items(&items).await?;
-        }
+                if let Some(buyer) = request.buyer {
+                    Self::validate_buyer(&buyer)?;
+                    session.buyer = Some(buyer);
+                }
 
-        if let Some(address) = request.fulfillment_address {
-            session.fulfillment_address = Some(address);
-            // Recalculate fulfillment options
-            session.fulfillment_options =
-                self.get_fulfillment_options(session.fulfillment_address.as_ref())?;
-        }
+                if let Some(items) = request.items {
+                    Self::validate_items(&items)?;
+                    session.line_items = self.build_line_items(&items).await?;
+                }
 
-        if let Some(option_id) = request.fulfillment_option_id {
-            // Validate option exists
-            if !session.fulfillment_options.iter().any(|opt| match opt {
-                FulfillmentOption::Shipping(s) => s.id == option_id,
-                FulfillmentOption::Digital(d) => d.id == option_id,
-            }) {
-                return Err(ServiceError::InvalidInput(
-                    "Invalid fulfillment option".to_string(),
-                ));
+                if let Some(address) = request.fulfillment_address {
+                    Self::validate_address(&address)?;
+                    let address_changed = session
+                        .fulfillment_address
+                        .as_ref()
+                        .map(|existing| existing != &address)
+                        .unwrap_or(true);
+                    session.fulfillment_address = Some(address);
+                    session.fulfillment_options =
+                        self.get_fulfillment_options(session.fulfillment_address.as_ref())?;
+                    if address_changed {
+                        session.fulfillment_option_id = None;
+                    }
+                }
+
+                if let Some(option_id) = request.fulfillment_option_id {
+                    Self::validate_fulfillment_selection(&session, &option_id)?;
+                    session.fulfillment_option_id = Some(option_id);
+                }
+
+                session.totals = self.calculate_totals(
+                    &session.line_items,
+                    session.fulfillment_address.as_ref(),
+                    session.fulfillment_option_id.as_deref(),
+                )?;
+
+                session.status = self.determine_status_from_session(&session);
+                let now = Utc::now();
+                session.updated_at = Some(now);
+                session.expires_at = now
+                    + chrono::Duration::from_std(self.session_ttl)
+                        .unwrap_or_else(|_| chrono::Duration::seconds(SESSION_TTL_SECS as i64));
+
+                self.save_session(&session).await?;
+
+                Ok(session)
             }
-            session.fulfillment_option_id = Some(option_id);
+        }
+        .await;
+
+        drop(guard);
+        self.release_session_lock(session_id, session_lock).await;
+
+        if let Ok(ref session) = result {
+            info!("Updated checkout session: {}", session.id);
         }
 
-        // Recalculate totals
-        session.totals = self.calculate_totals(
-            &session.line_items,
-            session.fulfillment_address.as_ref(),
-            session.fulfillment_option_id.as_deref(),
-        )?;
-
-        // Update status
-        session.status = self.determine_status_from_session(&session);
-
-        // Save updated session
-        self.save_session(&session).await?;
-
-        info!("Updated checkout session: {}", session.id);
-        Ok(session)
+        result
     }
 
     /// Complete checkout session
@@ -188,9 +322,392 @@ impl AgenticCheckoutService {
         session_id: &str,
         request: CheckoutSessionCompleteRequest,
     ) -> Result<CheckoutSessionWithOrder, ServiceError> {
-        let mut session = self.get_session(session_id).await?;
+        let session_lock = self.acquire_session_lock(session_id).await;
+        let guard = session_lock.lock().await;
 
-        // Check if already completed or canceled
+        let result = {
+            let request = request;
+            async move {
+                let mut session = self.get_session(session_id).await?;
+
+                Self::ensure_session_open(&session)?;
+                self.validate_complete_request(&request)?;
+
+                if let Some(buyer) = request.buyer {
+                    Self::validate_buyer(&buyer)?;
+                    session.buyer = Some(buyer);
+                }
+
+                if session.buyer.is_none() {
+                    return Err(ServiceError::InvalidOperation(
+                        "Buyer information required".to_string(),
+                    ));
+                }
+                if session.fulfillment_address.is_none() {
+                    return Err(ServiceError::InvalidOperation(
+                        "Fulfillment address required".to_string(),
+                    ));
+                }
+                if session.fulfillment_option_id.is_none() {
+                    return Err(ServiceError::InvalidOperation(
+                        "Fulfillment option required".to_string(),
+                    ));
+                }
+                if let Some(option_id) = session.fulfillment_option_id.clone() {
+                    Self::validate_fulfillment_selection(&session, &option_id)?;
+                }
+
+                Self::validate_payment_provider(&session, &request.payment_data)?;
+
+                self.process_payment(&request.payment_data).await?;
+
+                let order = self.create_order_from_session(&session).await?;
+
+                session.status = "completed".to_string();
+                let now = Utc::now();
+                session.completed_at = Some(now);
+                session.updated_at = Some(now);
+                session.expires_at = now
+                    + chrono::Duration::from_std(self.session_ttl)
+                        .unwrap_or_else(|_| chrono::Duration::seconds(SESSION_TTL_SECS as i64));
+                self.save_session(&session).await?;
+
+                self.event_sender
+                    .send_or_log(Event::CheckoutCompleted {
+                        session_id: Uuid::parse_str(&session.id).unwrap(),
+                        order_id: Uuid::parse_str(&order.id).unwrap(),
+                    })
+                    .await;
+
+                Ok(CheckoutSessionWithOrder { session, order })
+            }
+        }
+        .await;
+
+        drop(guard);
+        self.release_session_lock(session_id, session_lock).await;
+
+        if let Ok(ref result) = result {
+            info!("Completed checkout session: {}", result.session.id);
+        }
+
+        result
+    }
+
+    /// Cancel checkout session
+    #[instrument(skip(self))]
+    pub async fn cancel_session(&self, session_id: &str) -> Result<CheckoutSession, ServiceError> {
+        let session_lock = self.acquire_session_lock(session_id).await;
+        let guard = session_lock.lock().await;
+
+        let result = async move {
+            let mut session = self.get_session(session_id).await?;
+
+            Self::ensure_session_open(&session)?;
+
+            session.status = "canceled".to_string();
+            let now = Utc::now();
+            session.canceled_at = Some(now);
+            session.updated_at = Some(now);
+            self.save_session(&session).await?;
+
+            Ok(session)
+        }
+        .await;
+
+        drop(guard);
+        self.release_session_lock(session_id, session_lock).await;
+
+        if let Ok(ref session) = result {
+            info!("Canceled checkout session: {}", session.id);
+        }
+
+        result
+    }
+
+    // Private helper methods
+
+    async fn acquire_session_lock(&self, session_id: &str) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.session_locks.lock().await;
+        if let Some(lock) = locks.get(session_id) {
+            lock.clone()
+        } else {
+            let new_lock = Arc::new(AsyncMutex::new(()));
+            locks.insert(session_id.to_string(), new_lock.clone());
+            new_lock
+        }
+    }
+
+    async fn release_session_lock(&self, session_id: &str, lock: Arc<AsyncMutex<()>>) {
+        if Arc::strong_count(&lock) == 1 {
+            let mut locks = self.session_locks.lock().await;
+            if let Some(existing) = locks.get(session_id) {
+                if Arc::ptr_eq(existing, &lock) {
+                    locks.remove(session_id);
+                }
+            }
+        }
+    }
+
+    async fn acquire_idempotency_lock(&self, hash: &str) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.idempotency_locks.lock().await;
+        if let Some(lock) = locks.get(hash) {
+            lock.clone()
+        } else {
+            let new_lock = Arc::new(AsyncMutex::new(()));
+            locks.insert(hash.to_string(), new_lock.clone());
+            new_lock
+        }
+    }
+
+    async fn release_idempotency_lock(&self, hash: &str, lock: Arc<AsyncMutex<()>>) {
+        if Arc::strong_count(&lock) == 1 {
+            let mut locks = self.idempotency_locks.lock().await;
+            if let Some(existing) = locks.get(hash) {
+                if Arc::ptr_eq(existing, &lock) {
+                    locks.remove(hash);
+                }
+            }
+        }
+    }
+
+    fn idempotency_cache_key(&self, hash: &str) -> String {
+        format!("checkout_idem:{}", hash)
+    }
+
+    fn hash_idempotency_key(&self, key: &str) -> Result<String, ServiceError> {
+        let key = key.trim();
+        if key.len() < MIN_IDEMPOTENCY_KEY_LENGTH {
+            return Err(ServiceError::ValidationError(format!(
+                "Idempotency key must be at least {} characters long",
+                MIN_IDEMPOTENCY_KEY_LENGTH
+            )));
+        }
+        if key.len() > MAX_IDEMPOTENCY_KEY_LENGTH {
+            return Err(ServiceError::ValidationError(format!(
+                "Idempotency key must be {} characters or fewer",
+                MAX_IDEMPOTENCY_KEY_LENGTH
+            )));
+        }
+        if !key.chars().all(|c| c.is_ascii_graphic()) {
+            return Err(ServiceError::ValidationError(
+                "Idempotency key must contain visible ASCII characters only".to_string(),
+            ));
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(key.as_bytes());
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    fn validate_create_request(
+        &self,
+        request: &CheckoutSessionCreateRequest,
+    ) -> Result<(), ServiceError> {
+        Self::validate_items(&request.items)?;
+        if let Some(buyer) = &request.buyer {
+            Self::validate_buyer(buyer)?;
+        }
+        if let Some(address) = &request.fulfillment_address {
+            Self::validate_address(address)?;
+        }
+        Ok(())
+    }
+
+    fn validate_update_request(
+        &self,
+        request: &CheckoutSessionUpdateRequest,
+    ) -> Result<(), ServiceError> {
+        if request.buyer.is_none()
+            && request.items.is_none()
+            && request.fulfillment_address.is_none()
+            && request.fulfillment_option_id.is_none()
+        {
+            return Err(ServiceError::ValidationError(
+                "At least one field must be supplied to update a checkout session".to_string(),
+            ));
+        }
+        if let Some(items) = &request.items {
+            Self::validate_items(items)?;
+        }
+        if let Some(buyer) = &request.buyer {
+            Self::validate_buyer(buyer)?;
+        }
+        if let Some(address) = &request.fulfillment_address {
+            Self::validate_address(address)?;
+        }
+        if let Some(option_id) = &request.fulfillment_option_id {
+            if option_id.trim().is_empty() {
+                return Err(ServiceError::ValidationError(
+                    "Fulfillment option id cannot be blank".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_complete_request(
+        &self,
+        request: &CheckoutSessionCompleteRequest,
+    ) -> Result<(), ServiceError> {
+        if let Some(buyer) = &request.buyer {
+            Self::validate_buyer(buyer)?;
+        }
+        Self::validate_payment_data(&request.payment_data)?;
+        Ok(())
+    }
+
+    fn validate_payment_provider(
+        session: &CheckoutSession,
+        payment_data: &PaymentData,
+    ) -> Result<(), ServiceError> {
+        if let Some(provider) = &session.payment_provider {
+            if provider.provider != payment_data.provider {
+                return Err(ServiceError::PaymentFailed(format!(
+                    "Payment provider {} is not supported for this session",
+                    payment_data.provider
+                )));
+            }
+
+            if !provider
+                .supported_payment_methods
+                .iter()
+                .any(|method| method.eq_ignore_ascii_case("card"))
+            {
+                return Err(ServiceError::PaymentFailed(
+                    "No supported payment methods are available for this session".to_string(),
+                ));
+            }
+        } else {
+            return Err(ServiceError::PaymentFailed(
+                "Checkout session does not have an associated payment provider".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_items(items: &[Item]) -> Result<(), ServiceError> {
+        if items.is_empty() {
+            return Err(ServiceError::ValidationError(
+                "At least one item is required".to_string(),
+            ));
+        }
+        if items.len() > MAX_LINE_ITEMS {
+            return Err(ServiceError::ValidationError(format!(
+                "A maximum of {} line items are supported",
+                MAX_LINE_ITEMS
+            )));
+        }
+        for item in items {
+            Self::validate_item(item)?;
+        }
+        Ok(())
+    }
+
+    fn validate_item(item: &Item) -> Result<(), ServiceError> {
+        if item.quantity < 1 || item.quantity > MAX_ITEM_QUANTITY {
+            return Err(ServiceError::ValidationError(format!(
+                "Quantity for item {} must be between 1 and {}",
+                item.id, MAX_ITEM_QUANTITY
+            )));
+        }
+        Self::ensure_ascii_identifier("item id", &item.id, MAX_ITEM_ID_LENGTH)?;
+        Ok(())
+    }
+
+    fn validate_buyer(buyer: &Buyer) -> Result<(), ServiceError> {
+        Self::ensure_non_empty("buyer.first_name", &buyer.first_name, MAX_NAME_LENGTH)?;
+        Self::ensure_non_empty("buyer.last_name", &buyer.last_name, MAX_NAME_LENGTH)?;
+        Self::ensure_non_empty("buyer.email", &buyer.email, MAX_EMAIL_LENGTH)?;
+        if !validate_email(&buyer.email) {
+            return Err(ServiceError::ValidationError(
+                "buyer.email is not a valid email address".to_string(),
+            ));
+        }
+        if let Some(phone) = &buyer.phone_number {
+            if !Self::is_valid_phone(phone) {
+                return Err(ServiceError::ValidationError(
+                    "buyer.phone_number is not a valid phone number".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_address(address: &Address) -> Result<(), ServiceError> {
+        Self::ensure_non_empty("fulfillment_address.name", &address.name, MAX_NAME_LENGTH)?;
+        Self::ensure_non_empty(
+            "fulfillment_address.line_one",
+            &address.line_one,
+            MAX_ADDRESS_FIELD_LENGTH,
+        )?;
+        if let Some(line_two) = &address.line_two {
+            Self::ensure_length(
+                "fulfillment_address.line_two",
+                line_two,
+                MAX_ADDRESS_FIELD_LENGTH,
+            )?;
+        }
+        Self::ensure_non_empty(
+            "fulfillment_address.city",
+            &address.city,
+            MAX_ADDRESS_FIELD_LENGTH,
+        )?;
+        Self::ensure_non_empty(
+            "fulfillment_address.state",
+            &address.state,
+            MAX_ADDRESS_FIELD_LENGTH,
+        )?;
+        Self::ensure_non_empty(
+            "fulfillment_address.postal_code",
+            &address.postal_code,
+            MAX_ADDRESS_FIELD_LENGTH,
+        )?;
+        let country = address.country.trim();
+        if country.len() != 2 || !country.chars().all(|c| c.is_ascii_alphabetic()) {
+            return Err(ServiceError::ValidationError(
+                "fulfillment_address.country must be a two-character ISO country code".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_payment_data(payment_data: &PaymentData) -> Result<(), ServiceError> {
+        Self::ensure_non_empty("payment_data.token", &payment_data.token, 256)?;
+        Self::ensure_ascii_identifier("payment_data.provider", &payment_data.provider, 64)?;
+        if let Some(address) = &payment_data.billing_address {
+            Self::validate_address(address)?;
+        }
+        Ok(())
+    }
+
+    fn validate_fulfillment_selection(
+        session: &CheckoutSession,
+        option_id: &str,
+    ) -> Result<(), ServiceError> {
+        if option_id.trim().is_empty() {
+            return Err(ServiceError::ValidationError(
+                "Fulfillment option id cannot be blank".to_string(),
+            ));
+        }
+        let exists = session.fulfillment_options.iter().any(|opt| match opt {
+            FulfillmentOption::Shipping(s) => s.id == option_id,
+            FulfillmentOption::Digital(d) => d.id == option_id,
+        });
+        if !exists {
+            return Err(ServiceError::InvalidInput(
+                "Invalid fulfillment option".to_string(),
+            ));
+        }
+        if session.fulfillment_address.is_none() {
+            return Err(ServiceError::InvalidOperation(
+                "Fulfillment address must be provided before selecting an option".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn ensure_session_open(session: &CheckoutSession) -> Result<(), ServiceError> {
         if session.status == "completed" {
             return Err(ServiceError::InvalidOperation(
                 "Session already completed".to_string(),
@@ -201,77 +718,81 @@ impl AgenticCheckoutService {
                 "Session is canceled".to_string(),
             ));
         }
-
-        // Update buyer if provided
-        if let Some(buyer) = request.buyer {
-            session.buyer = Some(buyer);
-        }
-
-        // Validate session is ready
-        if session.buyer.is_none() {
+        if session.expires_at <= Utc::now() {
             return Err(ServiceError::InvalidOperation(
-                "Buyer information required".to_string(),
+                "Checkout session has expired".to_string(),
             ));
         }
-        if session.fulfillment_address.is_none() {
-            return Err(ServiceError::InvalidOperation(
-                "Fulfillment address required".to_string(),
-            ));
-        }
-        if session.fulfillment_option_id.is_none() {
-            return Err(ServiceError::InvalidOperation(
-                "Fulfillment option required".to_string(),
-            ));
-        }
-
-        // Process payment
-        self.process_payment(&request.payment_data).await?;
-
-        // Create order
-        let order = self.create_order_from_session(&session).await?;
-
-        // Update session status
-        session.status = "completed".to_string();
-        self.save_session(&session).await?;
-
-        self.event_sender
-            .send_or_log(Event::CheckoutCompleted {
-                session_id: Uuid::parse_str(&session.id).unwrap(),
-                order_id: Uuid::parse_str(&order.id).unwrap(),
-            })
-            .await;
-
-        info!("Completed checkout session: {}", session.id);
-
-        Ok(CheckoutSessionWithOrder { session, order })
+        Ok(())
     }
 
-    /// Cancel checkout session
-    #[instrument(skip(self))]
-    pub async fn cancel_session(&self, session_id: &str) -> Result<CheckoutSession, ServiceError> {
-        let mut session = self.get_session(session_id).await?;
-
-        if session.status == "completed" {
-            return Err(ServiceError::InvalidOperation(
-                "Cannot cancel completed session".to_string(),
-            ));
+    fn ensure_non_empty(field: &str, value: &str, max_len: usize) -> Result<(), ServiceError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(ServiceError::ValidationError(format!(
+                "{} cannot be empty",
+                field
+            )));
         }
-        if session.status == "canceled" {
-            return Err(ServiceError::InvalidOperation(
-                "Session already canceled".to_string(),
-            ));
-        }
-
-        session.status = "canceled".to_string();
-        self.save_session(&session).await?;
-
-        info!("Canceled checkout session: {}", session.id);
-        Ok(session)
+        Self::ensure_length(field, trimmed, max_len)
     }
 
-    // Private helper methods
+    fn ensure_length(field: &str, value: &str, max_len: usize) -> Result<(), ServiceError> {
+        if value.chars().count() > max_len {
+            return Err(ServiceError::ValidationError(format!(
+                "{} must be {} characters or fewer",
+                field, max_len
+            )));
+        }
+        Ok(())
+    }
+
+    fn ensure_ascii_identifier(
+        field: &str,
+        value: &str,
+        max_len: usize,
+    ) -> Result<(), ServiceError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(ServiceError::ValidationError(format!(
+                "{} cannot be empty",
+                field
+            )));
+        }
+        if !trimmed.is_ascii() {
+            return Err(ServiceError::ValidationError(format!(
+                "{} must use ASCII characters",
+                field
+            )));
+        }
+        if !trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':' | '/' | '#'))
+        {
+            return Err(ServiceError::ValidationError(format!(
+                "{} contains unsupported characters",
+                field
+            )));
+        }
+        Self::ensure_length(field, trimmed, max_len)
+    }
+
+    fn is_valid_phone(phone: &str) -> bool {
+        if phone.trim().is_empty() {
+            return false;
+        }
+        if !phone
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, ' ' | '+' | '-' | '(' | ')' | '.'))
+        {
+            return false;
+        }
+        let digit_count = phone.chars().filter(|c| c.is_ascii_digit()).count();
+        digit_count >= 7 && digit_count <= 16
+    }
 
     async fn build_line_items(&self, items: &[Item]) -> Result<Vec<LineItem>, ServiceError> {
+        Self::validate_items(items)?;
         let mut line_items = Vec::new();
 
         for item in items {
@@ -373,7 +894,6 @@ impl AgenticCheckoutService {
         if address.is_some() {
             // Shipping options
             options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
-                option_type: "shipping".to_string(),
                 id: "standard_shipping".to_string(),
                 title: "Standard Shipping".to_string(),
                 subtitle: Some("5-7 business days".to_string()),
@@ -386,7 +906,6 @@ impl AgenticCheckoutService {
             }));
 
             options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
-                option_type: "shipping".to_string(),
                 id: "express_shipping".to_string(),
                 title: "Express Shipping".to_string(),
                 subtitle: Some("2-3 business days".to_string()),
@@ -463,7 +982,7 @@ impl AgenticCheckoutService {
             .map_err(|e| ServiceError::SerializationError(e.to_string()))?;
 
         self.cache
-            .set(&cache_key, &data, Some(Duration::from_secs(3600)))
+            .set(&cache_key, &data, Some(self.session_ttl))
             .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
@@ -473,7 +992,7 @@ impl AgenticCheckoutService {
 
 // Data models matching OpenAPI spec
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Address {
     pub name: String,
     pub line_one: String,
@@ -485,7 +1004,7 @@ pub struct Address {
     pub postal_code: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Buyer {
     pub first_name: String,
     pub last_name: String,
@@ -536,8 +1055,6 @@ pub enum FulfillmentOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FulfillmentOptionShipping {
-    #[serde(rename = "type")]
-    pub option_type: String,
     pub id: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -555,8 +1072,6 @@ pub struct FulfillmentOptionShipping {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FulfillmentOptionDigital {
-    #[serde(rename = "type")]
-    pub option_type: String,
     pub id: String,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -636,6 +1151,16 @@ pub struct CheckoutSession {
     pub totals: Vec<Total>,
     pub messages: Vec<Message>,
     pub links: Vec<Link>,
+    #[serde(default = "default_session_timestamp")]
+    pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(default = "default_session_expiry")]
+    pub expires_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canceled_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -645,9 +1170,15 @@ pub struct CheckoutSessionWithOrder {
     pub order: Order,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateSessionResult {
+    pub session: CheckoutSession,
+    pub was_created: bool,
+}
+
 // Request types
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CheckoutSessionCreateRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buyer: Option<Buyer>,
@@ -656,7 +1187,7 @@ pub struct CheckoutSessionCreateRequest {
     pub fulfillment_address: Option<Address>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CheckoutSessionUpdateRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buyer: Option<Buyer>,
@@ -668,9 +1199,183 @@ pub struct CheckoutSessionUpdateRequest {
     pub fulfillment_option_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CheckoutSessionCompleteRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buyer: Option<Buyer>,
     pub payment_data: PaymentData,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::Database;
+    use tokio::sync::mpsc;
+
+    async fn build_service() -> AgenticCheckoutService {
+        let db = Arc::new(
+            Database::connect("sqlite::memory:")
+                .await
+                .expect("connect in-memory sqlite"),
+        );
+        let cache = Arc::new(InMemoryCache::new());
+        let (tx, _rx) = mpsc::channel(4);
+        let event_sender = Arc::new(EventSender::new(tx));
+        AgenticCheckoutService::new(db, cache, event_sender)
+    }
+
+    fn fixture_buyer() -> Buyer {
+        Buyer {
+            first_name: "Ada".to_string(),
+            last_name: "Lovelace".to_string(),
+            email: "ada@example.com".to_string(),
+            phone_number: Some("+1-555-555-0101".to_string()),
+        }
+    }
+
+    fn fixture_address() -> Address {
+        Address {
+            name: "Ada Lovelace".to_string(),
+            line_one: "123 Example St".to_string(),
+            line_two: None,
+            city: "San Francisco".to_string(),
+            state: "CA".to_string(),
+            country: "US".to_string(),
+            postal_code: "94105".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_session_rejects_invalid_email() {
+        let service = build_service().await;
+        let request = CheckoutSessionCreateRequest {
+            buyer: Some(Buyer {
+                email: "not-an-email".to_string(),
+                ..fixture_buyer()
+            }),
+            items: vec![Item {
+                id: "sku-123".to_string(),
+                quantity: 1,
+            }],
+            fulfillment_address: Some(fixture_address()),
+        };
+
+        let result = service.create_session(request, None).await;
+        assert!(matches!(result, Err(ServiceError::ValidationError(_))));
+    }
+
+    #[tokio::test]
+    async fn create_session_is_idempotent() {
+        let service = build_service().await;
+        let request = CheckoutSessionCreateRequest {
+            buyer: Some(fixture_buyer()),
+            items: vec![Item {
+                id: "sku-123".to_string(),
+                quantity: 2,
+            }],
+            fulfillment_address: Some(fixture_address()),
+        };
+
+        let first = service
+            .create_session(request.clone(), Some("idem-key-1234"))
+            .await
+            .expect("first create succeeds");
+        assert!(first.was_created);
+
+        let second = service
+            .create_session(request, Some("idem-key-1234"))
+            .await
+            .expect("second create succeeds via idempotency");
+        assert!(!second.was_created);
+        assert_eq!(first.session.id, second.session.id);
+    }
+
+    #[tokio::test]
+    async fn create_session_recovers_from_stale_idempotency_reference() {
+        let service = build_service().await;
+        let request = CheckoutSessionCreateRequest {
+            buyer: Some(fixture_buyer()),
+            items: vec![Item {
+                id: "sku-555".to_string(),
+                quantity: 1,
+            }],
+            fulfillment_address: Some(fixture_address()),
+        };
+
+        let first = service
+            .create_session(request.clone(), Some("idem-stale-0001"))
+            .await
+            .expect("initial create succeeds");
+
+        service
+            .cache
+            .delete(&format!("checkout_session:{}", first.session.id))
+            .await
+            .expect("delete session cache entry");
+
+        let second = service
+            .create_session(request, Some("idem-stale-0001"))
+            .await
+            .expect("recreate succeeds");
+
+        assert!(second.was_created);
+        assert_ne!(first.session.id, second.session.id);
+    }
+
+    #[tokio::test]
+    async fn complete_session_rejects_payment_provider_mismatch() {
+        let service = build_service().await;
+        let request = CheckoutSessionCreateRequest {
+            buyer: Some(fixture_buyer()),
+            items: vec![Item {
+                id: "sku-987".to_string(),
+                quantity: 1,
+            }],
+            fulfillment_address: Some(fixture_address()),
+        };
+
+        let created = service
+            .create_session(request, None)
+            .await
+            .expect("session created");
+        let session_id = created.session.id.clone();
+        let shipping_option = created
+            .session
+            .fulfillment_options
+            .iter()
+            .find_map(|opt| match opt {
+                FulfillmentOption::Shipping(option) => Some(option.id.clone()),
+                _ => None,
+            })
+            .expect("shipping option");
+
+        service
+            .update_session(
+                &session_id,
+                CheckoutSessionUpdateRequest {
+                    buyer: None,
+                    items: None,
+                    fulfillment_address: None,
+                    fulfillment_option_id: Some(shipping_option),
+                },
+            )
+            .await
+            .expect("update succeeds");
+
+        let result = service
+            .complete_session(
+                &session_id,
+                CheckoutSessionCompleteRequest {
+                    buyer: None,
+                    payment_data: PaymentData {
+                        token: "tok_mismatch".to_string(),
+                        provider: "paypal".to_string(),
+                        billing_address: None,
+                    },
+                },
+            )
+            .await;
+
+        assert!(matches!(result, Err(ServiceError::PaymentFailed(_))));
+    }
 }

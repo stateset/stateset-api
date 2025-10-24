@@ -43,34 +43,50 @@ async fn create_checkout_session(
     headers: HeaderMap,
     Json(payload): Json<CheckoutSessionCreateRequest>,
 ) -> Result<Response, ApiError> {
-    // Validate required items
-    if payload.items.is_empty() {
-        return Err(ApiError::BadRequest {
-            message: "At least one item is required".to_string(),
-            error_code: Some("INVALID_REQUEST".to_string()),
-        });
-    }
+    let idempotency_header = headers.get("Idempotency-Key").cloned();
+    let idempotency_key = match idempotency_header.as_ref() {
+        Some(value) => Some(
+            value
+                .to_str()
+                .map_err(|_| ApiError::BadRequest {
+                    message: "Idempotency-Key must be valid ASCII".to_string(),
+                    error_code: Some("INVALID_REQUEST".to_string()),
+                })?
+                .to_owned(),
+        ),
+        None => None,
+    };
 
-    let session = state
+    let create_result = state
         .services
         .agentic_checkout
-        .create_session(payload)
+        .create_session(payload, idempotency_key.as_deref())
         .await
         .map_err(map_service_error)?;
+    let session = create_result.session;
 
     // Build response with headers
     let mut response = Response::builder()
-        .status(StatusCode::CREATED)
-        .header("Content-Type", "application/json");
+        .status(if create_result.was_created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        })
+        .header("Content-Type", "application/json")
+        .header("Cache-Control", "no-store");
 
     // Echo idempotency key if provided
-    if let Some(idempotency_key) = headers.get("Idempotency-Key") {
-        response = response.header("Idempotency-Key", idempotency_key);
+    if let Some(idempotency_value) = idempotency_header {
+        response = response.header("Idempotency-Key", idempotency_value);
     }
 
     // Echo request ID if provided
     if let Some(request_id) = headers.get("Request-Id") {
         response = response.header("Request-Id", request_id);
+    }
+
+    if create_result.was_created {
+        response = response.header("Location", format!("/checkout_sessions/{}", session.id));
     }
 
     let body = serde_json::to_string(&session).map_err(|e| {
@@ -193,6 +209,7 @@ async fn cancel_checkout_session(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
+        .header("Cache-Control", "no-store")
         .body(body.into())
         .map_err(|e| {
             ApiError::ServiceError(ServiceError::InternalError(format!(
