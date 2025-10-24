@@ -236,18 +236,21 @@ async fn list_boms(
     State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let page = params.page.max(1);
+    let per_page = params.per_page.max(1);
+
     let (boms, total) = state
         .services
         .bill_of_materials
-        .list_boms(params.page.unwrap_or(1), params.limit.unwrap_or(20))
+        .list_boms(page, per_page)
         .await
         .map_err(map_service_error)?;
 
     Ok(success_response(serde_json::json!({
         "boms": boms,
         "total": total,
-        "page": params.page.unwrap_or(1),
-        "limit": params.limit.unwrap_or(20)
+        "page": page,
+        "per_page": per_page
     })))
 }
 

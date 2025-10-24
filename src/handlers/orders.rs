@@ -13,21 +13,26 @@ use validator::Validate;
 
 use crate::auth::consts as perm;
 use crate::entities::commerce::product_variant;
+use crate::entities::order_item;
 use crate::{
     auth::AuthUser, errors::ServiceError, ApiResponse, AppState, ListQuery, PaginatedResponse,
 };
 // Commands are not directly used by handlers at this time
 use crate::services::commerce::product_catalog_service::ProductCatalogService;
-use crate::services::orders as svc_orders;
+use crate::services::orders::{self as svc_orders, UpdateOrderDetails};
 
-fn map_status_str(s: &str) -> OrderStatus {
-    match s.to_lowercase().as_str() {
-        "pending" => OrderStatus::Pending,
-        "processing" => OrderStatus::Processing,
-        "shipped" => OrderStatus::Shipped,
-        "delivered" => OrderStatus::Delivered,
-        "cancelled" | "canceled" => OrderStatus::Cancelled,
-        _ => OrderStatus::Pending,
+fn map_status_str(status: &str) -> Result<OrderStatus, ServiceError> {
+    match status.to_ascii_lowercase().as_str() {
+        "pending" => Ok(OrderStatus::Pending),
+        "processing" => Ok(OrderStatus::Processing),
+        "shipped" => Ok(OrderStatus::Shipped),
+        "delivered" => Ok(OrderStatus::Delivered),
+        "cancelled" | "canceled" => Ok(OrderStatus::Cancelled),
+        "refunded" => Ok(OrderStatus::Refunded),
+        "confirmed" => Ok(OrderStatus::Confirmed),
+        other => Err(ServiceError::InvalidStatus(format!(
+            "Unknown order status: {other}"
+        ))),
     }
 }
 
@@ -74,20 +79,94 @@ async fn resolve_variant_identifier(
     }
 }
 
-fn map_service_order(o: svc_orders::OrderResponse) -> OrderResponse {
-    OrderResponse {
-        id: o.id.to_string(),
-        customer_id: o.customer_id.to_string(),
-        status: map_status_str(&o.status),
-        total_amount: Some(o.total_amount),
-        currency: Some(o.currency),
-        items: vec![],
-        shipping_address: None,
-        billing_address: None,
-        payment_method_id: o.payment_method,
-        shipment_id: o.tracking_number,
-        created_at: o.created_at,
-        updated_at: o.updated_at.unwrap_or(o.created_at),
+fn map_service_order(
+    order: &svc_orders::OrderResponse,
+    items: Option<&[order_item::Model]>,
+) -> Result<OrderResponse, ServiceError> {
+    let status = map_status_str(&order.status)?;
+    let shipping_address = parse_order_address(order.shipping_address.as_deref());
+    let billing_address = parse_order_address(order.billing_address.as_deref());
+    let mapped_items = items
+        .map(|models| models.iter().map(map_order_item_model).collect())
+        .unwrap_or_else(Vec::new);
+
+    Ok(OrderResponse {
+        id: order.id.to_string(),
+        customer_id: order.customer_id.to_string(),
+        status,
+        total_amount: Some(order.total_amount),
+        currency: Some(order.currency.clone()),
+        items: mapped_items,
+        shipping_address,
+        billing_address,
+        payment_method_id: order.payment_method.clone(),
+        shipment_id: order.tracking_number.clone(),
+        created_at: order.created_at,
+        updated_at: order.updated_at.unwrap_or(order.created_at),
+    })
+}
+
+fn parse_order_address(raw: Option<&str>) -> Option<Address> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let mut segments = raw.splitn(4, ',').map(|segment| segment.trim());
+    let street = segments.next()?.to_string();
+    let city = segments.next()?.to_string();
+    let state = segments.next()?.to_string();
+    let country_postal = segments.next()?.trim();
+
+    if country_postal.is_empty() {
+        return None;
+    }
+
+    let mut cp_iter = country_postal.split_whitespace();
+    let country = cp_iter.next()?.to_string();
+    let postal_code = cp_iter.collect::<Vec<_>>().join(" ");
+
+    Some(Address {
+        street,
+        city,
+        state,
+        postal_code,
+        country,
+    })
+}
+
+fn format_order_address(address: &Address) -> String {
+    format!(
+        "{}, {}, {}, {} {}",
+        address.street.trim(),
+        address.city.trim(),
+        address.state.trim(),
+        address.country.trim(),
+        address.postal_code.trim()
+    )
+}
+
+fn map_order_item_model(model: &order_item::Model) -> OrderItem {
+    let sku = if model.sku.is_empty() {
+        None
+    } else {
+        Some(model.sku.clone())
+    };
+    let product_name = if model.name.is_empty() {
+        model.product_id.to_string()
+    } else {
+        model.name.clone()
+    };
+
+    OrderItem {
+        id: model.id.to_string(),
+        product_id: model.product_id.to_string(),
+        product_name,
+        sku,
+        quantity: model.quantity,
+        unit_price: model.unit_price,
+        total_price: model.total_price,
+        tax_amount: Some(model.tax_amount),
     }
 }
 
@@ -246,7 +325,11 @@ pub async fn list_orders(
     let svc = state.services.order.clone();
     let result = svc.list_orders(query.page, query.limit).await?;
     let total_pages = (result.total + query.limit - 1) / query.limit;
-    let items: Vec<OrderResponse> = result.orders.into_iter().map(map_service_order).collect();
+    let items: Vec<OrderResponse> = result
+        .orders
+        .iter()
+        .map(|order| map_service_order(order, None))
+        .collect::<Result<_, _>>()?;
     Ok(Json(ApiResponse::success(PaginatedResponse {
         items,
         total: result.total,
@@ -393,18 +476,8 @@ pub async fn create_order(
             total_amount,
             Some("USD".to_string()),
             request.notes.clone(),
-            request.shipping_address.as_ref().map(|a| {
-                format!(
-                    "{}, {}, {}, {} {}",
-                    a.street, a.city, a.state, a.country, a.postal_code
-                )
-            }),
-            request.billing_address.as_ref().map(|a| {
-                format!(
-                    "{}, {}, {}, {} {}",
-                    a.street, a.city, a.state, a.country, a.postal_code
-                )
-            }),
+            request.shipping_address.as_ref().map(format_order_address),
+            request.billing_address.as_ref().map(format_order_address),
             request.payment_method_id.clone(),
         )
         .await?;
@@ -428,26 +501,9 @@ pub async fn create_order(
     }
 
     // Build API response using created header, then re-fetch items from DB
-    let mut api = map_service_order(created);
     let persisted = state.services.order.get_order_items(created_id).await?;
-    api.items = persisted
-        .into_iter()
-        .map(|m| OrderItem {
-            id: m.id.to_string(),
-            product_id: m.product_id.to_string(),
-            product_name: if m.name.is_empty() {
-                m.product_id.to_string()
-            } else {
-                m.name
-            },
-            sku: if m.sku.is_empty() { None } else { Some(m.sku) },
-            quantity: m.quantity,
-            unit_price: m.unit_price,
-            total_price: m.total_price,
-            tax_amount: Some(m.tax_amount),
-        })
-        .collect();
-    Ok((StatusCode::CREATED, Json(ApiResponse::success(api))))
+    let api_order = map_service_order(&created, Some(persisted.as_slice()))?;
+    Ok((StatusCode::CREATED, Json(ApiResponse::success(api_order))))
 }
 
 /// Get order by its public order number (explicit route)
@@ -477,7 +533,12 @@ pub async fn get_order_by_number(
     }
     let svc = state.services.order.clone();
     match svc.get_order_by_order_number(&order_number).await? {
-        Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))),
+        Some(order) => {
+            let order_id = order.id;
+            let items = svc.get_order_items(order_id).await?;
+            let response = map_service_order(&order, Some(items.as_slice()))?;
+            Ok(Json(ApiResponse::success(response)))
+        }
         None => Err(ServiceError::NotFound(format!(
             "Order with number {} not found",
             order_number
@@ -522,7 +583,11 @@ pub async fn get_order(
     }
     let svc = state.services.order.clone();
     match svc.get_order(id).await? {
-        Some(o) => Ok(Json(ApiResponse::success(map_service_order(o)))),
+        Some(order) => {
+            let items = svc.get_order_items(order.id).await?;
+            let response = map_service_order(&order, Some(items.as_slice()))?;
+            Ok(Json(ApiResponse::success(response)))
+        }
         None => Err(ServiceError::NotFound(format!(
             "Order with ID {} not found",
             id
@@ -557,7 +622,7 @@ pub async fn get_order(
     )
 )]
 pub async fn update_order(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     auth_user: AuthUser,
     Json(request): Json<UpdateOrderRequest>,
@@ -588,22 +653,23 @@ pub async fn update_order(
         return Ok(Json(ApiResponse::validation_errors(errors)));
     }
 
-    // For now, return mock updated order
-    let mut order = create_mock_order();
-    order.id = id.clone();
-    order.updated_at = chrono::Utc::now();
+    let order_id = resolve_order_id(&state, &id).await?;
+    let update_details = UpdateOrderDetails {
+        shipping_address: request.shipping_address.as_ref().map(format_order_address),
+        billing_address: request.billing_address.as_ref().map(format_order_address),
+        payment_method: request.payment_method_id.clone(),
+        notes: request.notes.clone(),
+    };
 
-    if let Some(shipping) = request.shipping_address {
-        order.shipping_address = Some(shipping);
-    }
-    if let Some(billing) = request.billing_address {
-        order.billing_address = Some(billing);
-    }
-    if let Some(payment_method) = request.payment_method_id {
-        order.payment_method_id = Some(payment_method);
-    }
+    let updated = state
+        .services
+        .order
+        .update_order_details(order_id, update_details)
+        .await?;
+    let items = state.services.order.get_order_items(order_id).await?;
+    let response = map_service_order(&updated, Some(items.as_slice()))?;
 
-    Ok(Json(ApiResponse::success(order)))
+    Ok(Json(ApiResponse::success(response)))
 }
 
 /// Delete order
@@ -716,7 +782,7 @@ pub async fn update_order_status(
         OrderStatus::Refunded => "refunded",
     };
     let svc = state.services.order.clone();
-    let _updated = svc
+    let updated = svc
         .update_order_status(
             order_id,
             svc_orders::UpdateOrderStatusRequest {
@@ -725,12 +791,8 @@ pub async fn update_order_status(
             },
         )
         .await?;
-    // Re-fetch to build API response
-    let order = svc
-        .get_order(order_id)
-        .await?
-        .map(map_service_order)
-        .ok_or_else(|| ServiceError::NotFound("Order not found after update".to_string()))?;
+    let items = svc.get_order_items(order_id).await?;
+    let order = map_service_order(&updated, Some(items.as_slice()))?;
     Ok(Json(ApiResponse::success(order)))
 }
 
@@ -769,30 +831,7 @@ pub async fn get_order_items(
     let order_id = resolve_order_id(&state, &id).await?;
     let svc = state.services.order.clone();
     let items = svc.get_order_items(order_id).await?;
-    let mapped: Vec<OrderItem> = items
-        .into_iter()
-        .map(|m| {
-            let sku = if m.sku.is_empty() {
-                None
-            } else {
-                Some(m.sku.clone())
-            };
-            OrderItem {
-                id: m.id.to_string(),
-                product_id: m.product_id.to_string(),
-                product_name: if m.name.is_empty() {
-                    m.product_id.to_string()
-                } else {
-                    m.name
-                },
-                sku,
-                quantity: m.quantity,
-                unit_price: m.unit_price,
-                total_price: m.total_price,
-                tax_amount: Some(m.tax_amount),
-            }
-        })
-        .collect();
+    let mapped: Vec<OrderItem> = items.iter().map(map_order_item_model).collect();
     Ok(Json(ApiResponse::success(mapped)))
 }
 
@@ -903,111 +942,8 @@ pub async fn add_order_item(
         )
         .await?;
 
-    let sku = if saved.sku.is_empty() {
-        None
-    } else {
-        Some(saved.sku.clone())
-    };
-    let product_name = if saved.name.is_empty() {
-        saved.product_id.to_string()
-    } else {
-        saved.name.clone()
-    };
-
-    let item = OrderItem {
-        id: saved.id.to_string(),
-        product_id: saved.product_id.to_string(),
-        product_name,
-        sku,
-        quantity: saved.quantity,
-        unit_price: saved.unit_price,
-        total_price: saved.total_price,
-        tax_amount: Some(saved.tax_amount),
-    };
-
+    let item = map_order_item_model(&saved);
     Ok(Json(ApiResponse::success(item)))
-}
-
-// Helper functions for mock data
-fn create_mock_order() -> OrderResponse {
-    let now = chrono::Utc::now();
-    OrderResponse {
-        id: "order_123".to_string(),
-        customer_id: "customer_456".to_string(),
-        status: OrderStatus::Processing,
-        total_amount: Some(rust_decimal::Decimal::new(6997, 2)), // $69.97
-        currency: Some("USD".to_string()),
-        items: vec![
-            OrderItem {
-                id: "item_1".to_string(),
-                product_id: "prod_123".to_string(),
-                product_name: "Sample Product 1".to_string(),
-                sku: Some("SKU-123".to_string()),
-                quantity: 2,
-                unit_price: rust_decimal::Decimal::new(1999, 2),
-                total_price: rust_decimal::Decimal::new(3998, 2),
-                tax_amount: Some(rust_decimal::Decimal::new(320, 2)),
-            },
-            OrderItem {
-                id: "item_2".to_string(),
-                product_id: "prod_456".to_string(),
-                product_name: "Sample Product 2".to_string(),
-                sku: Some("SKU-456".to_string()),
-                quantity: 1,
-                unit_price: rust_decimal::Decimal::new(2999, 2),
-                total_price: rust_decimal::Decimal::new(2999, 2),
-                tax_amount: Some(rust_decimal::Decimal::new(240, 2)),
-            },
-        ],
-        shipping_address: Some(Address {
-            street: "123 Main St".to_string(),
-            city: "Anytown".to_string(),
-            state: "CA".to_string(),
-            postal_code: "12345".to_string(),
-            country: "US".to_string(),
-        }),
-        billing_address: None,
-        payment_method_id: Some("pm_123".to_string()),
-        shipment_id: Some("ship_456".to_string()),
-        created_at: now - chrono::Duration::hours(2),
-        updated_at: now,
-    }
-}
-
-fn create_mock_orders() -> Vec<OrderResponse> {
-    let now = chrono::Utc::now();
-    vec![
-        create_mock_order(),
-        OrderResponse {
-            id: "order_789".to_string(),
-            customer_id: "customer_101".to_string(),
-            status: OrderStatus::Shipped,
-            total_amount: Some(rust_decimal::Decimal::new(4499, 2)),
-            currency: Some("USD".to_string()),
-            items: vec![OrderItem {
-                id: "item_3".to_string(),
-                product_id: "prod_789".to_string(),
-                product_name: "Sample Product 3".to_string(),
-                sku: Some("SKU-789".to_string()),
-                quantity: 1,
-                unit_price: rust_decimal::Decimal::new(4499, 2),
-                total_price: rust_decimal::Decimal::new(4499, 2),
-                tax_amount: Some(rust_decimal::Decimal::new(360, 2)),
-            }],
-            shipping_address: Some(Address {
-                street: "456 Oak Ave".to_string(),
-                city: "Springfield".to_string(),
-                state: "NY".to_string(),
-                postal_code: "67890".to_string(),
-                country: "US".to_string(),
-            }),
-            billing_address: None,
-            payment_method_id: Some("pm_789".to_string()),
-            shipment_id: Some("ship_101".to_string()),
-            created_at: now - chrono::Duration::days(1),
-            updated_at: now - chrono::Duration::hours(6),
-        },
-    ]
 }
 
 /// Cancel an existing order

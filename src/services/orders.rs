@@ -80,6 +80,14 @@ pub struct OrderListResponse {
 }
 
 /// Service for managing orders with PostgreSQL database operations
+#[derive(Debug, Default)]
+pub struct UpdateOrderDetails {
+    pub shipping_address: Option<String>,
+    pub billing_address: Option<String>,
+    pub payment_method: Option<String>,
+    pub notes: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct OrderService {
     db_pool: Arc<DbPool>,
@@ -842,6 +850,81 @@ impl OrderService {
             page,
             per_page,
         })
+    }
+
+    /// Updates order header details such as addresses, payment method, and notes.
+    #[instrument(skip(self, details), fields(order_id = %order_id))]
+    pub async fn update_order_details(
+        &self,
+        order_id: Uuid,
+        details: UpdateOrderDetails,
+    ) -> Result<OrderResponse, ServiceError> {
+        let has_updates = details.shipping_address.is_some()
+            || details.billing_address.is_some()
+            || details.payment_method.is_some()
+            || details.notes.is_some();
+
+        let db = &*self.db_pool;
+        let order_record = OrderEntity::find_by_id(order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!(
+                    error = %e,
+                    order_id = %order_id,
+                    "Failed to fetch order for update"
+                );
+                ServiceError::db_error(e)
+            })?;
+
+        let order_model = order_record.ok_or_else(|| {
+            warn!(order_id = %order_id, "Order not found for update");
+            ServiceError::NotFound("Order not found".to_string())
+        })?;
+
+        if !has_updates {
+            return Ok(self.model_to_response(order_model));
+        }
+
+        let now = Utc::now();
+        let UpdateOrderDetails {
+            shipping_address,
+            billing_address,
+            payment_method,
+            notes,
+        } = details;
+        let current_version = order_model.version;
+        let mut order_active: OrderActiveModel = order_model.into();
+        order_active.updated_at = Set(Some(now));
+        order_active.version = Set(current_version + 1);
+
+        if let Some(value) = shipping_address {
+            order_active.shipping_address = Set(Some(value));
+        }
+        if let Some(value) = billing_address {
+            order_active.billing_address = Set(Some(value));
+        }
+        if let Some(value) = payment_method {
+            order_active.payment_method = Set(Some(value));
+        }
+        if let Some(value) = notes {
+            order_active.notes = Set(Some(value));
+        }
+
+        let updated = order_active.update(db).await.map_err(|e| {
+            error!(
+                error = %e,
+                order_id = %order_id,
+                "Failed to update order details"
+            );
+            ServiceError::db_error(e)
+        })?;
+
+        if let Some(sender) = &self.event_sender {
+            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+        }
+
+        Ok(self.model_to_response(updated))
     }
 }
 
