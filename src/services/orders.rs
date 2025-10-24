@@ -1,13 +1,14 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -75,6 +76,49 @@ pub struct OrderResponse {
 pub struct OrderListResponse {
     pub orders: Vec<OrderResponse>,
     pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OrderSortField {
+    CreatedAt,
+    OrderDate,
+    TotalAmount,
+    OrderNumber,
+}
+
+impl Default for OrderSortField {
+    fn default() -> Self {
+        OrderSortField::CreatedAt
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+impl Default for SortDirection {
+    fn default() -> Self {
+        SortDirection::Desc
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderSearchQuery {
+    pub customer_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub from_date: Option<DateTime<Utc>>,
+    pub to_date: Option<DateTime<Utc>>,
+    pub search: Option<String>,
+    #[serde(default)]
+    pub sort_field: OrderSortField,
+    #[serde(default)]
+    pub sort_direction: SortDirection,
     pub page: u64,
     pub per_page: u64,
 }
@@ -280,56 +324,18 @@ impl OrderService {
         page: u64,
         per_page: u64,
     ) -> Result<OrderListResponse, ServiceError> {
-        // Validate pagination parameters
-        if page == 0 {
-            return Err(ServiceError::ValidationError(
-                "Page number must be greater than 0".to_string(),
-            ));
-        }
-
-        if per_page == 0 || per_page > 100 {
-            return Err(ServiceError::ValidationError(
-                "Per page must be between 1 and 100".to_string(),
-            ));
-        }
-
-        let db = &*self.db_pool;
-
-        // Get paginated orders
-        let paginator = OrderEntity::find()
-            .filter(order::Column::IsArchived.eq(false))
-            .order_by_desc(order::Column::CreatedAt)
-            .paginate(db, per_page);
-
-        let total = paginator.num_items().await.map_err(|e| {
-            error!(error = %e, "Failed to count orders");
-            ServiceError::db_error(e)
-        })?;
-
-        let orders = paginator.fetch_page(page - 1).await.map_err(|e| {
-            error!(error = %e, page = page, per_page = per_page, "Failed to fetch orders page");
-            ServiceError::db_error(e)
-        })?;
-
-        let order_responses: Vec<OrderResponse> = orders
-            .into_iter()
-            .map(|order| self.model_to_response(order))
-            .collect();
-
-        info!(
-            total = total,
-            page = page,
-            per_page = per_page,
-            returned_count = order_responses.len(),
-            "Orders listed successfully"
-        );
-
-        Ok(OrderListResponse {
-            orders: order_responses,
-            total,
+        self.search_orders(OrderSearchQuery {
+            customer_id: None,
+            status: None,
+            from_date: None,
+            to_date: None,
+            search: None,
+            sort_field: OrderSortField::CreatedAt,
+            sort_direction: SortDirection::Desc,
             page,
             per_page,
         })
+        .await
     }
 
     /// Retrieves items for a given order
@@ -349,6 +355,36 @@ impl OrderService {
                 ServiceError::db_error(e)
             })?;
         Ok(items)
+    }
+
+    /// Retrieves items for multiple orders in a single query
+    #[instrument(skip(self, order_ids))]
+    pub async fn get_items_for_orders(
+        &self,
+        order_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Vec<OrderItemModel>>, ServiceError> {
+        if order_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let db = &*self.db_pool;
+        let ids: Vec<Uuid> = order_ids.iter().copied().collect();
+        let rows = OrderItemEntity::find()
+            .filter(OrderItemColumn::OrderId.is_in(ids))
+            .order_by_asc(OrderItemColumn::CreatedAt)
+            .all(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to fetch batched order items");
+                ServiceError::db_error(e)
+            })?;
+
+        let mut grouped: HashMap<Uuid, Vec<OrderItemModel>> = HashMap::new();
+        for item in rows {
+            grouped.entry(item.order_id).or_default().push(item);
+        }
+
+        Ok(grouped)
     }
 
     /// Adds an item to an order
@@ -788,47 +824,80 @@ impl OrderService {
     #[instrument(skip(self))]
     pub async fn search_orders(
         &self,
-        customer_id: Option<Uuid>,
-        status: Option<String>,
-        from_date: Option<DateTime<Utc>>,
-        to_date: Option<DateTime<Utc>>,
-        page: u64,
-        per_page: u64,
+        query: OrderSearchQuery,
     ) -> Result<OrderListResponse, ServiceError> {
-        // Validate pagination
-        if page == 0 || per_page == 0 || per_page > 100 {
+        let OrderSearchQuery {
+            customer_id,
+            status,
+            from_date,
+            to_date,
+            search,
+            sort_field,
+            sort_direction,
+            page,
+            per_page,
+        } = query;
+
+        if page == 0 {
             return Err(ServiceError::ValidationError(
-                "Invalid pagination parameters".to_string(),
+                "Page number must be greater than 0".to_string(),
+            ));
+        }
+        if per_page == 0 || per_page > 100 {
+            return Err(ServiceError::ValidationError(
+                "Per page must be between 1 and 100".to_string(),
             ));
         }
 
         let db = &*self.db_pool;
-        let mut query = OrderEntity::find();
-
-        // Apply filters
-        query = query.filter(order::Column::IsArchived.eq(false));
+        let mut select = OrderEntity::find().filter(order::Column::IsArchived.eq(false));
 
         if let Some(cid) = customer_id {
-            query = query.filter(order::Column::CustomerId.eq(cid));
+            select = select.filter(order::Column::CustomerId.eq(cid));
         }
 
-        if let Some(s) = status {
-            query = query.filter(order::Column::Status.eq(s));
+        if let Some(status_filter) = status {
+            select = select.filter(order::Column::Status.eq(status_filter));
         }
 
         if let Some(from) = from_date {
-            query = query.filter(order::Column::OrderDate.gte(from));
+            select = select.filter(order::Column::OrderDate.gte(from));
         }
 
         if let Some(to) = to_date {
-            query = query.filter(order::Column::OrderDate.lte(to));
+            select = select.filter(order::Column::OrderDate.lte(to));
         }
 
-        // Get results with pagination
-        let paginator = query
-            .order_by_desc(order::Column::CreatedAt)
-            .paginate(db, per_page);
+        if let Some(search_term) = search {
+            let mut search_condition = Condition::any();
+            search_condition =
+                search_condition.add(order::Column::OrderNumber.contains(search_term.clone()));
+            search_condition =
+                search_condition.add(order::Column::Notes.contains(search_term.clone()));
+            search_condition =
+                search_condition.add(order::Column::ShippingAddress.contains(search_term.clone()));
+            search_condition =
+                search_condition.add(order::Column::BillingAddress.contains(search_term));
+            select = select.filter(search_condition);
+        }
 
+        let sort_column = match sort_field {
+            OrderSortField::CreatedAt => order::Column::CreatedAt,
+            OrderSortField::OrderDate => order::Column::OrderDate,
+            OrderSortField::TotalAmount => order::Column::TotalAmount,
+            OrderSortField::OrderNumber => order::Column::OrderNumber,
+        };
+
+        select = match sort_direction {
+            SortDirection::Asc => select.order_by_asc(sort_column),
+            SortDirection::Desc => select.order_by_desc(sort_column),
+        };
+
+        if sort_field != OrderSortField::CreatedAt {
+            select = select.order_by_desc(order::Column::CreatedAt);
+        }
+
+        let paginator = select.paginate(db, per_page);
         let total = paginator
             .num_items()
             .await

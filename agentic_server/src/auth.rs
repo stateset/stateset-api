@@ -6,7 +6,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 /// API Key store (in production, use database)
@@ -59,18 +60,18 @@ impl ApiKeyStore {
         }
     }
 
-    pub fn validate(&self, api_key: &str) -> Option<ApiKeyInfo> {
-        let keys = self.keys.read().unwrap();
+    pub async fn validate(&self, api_key: &str) -> Option<ApiKeyInfo> {
+        let keys = self.keys.read().await;
         keys.get(api_key).filter(|info| info.is_active).cloned()
     }
 
-    pub fn add_key(&self, info: ApiKeyInfo) {
-        let mut keys = self.keys.write().unwrap();
+    pub async fn add_key(&self, info: ApiKeyInfo) {
+        let mut keys = self.keys.write().await;
         keys.insert(info.key.clone(), info);
     }
 
-    pub fn revoke_key(&self, api_key: &str) -> bool {
-        let mut keys = self.keys.write().unwrap();
+    pub async fn revoke_key(&self, api_key: &str) -> bool {
+        let mut keys = self.keys.write().await;
         if let Some(info) = keys.get_mut(api_key) {
             info.is_active = false;
             true
@@ -126,7 +127,7 @@ pub async fn auth_middleware(
     };
 
     // Validate API key
-    match key_store.validate(&api_key) {
+    match key_store.validate(&api_key).await {
         Some(info) => {
             debug!("Authenticated: {} ({})", info.merchant_id, info.name);
 
@@ -155,15 +156,15 @@ mod tests {
     use super::*;
     use axum::http::HeaderValue;
 
-    #[test]
-    fn test_api_key_store() {
+    #[tokio::test]
+    async fn test_api_key_store() {
         let store = ApiKeyStore::new();
 
         // Valid key
-        assert!(store.validate("api_key_demo_123").is_some());
+        assert!(store.validate("api_key_demo_123").await.is_some());
 
         // Invalid key
-        assert!(store.validate("invalid_key").is_none());
+        assert!(store.validate("invalid_key").await.is_none());
     }
 
     #[test]
@@ -178,17 +179,17 @@ mod tests {
         assert_eq!(key, "test_key_123");
     }
 
-    #[test]
-    fn test_revoke_key() {
+    #[tokio::test]
+    async fn test_revoke_key() {
         let store = ApiKeyStore::new();
 
         // Key should be valid initially
-        assert!(store.validate("api_key_demo_123").is_some());
+        assert!(store.validate("api_key_demo_123").await.is_some());
 
         // Revoke it
-        assert!(store.revoke_key("api_key_demo_123"));
+        assert!(store.revoke_key("api_key_demo_123").await);
 
         // Should now be invalid
-        assert!(store.validate("api_key_demo_123").is_none());
+        assert!(store.validate("api_key_demo_123").await.is_none());
     }
 }

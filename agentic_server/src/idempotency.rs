@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, warn};
 
-use crate::redis_store::RedisStore;
+use crate::{constants::MAX_REQUEST_BODY_BYTES, redis_store::RedisStore};
 
 /// Idempotency record stored in Redis
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,11 +124,19 @@ pub async fn idempotency_middleware(
 
     // Extract body
     let (parts, body) = request.into_parts();
-    let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+    let body_bytes = match axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await {
         Ok(bytes) => bytes,
         Err(e) => {
             warn!("Failed to read request body: {}", e);
-            return (StatusCode::BAD_REQUEST, "Failed to read request body").into_response();
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                axum::Json(serde_json::json!({
+                    "type": "invalid_request",
+                    "code": "payload_too_large",
+                    "message": format!("Request body exceeds {} bytes", MAX_REQUEST_BODY_BYTES)
+                })),
+            )
+                .into_response();
         }
     };
 
@@ -192,24 +200,25 @@ pub async fn idempotency_middleware(
             let response = next.run(request).await;
 
             let (mut response_parts, response_body) = response.into_parts();
-            let response_bytes = match axum::body::to_bytes(response_body, usize::MAX).await {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    warn!(
-                        "Failed to buffer response for idempotent key {}: {}",
-                        idempotency_key, e
-                    );
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        axum::Json(serde_json::json!({
-                            "type": "processing_error",
-                            "code": "idempotency_store_failed",
-                            "message": "Failed to persist response for idempotent request"
-                        })),
-                    )
-                        .into_response();
-                }
-            };
+            let response_bytes =
+                match axum::body::to_bytes(response_body, MAX_REQUEST_BODY_BYTES).await {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        warn!(
+                            "Failed to buffer response for idempotent key {}: {}",
+                            idempotency_key, e
+                        );
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            axum::Json(serde_json::json!({
+                                "type": "processing_error",
+                                "code": "idempotency_store_failed",
+                                "message": "Failed to persist response for idempotent request"
+                            })),
+                        )
+                            .into_response();
+                    }
+                };
 
             let content_type = response_parts
                 .headers

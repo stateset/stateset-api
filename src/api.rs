@@ -17,7 +17,8 @@ use crate::{
     },
     services::order_status::OrderStatusService,
     services::orders::{
-        CreateOrderRequest as ServiceCreateOrderRequest, OrderService as OrdersService,
+        CreateOrderRequest as ServiceCreateOrderRequest, OrderSearchQuery,
+        OrderService as OrdersService, OrderSortField, SortDirection,
     },
 };
 
@@ -374,7 +375,17 @@ impl order_service_server::OrderService for StateSetApi {
 
         let list = self
             .order_service
-            .search_orders(customer_id, status, start_date, end_date, page, per_page)
+            .search_orders(OrderSearchQuery {
+                customer_id,
+                status,
+                from_date: start_date,
+                to_date: end_date,
+                search: None,
+                sort_field: OrderSortField::CreatedAt,
+                sort_direction: SortDirection::Desc,
+                page,
+                per_page,
+            })
             .await
             .map_err(|e| {
                 error!("Failed to list orders: {}", e);

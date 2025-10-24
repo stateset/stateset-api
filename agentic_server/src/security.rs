@@ -1,3 +1,4 @@
+use crate::constants::MAX_REQUEST_BODY_BYTES;
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -53,24 +54,20 @@ impl SignatureVerifier {
             return Err(SignatureError::TimestampTooOld);
         }
 
-        // Create signed payload: timestamp.body
-        let signed_payload = format!("{}.{}", timestamp, String::from_utf8_lossy(body));
+        let provided_signature =
+            hex::decode(signature).map_err(|_| SignatureError::InvalidFormat)?;
 
         // Compute HMAC
         let mut mac = HmacSha256::new_from_slice(self.webhook_secret.as_bytes())
             .map_err(|_| SignatureError::InternalError)?;
-        mac.update(signed_payload.as_bytes());
+        mac.update(timestamp.as_bytes());
+        mac.update(b".");
+        mac.update(body);
 
-        let expected = hex::encode(mac.finalize().into_bytes());
-
-        // Compare signatures (constant-time comparison)
-        if signature != expected {
-            warn!(
-                "Signature mismatch: got {}, expected {}",
-                signature, expected
-            );
-            return Err(SignatureError::InvalidSignature);
-        }
+        mac.verify_slice(&provided_signature).map_err(|_| {
+            warn!("Signature mismatch for timestamp {}", timestamp);
+            SignatureError::InvalidSignature
+        })?;
 
         debug!("Signature verified successfully");
         Ok(())
@@ -78,11 +75,11 @@ impl SignatureVerifier {
 
     /// Generate signature for outgoing webhooks
     pub fn sign_payload(&self, timestamp: &str, body: &str) -> String {
-        let signed_payload = format!("{}.{}", timestamp, body);
-
         let mut mac = HmacSha256::new_from_slice(self.webhook_secret.as_bytes())
             .expect("HMAC key should be valid");
-        mac.update(signed_payload.as_bytes());
+        mac.update(timestamp.as_bytes());
+        mac.update(b".");
+        mac.update(body.as_bytes());
 
         hex::encode(mac.finalize().into_bytes())
     }
@@ -126,9 +123,21 @@ pub async fn signature_verification_middleware(
 
     // Extract body for verification
     let (parts, body) = request.into_parts();
-    let body_bytes = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .unwrap_or_default();
+    let body_bytes = match axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            warn!("Failed to buffer body for signature verification: {}", err);
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                axum::Json(serde_json::json!({
+                    "type": "invalid_request",
+                    "code": "payload_too_large",
+                    "message": format!("Request body exceeds {} bytes", MAX_REQUEST_BODY_BYTES)
+                })),
+            )
+                .into_response();
+        }
+    };
 
     // Verify signature
     match verifier.verify_signature(&headers, &body_bytes) {
@@ -203,6 +212,25 @@ mod tests {
         assert!(verifier
             .verify_signature(&headers, tampered_body.as_bytes())
             .is_err());
+    }
+
+    #[test]
+    fn test_signature_verification_allows_binary_payloads() {
+        let verifier = SignatureVerifier::new("test_secret_key".to_string());
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let body = vec![0u8, 159, 146, 150];
+
+        let mut mac = HmacSha256::new_from_slice(b"test_secret_key").expect("valid signing key");
+        mac.update(timestamp.as_bytes());
+        mac.update(b".");
+        mac.update(&body);
+        let signature = hex::encode(mac.finalize().into_bytes());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Signature", HeaderValue::from_str(&signature).unwrap());
+        headers.insert("Timestamp", HeaderValue::from_str(&timestamp).unwrap());
+
+        assert!(verifier.verify_signature(&headers, &body).is_ok());
     }
 
     #[test]

@@ -3,10 +3,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -14,12 +14,78 @@ use validator::Validate;
 use crate::auth::consts as perm;
 use crate::entities::commerce::product_variant;
 use crate::entities::order_item;
-use crate::{
-    auth::AuthUser, errors::ServiceError, ApiResponse, AppState, ListQuery, PaginatedResponse,
-};
+use crate::{auth::AuthUser, errors::ServiceError, ApiResponse, AppState, PaginatedResponse};
 // Commands are not directly used by handlers at this time
 use crate::services::commerce::product_catalog_service::ProductCatalogService;
-use crate::services::orders::{self as svc_orders, UpdateOrderDetails};
+use crate::services::orders::{
+    self as svc_orders, OrderSearchQuery, OrderSortField, SortDirection, UpdateOrderDetails,
+};
+
+const DEFAULT_PAGE: u64 = 1;
+const DEFAULT_LIMIT: u64 = 20;
+
+fn default_page() -> u64 {
+    DEFAULT_PAGE
+}
+
+fn default_limit() -> u64 {
+    DEFAULT_LIMIT
+}
+
+fn parse_query_datetime(
+    name: &str,
+    value: &Option<String>,
+) -> Result<Option<DateTime<Utc>>, ServiceError> {
+    if let Some(raw) = value {
+        let parsed = DateTime::parse_from_rfc3339(raw).map_err(|_| {
+            ServiceError::ValidationError(format!("{name} must be an RFC3339 timestamp"))
+        })?;
+        Ok(Some(parsed.with_timezone(&Utc)))
+    } else {
+        Ok(None)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(default)]
+pub struct OrdersListQuery {
+    #[serde(default = "default_page")]
+    pub page: u64,
+    #[serde(default = "default_limit")]
+    pub limit: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<OrderStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub customer_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_by: Option<OrderSortField>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<SortDirection>,
+    pub include_items: bool,
+}
+
+impl Default for OrdersListQuery {
+    fn default() -> Self {
+        Self {
+            page: DEFAULT_PAGE,
+            limit: DEFAULT_LIMIT,
+            status: None,
+            customer_id: None,
+            search: None,
+            from: None,
+            to: None,
+            sort_by: None,
+            sort_order: None,
+            include_items: false,
+        }
+    }
+}
 
 fn map_status_str(status: &str) -> Result<OrderStatus, ServiceError> {
     match status.to_ascii_lowercase().as_str() {
@@ -33,6 +99,18 @@ fn map_status_str(status: &str) -> Result<OrderStatus, ServiceError> {
         other => Err(ServiceError::InvalidStatus(format!(
             "Unknown order status: {other}"
         ))),
+    }
+}
+
+fn order_status_to_service_str(status: &OrderStatus) -> &'static str {
+    match status {
+        OrderStatus::Pending => "pending",
+        OrderStatus::Confirmed => "processing",
+        OrderStatus::Processing => "processing",
+        OrderStatus::Shipped => "shipped",
+        OrderStatus::Delivered => "delivered",
+        OrderStatus::Cancelled => "cancelled",
+        OrderStatus::Refunded => "refunded",
     }
 }
 
@@ -92,15 +170,21 @@ fn map_service_order(
 
     Ok(OrderResponse {
         id: order.id.to_string(),
+        order_number: order.order_number.clone(),
         customer_id: order.customer_id.to_string(),
         status,
+        order_date: order.order_date,
         total_amount: Some(order.total_amount),
         currency: Some(order.currency.clone()),
+        payment_status: order.payment_status.clone(),
+        fulfillment_status: order.fulfillment_status.clone(),
         items: mapped_items,
         shipping_address,
         billing_address,
         payment_method_id: order.payment_method.clone(),
         shipment_id: order.tracking_number.clone(),
+        notes: order.notes.clone(),
+        version: order.version,
         created_at: order.created_at,
         updated_at: order.updated_at.unwrap_or(order.created_at),
     })
@@ -166,6 +250,8 @@ fn map_order_item_model(model: &order_item::Model) -> OrderItem {
         quantity: model.quantity,
         unit_price: model.unit_price,
         total_price: model.total_price,
+        discount: (!model.discount.is_zero()).then_some(model.discount),
+        tax_rate: (!model.tax_rate.is_zero()).then_some(model.tax_rate),
         tax_amount: Some(model.tax_amount),
     }
 }
@@ -180,15 +266,26 @@ impl<T> OrderHandlerState for T where T: Clone + Send + Sync + 'static {}
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OrderResponse {
     pub id: String,
+    pub order_number: String,
     pub customer_id: String,
     pub status: OrderStatus,
+    pub order_date: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub total_amount: Option<rust_decimal::Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
+    pub payment_status: String,
+    pub fulfillment_status: String,
     pub items: Vec<OrderItem>,
     pub shipping_address: Option<Address>,
     pub billing_address: Option<Address>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub payment_method_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shipment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    pub version: i32,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -244,6 +341,10 @@ pub struct OrderItem {
     pub quantity: i32,
     pub unit_price: rust_decimal::Decimal,
     pub total_price: rust_decimal::Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discount: Option<rust_decimal::Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tax_rate: Option<rust_decimal::Decimal>,
     pub tax_amount: Option<rust_decimal::Decimal>,
 }
 
@@ -276,18 +377,30 @@ pub struct UpdateOrderStatusRequest {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelOrderRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 /// List orders with pagination and filtering
 #[utoipa::path(
     get,
     path = "/api/v1/orders",
     summary = "List orders",
-    description = "Get a paginated list of orders with optional filtering",
+    description = "Get a paginated list of orders with optional filtering, search, and sorting",
     params(
         ("page" = Option<u64>, Query, description = "Page number (default: 1)"),
-        ("limit" = Option<u64>, Query, description = "Items per page (default: 20)"),
-        ("search" = Option<String>, Query, description = "Search term"),
-        ("status" = Option<String>, Query, description = "Filter by order status"),
-        ("customer_id" = Option<String>, Query, description = "Filter by customer ID"),
+        ("limit" = Option<u64>, Query, description = "Items per page (default: 20, max: 100)"),
+        ("status" = Option<OrderStatus>, Query, description = "Filter by order status"),
+        ("customer_id" = Option<Uuid>, Query, description = "Filter by customer ID"),
+        ("search" = Option<String>, Query, description = "Search by order number, notes, or shipping address"),
+        ("from" = Option<String>, Query, description = "Only include orders created after this RFC3339 timestamp"),
+        ("to" = Option<String>, Query, description = "Only include orders created before this RFC3339 timestamp"),
+        ("sort_by" = Option<OrderSortField>, Query, description = "Sort field (created_at, order_date, total_amount, order_number)"),
+        ("sort_order" = Option<SortDirection>, Query, description = "Sort direction (asc, desc)"),
+        ("include_items" = Option<bool>, Query, description = "If true, include line items for each order in the response"),
     ),
     responses(
         (status = 200, description = "Orders retrieved successfully", body = ApiResponse<PaginatedResponse<OrderResponse>>,
@@ -311,7 +424,7 @@ pub struct UpdateOrderStatusRequest {
 )]
 pub async fn list_orders(
     State(state): State<AppState>,
-    Query(query): Query<ListQuery>,
+    Query(query): Query<OrdersListQuery>,
     auth_user: AuthUser,
 ) -> Result<Json<ApiResponse<PaginatedResponse<OrderResponse>>>, ServiceError> {
     // Check permissions
@@ -321,20 +434,81 @@ pub async fn list_orders(
         ));
     }
 
-    // Use service layer
     let svc = state.services.order.clone();
-    let result = svc.list_orders(query.page, query.limit).await?;
-    let total_pages = (result.total + query.limit - 1) / query.limit;
-    let items: Vec<OrderResponse> = result
-        .orders
-        .iter()
-        .map(|order| map_service_order(order, None))
-        .collect::<Result<_, _>>()?;
+
+    let status_filter = query
+        .status
+        .as_ref()
+        .map(order_status_to_service_str)
+        .map(|s| s.to_string());
+    let trimmed_search = query
+        .search
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let from = parse_query_datetime("from", &query.from)?;
+    let to = parse_query_datetime("to", &query.to)?;
+    if let (Some(start), Some(end)) = (from, to) {
+        if start > end {
+            return Err(ServiceError::ValidationError(
+                "`from` must be earlier than or equal to `to`".to_string(),
+            ));
+        }
+    }
+
+    let params = OrderSearchQuery {
+        customer_id: query.customer_id,
+        status: status_filter,
+        from_date: from,
+        to_date: to,
+        search: trimmed_search,
+        sort_field: query.sort_by.unwrap_or(OrderSortField::CreatedAt),
+        sort_direction: query.sort_order.unwrap_or(SortDirection::Desc),
+        page: query.page,
+        per_page: query.limit,
+    };
+
+    let result = svc.search_orders(params).await?;
+    let include_items = query.include_items;
+
+    let svc_orders::OrderListResponse {
+        orders,
+        total,
+        page,
+        per_page,
+    } = result;
+
+    let item_lookup: Option<HashMap<Uuid, Vec<order_item::Model>>> =
+        if include_items && !orders.is_empty() {
+            let ids: Vec<Uuid> = orders.iter().map(|order| order.id).collect();
+            Some(svc.get_items_for_orders(&ids).await?)
+        } else {
+            None
+        };
+
+    let mut items = Vec::with_capacity(orders.len());
+    for order in &orders {
+        let associated_items = item_lookup
+            .as_ref()
+            .and_then(|lookup| lookup.get(&order.id))
+            .map(|vec| vec.as_slice());
+        let response = map_service_order(order, associated_items)?;
+        items.push(response);
+    }
+
+    let total_pages = if per_page == 0 {
+        0
+    } else {
+        (total + per_page - 1) / per_page
+    };
+
     Ok(Json(ApiResponse::success(PaginatedResponse {
         items,
-        total: result.total,
-        page: query.page,
-        limit: query.limit,
+        total,
+        page,
+        limit: per_page,
         total_pages,
     })))
 }
@@ -459,6 +633,8 @@ pub async fn create_order(
                 quantity: item.quantity,
                 unit_price,
                 total_price,
+                discount: None,
+                tax_rate: item.tax_rate,
                 tax_amount,
             },
             variant_id: variant.id,
@@ -772,21 +948,13 @@ pub async fn update_order_status(
 
     // Use service to update status
     let order_id = resolve_order_id(&state, &id).await?;
-    let status_str = match request.status {
-        OrderStatus::Pending => "pending",
-        OrderStatus::Confirmed => "processing",
-        OrderStatus::Processing => "processing",
-        OrderStatus::Shipped => "shipped",
-        OrderStatus::Delivered => "delivered",
-        OrderStatus::Cancelled => "cancelled",
-        OrderStatus::Refunded => "refunded",
-    };
+    let status_str = order_status_to_service_str(&request.status).to_string();
     let svc = state.services.order.clone();
     let updated = svc
         .update_order_status(
             order_id,
             svc_orders::UpdateOrderStatusRequest {
-                status: status_str.to_string(),
+                status: status_str,
                 notes: request.reason,
             },
         )
@@ -947,12 +1115,29 @@ pub async fn add_order_item(
 }
 
 /// Cancel an existing order
+#[utoipa::path(
+    post,
+    path = "/api/v1/orders/{id}/cancel",
+    summary = "Cancel order",
+    description = "Cancel an order and return the updated order",
+    params(("id" = String, Path, description = "Order ID")),
+    request_body = CancelOrderRequest,
+    responses(
+        (status = 200, description = "Order cancelled successfully", body = ApiResponse<OrderResponse>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = []))
+)]
 pub async fn cancel_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
     auth_user: AuthUser,
-    Json(payload): Json<serde_json::Value>,
-) -> Result<impl IntoResponse, ServiceError> {
+    Json(payload): Json<CancelOrderRequest>,
+) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     if !auth_user.has_permission(perm::ORDERS_CANCEL) {
         return Err(ServiceError::Forbidden(
             "Insufficient permissions to cancel orders".to_string(),
@@ -960,49 +1145,51 @@ pub async fn cancel_order(
     }
     let order_id = resolve_order_id(&state, &id).await?;
     let reason = payload
-        .get("reason")
-        .and_then(|r| r.as_str())
-        .unwrap_or("Customer request")
-        .to_string();
+        .reason
+        .filter(|reason| !reason.trim().is_empty())
+        .unwrap_or_else(|| "Customer request".to_string());
 
-    let _ = state
-        .services
-        .order
-        .cancel_order(order_id, Some(reason.clone()))
-        .await?;
+    let svc = state.services.order.clone();
+    let cancelled = svc.cancel_order(order_id, Some(reason.clone())).await?;
+    let items = svc.get_order_items(order_id).await?;
+    let response = map_service_order(&cancelled, Some(items.as_slice()))?;
 
-    let response = json!({
-        "message": format!("Order {} has been cancelled", id),
-        "order_id": id,
-        "status": "cancelled",
-        "cancellation_reason": reason,
-        "cancelled_at": Utc::now()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    Ok(Json(ApiResponse::success(response)))
 }
 
 /// Archive an existing order
+#[utoipa::path(
+    post,
+    path = "/api/v1/orders/{id}/archive",
+    summary = "Archive order",
+    description = "Archive an order and return the updated order record",
+    params(("id" = String, Path, description = "Order ID")),
+    responses(
+        (status = 200, description = "Order archived successfully", body = ApiResponse<OrderResponse>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Order not found", body = crate::errors::ErrorResponse),
+        (status = 422, description = "Validation error", body = crate::errors::ErrorResponse),
+        (status = 500, description = "Internal server error", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = []))
+)]
 pub async fn archive_order(
     State(state): State<AppState>,
     Path(id): Path<String>,
     auth_user: AuthUser,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<Json<ApiResponse<OrderResponse>>, ServiceError> {
     if !auth_user.has_permission(perm::ORDERS_UPDATE) {
         return Err(ServiceError::Forbidden(
             "Insufficient permissions to archive orders".to_string(),
         ));
     }
     let order_id = resolve_order_id(&state, &id).await?;
-    let _ = state.services.order.archive_order(order_id).await?;
+    let svc = state.services.order.clone();
+    let archived = svc.archive_order(order_id).await?;
+    let items = svc.get_order_items(order_id).await?;
+    let response = map_service_order(&archived, Some(items.as_slice()))?;
 
-    let response = json!({
-        "message": format!("Order {} has been archived", id),
-        "order_id": id,
-        "status": "archived",
-        "archived_at": Utc::now()
-    });
-
-    Ok((StatusCode::OK, Json(response)))
+    Ok(Json(ApiResponse::success(response)))
 }
 // (Old command-based cancel/archive removed)

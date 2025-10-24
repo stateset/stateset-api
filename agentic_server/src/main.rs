@@ -12,6 +12,7 @@ use tokio::signal;
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
+    limit::RequestBodyLimitLayer,
     trace::TraceLayer,
 };
 use tracing::{info, warn};
@@ -19,6 +20,7 @@ use tracing::{info, warn};
 mod auth;
 mod cache;
 mod config;
+mod constants;
 mod delegated_payment;
 mod errors;
 mod events;
@@ -38,6 +40,7 @@ mod webhook_service;
 use auth::{auth_middleware, ApiKeyStore};
 use cache::InMemoryCache;
 use config::Config;
+use constants::MAX_REQUEST_BODY_BYTES;
 use delegated_payment::{DelegatePaymentRequest, DelegatedPaymentService};
 use errors::ApiError;
 use events::{Event, EventSender};
@@ -270,6 +273,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Delegated Payment endpoint (PSP mock)
         .route("/agentic_commerce/delegate_payment", post(delegate_payment))
         // Middleware layers (applied in reverse order: bottom to top)
+        .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
         .layer(CompressionLayer::new())
         .layer(
             CorsLayer::new()

@@ -116,6 +116,13 @@ async fn test_orders_crud() {
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read cancel body");
+    let cancel_json: Value = serde_json::from_slice(&body_bytes).expect("parse cancel body");
+    assert!(cancel_json["success"].as_bool().unwrap_or(false));
+    assert_eq!(cancel_json["data"]["status"], "cancelled");
 }
 
 #[tokio::test]
