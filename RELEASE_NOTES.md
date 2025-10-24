@@ -1,3 +1,10 @@
+## v0.1.4
+
+- roll out a dedicated manufacturing schema with SeaORM entities, migrations, and a rebuilt bill of materials service that tracks components, audits, and work order readiness
+- overhaul authentication by centralizing permission metadata, expanding API key handling, and tightening JWT/RBAC flows across handlers
+- publish an API operations playbook and ship the `openapi_export` helper so teams can regenerate the OpenAPI spec alongside the release
+- add an in-memory test harness with seeded catalog helpers to increase integration coverage for orders and inventory adjustments
+
 ## v0.1.3
 
 - wire up SeaORM relationships between orders, shipments, payments, and products so downstream queries can eagerly load related records
