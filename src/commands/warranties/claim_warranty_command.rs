@@ -43,7 +43,7 @@ pub struct ClaimWarrantyCommand {
 
 #[async_trait]
 impl Command for ClaimWarrantyCommand {
-    type Result = Uuid;
+    type Result = warranty_claim::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
@@ -128,7 +128,10 @@ impl Command for ClaimWarrantyCommand {
 
         // Send warranty claim event
         event_sender
-            .send(Event::WarrantyClaimed(self.warranty_id))
+            .send(Event::WarrantyClaimed {
+                claim_id: result.id,
+                warranty_id: result.warranty_id,
+            })
             .await
             .map_err(|e| {
                 WARRANTY_CLAIM_FAILURES.inc();
@@ -146,6 +149,6 @@ impl Command for ClaimWarrantyCommand {
 
         WARRANTY_CLAIMS.inc();
 
-        Ok(result.id)
+        Ok(result)
     }
 }

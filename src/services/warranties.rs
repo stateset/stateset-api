@@ -84,20 +84,27 @@ impl WarrantyService {
         &self,
         command: ClaimWarrantyCommand,
     ) -> Result<Uuid, ServiceError> {
-        let result = command
+        let claim = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
-        // Outbox: WarrantyClaimed
-        let payload = serde_json::json!({"warranty_id": result.to_string()});
+        let claim_id = claim.id;
+        let warranty_id = claim.warranty_id;
+        let payload = serde_json::json!({
+            "claim_id": claim_id.to_string(),
+            "warranty_id": warranty_id.to_string(),
+            "status": claim.status.clone(),
+            "claim_number": claim.claim_number.clone(),
+            "claim_date": claim.claim_date.to_rfc3339(),
+        });
         let _ = crate::events::outbox::enqueue(
             &*self.db_pool,
             "warranty",
-            Some(result),
+            Some(warranty_id),
             "WarrantyClaimed",
             &payload,
         )
         .await;
-        Ok(result)
+        Ok(claim_id)
     }
 
     /// Approves a warranty claim
@@ -106,15 +113,23 @@ impl WarrantyService {
         &self,
         command: ApproveWarrantyClaimCommand,
     ) -> Result<(), ServiceError> {
-        command
+        let claim = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
         // Outbox: WarrantyClaimApproved
-        let payload = serde_json::json!({"claim_id": command.claim_id.to_string()});
+        let payload = serde_json::json!({
+            "claim_id": claim.id.to_string(),
+            "warranty_id": claim.warranty_id.to_string(),
+            "status": claim.status.clone(),
+            "resolution": claim.resolution.clone(),
+            "resolved_at": claim.resolved_date.map(|dt| dt.to_rfc3339()),
+            "approved_by": command.approved_by.to_string(),
+            "notes": command.notes.clone(),
+        });
         let _ = crate::events::outbox::enqueue(
             &*self.db_pool,
             "warranty",
-            Some(command.claim_id),
+            Some(claim.warranty_id),
             "WarrantyClaimApproved",
             &payload,
         )
@@ -128,15 +143,23 @@ impl WarrantyService {
         &self,
         command: RejectWarrantyClaimCommand,
     ) -> Result<(), ServiceError> {
-        command
+        let claim = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
         // Outbox: WarrantyClaimRejected
-        let payload = serde_json::json!({"claim_id": command.claim_id.to_string()});
+        let payload = serde_json::json!({
+            "claim_id": claim.id.to_string(),
+            "warranty_id": claim.warranty_id.to_string(),
+            "status": claim.status.clone(),
+            "reason": command.reason.clone(),
+            "resolved_at": claim.resolved_date.map(|dt| dt.to_rfc3339()),
+            "rejected_by": command.rejected_by.to_string(),
+            "notes": command.notes.clone(),
+        });
         let _ = crate::events::outbox::enqueue(
             &*self.db_pool,
             "warranty",
-            Some(command.claim_id),
+            Some(claim.warranty_id),
             "WarrantyClaimRejected",
             &payload,
         )
@@ -151,7 +174,10 @@ impl WarrantyService {
         warranty_id: &Uuid,
     ) -> Result<Option<warranty::Model>, ServiceError> {
         let db = self.db_pool.as_ref();
-        let warranty = warranty::Entity::find_by_id(*warranty_id).one(db).await?;
+        let warranty = warranty::Entity::find()
+            .filter(warranty::Column::Id.eq(*warranty_id))
+            .one(db)
+            .await?;
         Ok(warranty)
     }
 

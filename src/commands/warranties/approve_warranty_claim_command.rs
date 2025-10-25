@@ -40,7 +40,7 @@ pub struct ApproveWarrantyClaimCommand {
 
 #[async_trait]
 impl Command for ApproveWarrantyClaimCommand {
-    type Result = ();
+    type Result = warranty_claim::Model;
 
     #[instrument(skip(self, db_pool, event_sender))]
     async fn execute(
@@ -93,7 +93,7 @@ impl Command for ApproveWarrantyClaimCommand {
         claim_model.updated_at = Set(Some(Utc::now()));
 
         // Apply the changes to the database
-        claim_model.update(db).await.map_err(|e| {
+        let updated = claim_model.update(db).await.map_err(|e| {
             WARRANTY_CLAIM_APPROVAL_FAILURES.inc();
             let msg = format!("Failed to update warranty claim: {}", e);
             error!("{}", msg);
@@ -102,7 +102,12 @@ impl Command for ApproveWarrantyClaimCommand {
 
         // Send warranty claim approved event
         event_sender
-            .send(Event::WarrantyClaimed(self.claim_id))
+            .send(Event::WarrantyClaimApproved {
+                claim_id: updated.id,
+                warranty_id: updated.warranty_id,
+                resolution: Some(self.resolution.clone()),
+                notes: self.notes.clone(),
+            })
             .await
             .map_err(|e| {
                 WARRANTY_CLAIM_APPROVAL_FAILURES.inc();
@@ -119,6 +124,6 @@ impl Command for ApproveWarrantyClaimCommand {
 
         WARRANTY_CLAIM_APPROVALS.inc();
 
-        Ok(())
+        Ok(updated)
     }
 }

@@ -254,11 +254,68 @@ fn map_to_event(event_type: &str, payload: &Value) -> Option<Event> {
             .and_then(|v| v.as_str())
             .and_then(|s| Uuid::parse_str(s).ok())
             .map(Event::WarrantyCreated),
-        "WarrantyClaimed" => payload
-            .get("warranty_id")
-            .and_then(|v| v.as_str())
-            .and_then(|s| Uuid::parse_str(s).ok())
-            .map(Event::WarrantyClaimed),
+        "WarrantyClaimed" => {
+            let claim_id = payload
+                .get("claim_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())?;
+            let warranty_id = payload
+                .get("warranty_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())?;
+            Some(Event::WarrantyClaimed {
+                claim_id,
+                warranty_id,
+            })
+        }
+        "WarrantyClaimApproved" => {
+            let claim_id = payload
+                .get("claim_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())?;
+            let warranty_id = payload
+                .get("warranty_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())?;
+            let resolution = payload
+                .get("resolution")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let notes = payload
+                .get("notes")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            Some(Event::WarrantyClaimApproved {
+                claim_id,
+                warranty_id,
+                resolution,
+                notes,
+            })
+        }
+        "WarrantyClaimRejected" => {
+            let claim_id = payload
+                .get("claim_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())?;
+            let warranty_id = payload
+                .get("warranty_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok())?;
+            let reason = payload
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())?;
+            let notes = payload
+                .get("notes")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            Some(Event::WarrantyClaimRejected {
+                claim_id,
+                warranty_id,
+                reason,
+                notes,
+            })
+        }
         "PaymentSucceeded" => payload
             .get("id")
             .and_then(|v| v.as_str())
@@ -272,5 +329,99 @@ fn map_to_event(event_type: &str, payload: &Value) -> Option<Event> {
             .and_then(|v| v.as_str())
             .and_then(|_| Some(Event::PaymentFailed(Uuid::new_v4()))),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_warranty_claimed_event() {
+        let claim_id = Uuid::new_v4();
+        let warranty_id = Uuid::new_v4();
+        let payload = serde_json::json!({
+            "claim_id": claim_id.to_string(),
+            "warranty_id": warranty_id.to_string(),
+        });
+
+        let event = map_to_event("WarrantyClaimed", &payload).expect("event not mapped");
+        match event {
+            Event::WarrantyClaimed {
+                claim_id: mapped_claim_id,
+                warranty_id: mapped_warranty_id,
+            } => {
+                assert_eq!(mapped_claim_id, claim_id);
+                assert_eq!(mapped_warranty_id, warranty_id);
+            }
+            other => panic!("unexpected event variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn maps_warranty_claim_approved_event() {
+        let claim_id = Uuid::new_v4();
+        let warranty_id = Uuid::new_v4();
+        let payload = serde_json::json!({
+            "claim_id": claim_id.to_string(),
+            "warranty_id": warranty_id.to_string(),
+            "resolution": "Repaired component",
+            "notes": "Technician completed on-site repair"
+        });
+
+        let event =
+            map_to_event("WarrantyClaimApproved", &payload).expect("event not mapped");
+        match event {
+            Event::WarrantyClaimApproved {
+                claim_id: mapped_claim_id,
+                warranty_id: mapped_warranty_id,
+                resolution,
+                notes,
+            } => {
+                assert_eq!(mapped_claim_id, claim_id);
+                assert_eq!(mapped_warranty_id, warranty_id);
+                assert_eq!(
+                    resolution.as_deref(),
+                    Some("Repaired component")
+                );
+                assert_eq!(
+                    notes.as_deref(),
+                    Some("Technician completed on-site repair")
+                );
+            }
+            other => panic!("unexpected event variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn maps_warranty_claim_rejected_event() {
+        let claim_id = Uuid::new_v4();
+        let warranty_id = Uuid::new_v4();
+        let payload = serde_json::json!({
+            "claim_id": claim_id.to_string(),
+            "warranty_id": warranty_id.to_string(),
+            "reason": "Damage outside coverage",
+            "notes": "Photos indicated misuse"
+        });
+
+        let event =
+            map_to_event("WarrantyClaimRejected", &payload).expect("event not mapped");
+        match event {
+            Event::WarrantyClaimRejected {
+                claim_id: mapped_claim_id,
+                warranty_id: mapped_warranty_id,
+                reason,
+                notes,
+            } => {
+                assert_eq!(mapped_claim_id, claim_id);
+                assert_eq!(mapped_warranty_id, warranty_id);
+                assert_eq!(reason, "Damage outside coverage");
+                assert_eq!(
+                    notes.as_deref(),
+                    Some("Photos indicated misuse")
+                );
+            }
+            other => panic!("unexpected event variant: {:?}", other),
+        }
     }
 }

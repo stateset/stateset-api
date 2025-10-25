@@ -156,7 +156,22 @@ pub enum Event {
 
     // Warranty events
     WarrantyCreated(Uuid),
-    WarrantyClaimed(Uuid),
+    WarrantyClaimed {
+        claim_id: Uuid,
+        warranty_id: Uuid,
+    },
+    WarrantyClaimApproved {
+        claim_id: Uuid,
+        warranty_id: Uuid,
+        resolution: Option<String>,
+        notes: Option<String>,
+    },
+    WarrantyClaimRejected {
+        claim_id: Uuid,
+        warranty_id: Uuid,
+        reason: String,
+        notes: Option<String>,
+    },
     WarrantyExpired(Uuid),
 
     // Work order events
