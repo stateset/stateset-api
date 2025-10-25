@@ -369,8 +369,7 @@ mod tests {
             "notes": "Technician completed on-site repair"
         });
 
-        let event =
-            map_to_event("WarrantyClaimApproved", &payload).expect("event not mapped");
+        let event = map_to_event("WarrantyClaimApproved", &payload).expect("event not mapped");
         match event {
             Event::WarrantyClaimApproved {
                 claim_id: mapped_claim_id,
@@ -380,10 +379,7 @@ mod tests {
             } => {
                 assert_eq!(mapped_claim_id, claim_id);
                 assert_eq!(mapped_warranty_id, warranty_id);
-                assert_eq!(
-                    resolution.as_deref(),
-                    Some("Repaired component")
-                );
+                assert_eq!(resolution.as_deref(), Some("Repaired component"));
                 assert_eq!(
                     notes.as_deref(),
                     Some("Technician completed on-site repair")
@@ -404,8 +400,7 @@ mod tests {
             "notes": "Photos indicated misuse"
         });
 
-        let event =
-            map_to_event("WarrantyClaimRejected", &payload).expect("event not mapped");
+        let event = map_to_event("WarrantyClaimRejected", &payload).expect("event not mapped");
         match event {
             Event::WarrantyClaimRejected {
                 claim_id: mapped_claim_id,
@@ -416,10 +411,7 @@ mod tests {
                 assert_eq!(mapped_claim_id, claim_id);
                 assert_eq!(mapped_warranty_id, warranty_id);
                 assert_eq!(reason, "Damage outside coverage");
-                assert_eq!(
-                    notes.as_deref(),
-                    Some("Photos indicated misuse")
-                );
+                assert_eq!(notes.as_deref(), Some("Photos indicated misuse"));
             }
             other => panic!("unexpected event variant: {:?}", other),
         }

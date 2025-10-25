@@ -548,6 +548,33 @@ async fn ensure_core_tables_sqlite(pool: &DbPool) -> Result<(), AppError> {
             FOREIGN KEY (sales_order_line_id) REFERENCES sales_order_lines(line_id)
         );
         "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS shipments (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            tracking_number TEXT NOT NULL,
+            carrier TEXT NOT NULL,
+            status TEXT NOT NULL,
+            shipping_address TEXT NOT NULL,
+            shipping_method TEXT NOT NULL,
+            weight_kg REAL,
+            dimensions_cm TEXT,
+            notes TEXT,
+            shipped_at TEXT,
+            estimated_delivery TEXT,
+            delivered_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            created_by TEXT,
+            recipient_name TEXT NOT NULL,
+            recipient_email TEXT,
+            recipient_phone TEXT,
+            tracking_url TEXT,
+            shipping_cost NUMERIC,
+            insurance_amount NUMERIC,
+            is_signature_required INTEGER NOT NULL DEFAULT 0
+        );
+        "#,
     ];
 
     for sql in statements {

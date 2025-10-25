@@ -507,6 +507,7 @@ mod m20230101_000006_create_returns_table {
 }
 
 mod m20230101_000007_create_shipments_table {
+    use super::m20230101_000001_create_orders_table::Orders as OrdersTable;
     use sea_orm_migration::prelude::*;
 
     pub struct Migration;
@@ -520,7 +521,7 @@ mod m20230101_000007_create_shipments_table {
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
         async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-            // Create shipments table
+            // Create shipments table that mirrors models::shipment::Model
             manager
                 .create_table(
                     Table::create()
@@ -533,20 +534,84 @@ mod m20230101_000007_create_shipments_table {
                                 .not_null(),
                         )
                         .col(ColumnDef::new(Shipments::OrderId).uuid().not_null())
+                        .col(
+                            ColumnDef::new(Shipments::TrackingNumber)
+                                .string()
+                                .not_null(),
+                        )
+                        .col(ColumnDef::new(Shipments::Carrier).string().not_null())
                         .col(ColumnDef::new(Shipments::Status).string().not_null())
-                        .col(ColumnDef::new(Shipments::TrackingNumber).string().null())
-                        .col(ColumnDef::new(Shipments::Carrier).string().null())
+                        .col(
+                            ColumnDef::new(Shipments::ShippingAddress)
+                                .string()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(Shipments::ShippingMethod)
+                                .string()
+                                .not_null(),
+                        )
+                        .col(ColumnDef::new(Shipments::WeightKg).float().null())
+                        .col(ColumnDef::new(Shipments::DimensionsCm).string().null())
+                        .col(ColumnDef::new(Shipments::Notes).string().null())
                         .col(ColumnDef::new(Shipments::ShippedAt).timestamp().null())
+                        .col(
+                            ColumnDef::new(Shipments::EstimatedDelivery)
+                                .timestamp()
+                                .null(),
+                        )
                         .col(ColumnDef::new(Shipments::DeliveredAt).timestamp().null())
                         .col(ColumnDef::new(Shipments::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(Shipments::UpdatedAt).timestamp().null())
+                        .col(ColumnDef::new(Shipments::UpdatedAt).timestamp().not_null())
+                        .col(ColumnDef::new(Shipments::CreatedBy).string().null())
+                        .col(ColumnDef::new(Shipments::RecipientName).string().not_null())
+                        .col(ColumnDef::new(Shipments::RecipientEmail).string().null())
+                        .col(ColumnDef::new(Shipments::RecipientPhone).string().null())
+                        .col(ColumnDef::new(Shipments::TrackingUrl).string().null())
+                        .col(ColumnDef::new(Shipments::ShippingCost).decimal().null())
+                        .col(ColumnDef::new(Shipments::InsuranceAmount).decimal().null())
+                        .col(
+                            ColumnDef::new(Shipments::IsSignatureRequired)
+                                .boolean()
+                                .not_null()
+                                .default(false),
+                        )
+                        .foreign_key(
+                            ForeignKey::create()
+                                .name("fk_shipments_order_id")
+                                .from(Shipments::Table, Shipments::OrderId)
+                                .to(OrdersTable::Table, OrdersTable::Id)
+                                .on_delete(ForeignKeyAction::Cascade)
+                                .on_update(ForeignKeyAction::Cascade),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_shipments_order_id")
+                        .table(Shipments::Table)
+                        .col(Shipments::OrderId)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_index(
+                    Index::create()
+                        .if_not_exists()
+                        .name("idx_shipments_tracking_number")
+                        .table(Shipments::Table)
+                        .col(Shipments::TrackingNumber)
                         .to_owned(),
                 )
                 .await
         }
 
         async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-            // Drop shipments table
             manager
                 .drop_table(Table::drop().table(Shipments::Table).to_owned())
                 .await
@@ -558,13 +623,27 @@ mod m20230101_000007_create_shipments_table {
         Table,
         Id,
         OrderId,
-        Status,
         TrackingNumber,
         Carrier,
+        Status,
+        ShippingAddress,
+        ShippingMethod,
+        WeightKg,
+        DimensionsCm,
+        Notes,
         ShippedAt,
+        EstimatedDelivery,
         DeliveredAt,
         CreatedAt,
         UpdatedAt,
+        CreatedBy,
+        RecipientName,
+        RecipientEmail,
+        RecipientPhone,
+        TrackingUrl,
+        ShippingCost,
+        InsuranceAmount,
+        IsSignatureRequired,
     }
 }
 

@@ -2,6 +2,7 @@ mod common;
 
 use axum::http::{Method, StatusCode};
 use chrono::Utc;
+use rust_decimal::Decimal;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -246,34 +247,29 @@ async fn test_returns_workflow() {
 async fn test_shipments_tracking() {
     let app = TestApp::new().await;
 
-    let order_id = Uuid::new_v4();
+    let order_service = app.state.services.order.clone();
+    let customer_id = Uuid::new_v4();
+    let order = order_service
+        .create_order_minimal(
+            customer_id,
+            Decimal::new(10_000, 2),
+            Some("USD".to_string()),
+            Some("shipment test order".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("create order for shipment test");
+    let order_id = order.id;
     let tracking_number = "1Z123456789";
     // Test creating a shipment
     let create_payload = json!({
         "order_id": order_id,
-        "carrier": "UPS",
-        "service_type": "Ground",
+        "shipping_address": "123 Main St, Anytown, CA 90210",
+        "shipping_method": "standard",
         "tracking_number": tracking_number,
-        "shipping_address": {
-            "street1": "123 Main St",
-            "city": "Anytown",
-            "state": "CA",
-            "postal_code": "90210",
-            "country": "US"
-        },
-        "items": [
-            {
-                "order_item_id": Uuid::new_v4(),
-                "quantity": 1
-            }
-        ],
-        "weight": 2.5,
-        "dimensions": {
-            "length": 12.0,
-            "width": 8.0,
-            "height": 4.0,
-            "unit": "in"
-        }
+        "recipient_name": "Test Receiver"
     });
 
     let response_create = app
