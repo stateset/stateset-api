@@ -141,6 +141,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 next.run(req).await
             },
         ))
+        // Ensure every request carries a request id for traceability
+        .layer(axum::middleware::from_fn(
+            api::middleware_helpers::request_id::request_id_middleware,
+        ))
         .with_state(app_state);
 
     // Configure and apply global Rate Limiter layer (in-memory by default; Redis-backed planned)

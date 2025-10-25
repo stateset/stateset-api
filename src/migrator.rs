@@ -144,7 +144,7 @@ mod m20230101_000001_create_orders_table {
     }
 
     #[derive(DeriveIden)]
-    enum Orders {
+    pub(super) enum Orders {
         Table,
         Id,
         OrderNumber,

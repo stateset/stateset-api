@@ -11,6 +11,10 @@ use uuid::Uuid;
 // gRPC error mapping module
 pub mod grpc;
 
+fn current_request_id() -> Option<String> {
+    crate::tracing::current_request_id().map(|rid| rid.as_str().to_string())
+}
+
 /// Simplified error structure for OpenAPI documentation
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorResponse {
@@ -227,12 +231,13 @@ impl IntoResponse for ServiceError {
             ServiceError::Other(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         };
 
+        let request_id = current_request_id();
         // Build standardized error response
         let err = ErrorResponse {
             error: status.canonical_reason().unwrap_or("Error").to_string(),
             message: error_message,
             details: None,
-            request_id: None,
+            request_id,
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
 
@@ -337,6 +342,7 @@ impl IntoResponse for ApiError {
             }
         };
 
+        let request_id = current_request_id();
         let error_response = ErrorResponse {
             error: status
                 .canonical_reason()
@@ -344,7 +350,7 @@ impl IntoResponse for ApiError {
                 .to_string(),
             message: error_message,
             details: None,
-            request_id: None, // Could be extracted from request extensions in a real implementation
+            request_id,
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
 
@@ -373,5 +379,40 @@ where
 {
     fn map_err_to_service(self) -> Result<T, ServiceError> {
         self.map_err(|e| e.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use hyper::body::to_bytes;
+
+    #[tokio::test]
+    async fn service_error_response_includes_request_id() {
+        let response =
+            crate::tracing::scope_request_id(crate::tracing::RequestId::new("req-123"), async {
+                ServiceError::NotFound("missing".into()).into_response()
+            })
+            .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body = to_bytes(response.into_body()).await.unwrap();
+        let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload.request_id.as_deref(), Some("req-123"));
+    }
+
+    #[tokio::test]
+    async fn api_error_response_includes_request_id() {
+        let response =
+            crate::tracing::scope_request_id(crate::tracing::RequestId::new("req-api-42"), async {
+                ApiError::ServiceError(ServiceError::Forbidden("nope".into())).into_response()
+            })
+            .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let body = to_bytes(response.into_body()).await.unwrap();
+        let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload.request_id.as_deref(), Some("req-api-42"));
     }
 }

@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::{self, Value as JsonValue};
 use std::convert::Infallible;
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt,
     marker::Send,
@@ -34,8 +35,8 @@ use tracing::instrument;
 // Re-export tracing macros for use in lib.rs
 use http_body_util::BodyExt;
 use tower_http::trace::{
-    DefaultMakeSpan, DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest,
-    DefaultOnResponse,
+    DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse,
+    MakeSpan,
 };
 pub use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
@@ -99,6 +100,66 @@ pub struct RequestId(pub String);
 impl Default for RequestId {
     fn default() -> Self {
         RequestId(Uuid::new_v4().to_string())
+    }
+}
+
+impl RequestId {
+    pub fn new(value: impl Into<String>) -> Self {
+        RequestId(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+tokio::task_local! {
+    static CURRENT_REQUEST_ID: RefCell<Option<RequestId>>;
+}
+
+pub async fn scope_request_id<Fut, R>(request_id: RequestId, future: Fut) -> R
+where
+    Fut: Future<Output = R>,
+{
+    CURRENT_REQUEST_ID
+        .scope(RefCell::new(Some(request_id)), future)
+        .await
+}
+
+pub fn current_request_id() -> Option<RequestId> {
+    CURRENT_REQUEST_ID
+        .try_with(|cell| cell.borrow().clone())
+        .ok()
+        .flatten()
+}
+
+#[derive(Clone, Default)]
+pub struct RequestSpanMaker;
+
+impl<B> MakeSpan<B> for RequestSpanMaker {
+    fn make_span(&mut self, request: &Request<B>) -> tracing::Span {
+        let method = request.method().clone();
+        let uri = request.uri().clone();
+        let request_id = request
+            .extensions()
+            .get::<RequestId>()
+            .cloned()
+            .or_else(|| {
+                request
+                    .headers()
+                    .get("x-request-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(RequestId::new)
+            })
+            .unwrap_or_default();
+
+        let span = tracing::info_span!(
+            "http.request",
+            request_id = %request_id.as_str(),
+            method = %method,
+            uri = %uri,
+        );
+        span
     }
 }
 
@@ -824,7 +885,7 @@ pub fn setup_default_tracing(service_name: &str) -> Result<(), TracingError> {
 /// Configure tracing for the application with tower-http
 pub fn configure_http_tracing() -> tower_http::trace::TraceLayer<
     tower_http::classify::SharedClassifier<StatusInRangeAsFailures>,
-    DefaultMakeSpan,
+    RequestSpanMaker,
     DefaultOnRequest,
     DefaultOnResponse,
     DefaultOnBodyChunk,
@@ -834,7 +895,7 @@ pub fn configure_http_tracing() -> tower_http::trace::TraceLayer<
     let classifier =
         tower_http::classify::SharedClassifier::new(StatusInRangeAsFailures::new(500..=599));
     TraceLayer::new(classifier)
-        .make_span_with(DefaultMakeSpan::default())
+        .make_span_with(RequestSpanMaker::default())
         .on_request(DefaultOnRequest::default())
         .on_response(DefaultOnResponse::default())
         .on_body_chunk(DefaultOnBodyChunk::default())

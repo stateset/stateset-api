@@ -32,6 +32,7 @@ pub mod tracing;
 pub mod versioning;
 
 use axum::{extract::State, response::Json, routing::get, Router};
+use chrono::Utc;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -96,6 +97,24 @@ pub struct ApiResponse<T> {
     pub data: Option<T>,
     pub message: Option<String>,
     pub errors: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<ResponseMeta>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ResponseMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    pub timestamp: String,
+}
+
+impl ResponseMeta {
+    fn capture() -> Self {
+        Self {
+            request_id: crate::tracing::current_request_id().map(|rid| rid.as_str().to_string()),
+            timestamp: Utc::now().to_rfc3339(),
+        }
+    }
 }
 
 #[derive(Serialize, ToSchema)]
@@ -114,6 +133,7 @@ impl<T> ApiResponse<T> {
             data: Some(data),
             message: None,
             errors: None,
+            meta: Some(ResponseMeta::capture()),
         }
     }
 
@@ -123,6 +143,7 @@ impl<T> ApiResponse<T> {
             data: None,
             message: Some(message),
             errors: None,
+            meta: Some(ResponseMeta::capture()),
         }
     }
 
@@ -132,7 +153,53 @@ impl<T> ApiResponse<T> {
             data: None,
             message: Some("Validation failed".to_string()),
             errors: Some(errors),
+            meta: Some(ResponseMeta::capture()),
         }
+    }
+}
+
+#[cfg(test)]
+mod response_tests {
+    use super::*;
+    use chrono::DateTime;
+
+    #[tokio::test]
+    async fn success_response_includes_request_metadata() {
+        let response =
+            crate::tracing::scope_request_id(crate::tracing::RequestId::new("meta-123"), async {
+                ApiResponse::success("ok")
+            })
+            .await;
+
+        let meta = response.meta.expect("metadata expected");
+        assert_eq!(meta.request_id.as_deref(), Some("meta-123"));
+        DateTime::parse_from_rfc3339(&meta.timestamp).expect("timestamp should parse");
+    }
+
+    #[tokio::test]
+    async fn error_response_includes_request_metadata() {
+        let response =
+            crate::tracing::scope_request_id(crate::tracing::RequestId::new("meta-err"), async {
+                ApiResponse::<()>::error("oops".into())
+            })
+            .await;
+
+        let meta = response.meta.expect("metadata expected");
+        assert_eq!(meta.request_id.as_deref(), Some("meta-err"));
+        assert!(!meta.timestamp.is_empty());
+    }
+
+    #[tokio::test]
+    async fn validation_errors_response_includes_metadata() {
+        let response = crate::tracing::scope_request_id(
+            crate::tracing::RequestId::new("meta-validation"),
+            async { ApiResponse::<()>::validation_errors(vec!["missing".into()]) },
+        )
+        .await;
+
+        let meta = response.meta.expect("metadata expected");
+        assert_eq!(meta.request_id.as_deref(), Some("meta-validation"));
+        DateTime::parse_from_rfc3339(&meta.timestamp).expect("timestamp should parse");
     }
 }
 
