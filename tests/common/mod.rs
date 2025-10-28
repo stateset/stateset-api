@@ -223,10 +223,24 @@ impl TestApp {
         let product = catalog
             .create_product(CreateProductInput {
                 name: format!("Test Product {}", sku),
-                slug: format!("test-product-{}", sku.to_lowercase()),
-                description: "Test product seeded for integration tests".to_string(),
-                attributes: Vec::new(),
-                seo: json!({}),
+                sku: format!("test-product-{}", sku.to_lowercase()),
+                description: Some("Test product seeded for integration tests".to_string()),
+                price,
+                currency: "USD".to_string(),
+                is_active: true,
+                is_digital: false,
+                image_url: None,
+                brand: None,
+                manufacturer: None,
+                weight_kg: None,
+                dimensions_cm: None,
+                tags: None,
+                cost_price: Some(price),
+                msrp: None,
+                tax_rate: None,
+                meta_title: None,
+                meta_description: None,
+                reorder_point: None,
             })
             .await
             .expect("seed product for tests");

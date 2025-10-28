@@ -4,7 +4,7 @@ use axum::{
     Json,
 };
 use sea_orm::error::DbErr;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -16,7 +16,7 @@ fn current_request_id() -> Option<String> {
 }
 
 /// Simplified error structure for OpenAPI documentation
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
     pub error: String,
     pub message: String,
@@ -385,8 +385,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::StatusCode;
-    use hyper::body::to_bytes;
+    use axum::{body::to_bytes, http::StatusCode};
 
     #[tokio::test]
     async fn service_error_response_includes_request_id() {
@@ -397,7 +396,9 @@ mod tests {
             .await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let body = to_bytes(response.into_body()).await.unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload.request_id.as_deref(), Some("req-123"));
     }
@@ -411,7 +412,9 @@ mod tests {
             .await;
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
-        let body = to_bytes(response.into_body()).await.unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload.request_id.as_deref(), Some("req-api-42"));
     }

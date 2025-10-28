@@ -15,6 +15,9 @@ use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
+const DEFAULT_LIMIT: u64 = 20;
+const MAX_LIMIT: u64 = 100;
+
 /// Product catalog service for managing products and variants
 #[derive(Clone)]
 pub struct ProductCatalogService {
@@ -33,34 +36,36 @@ impl ProductCatalogService {
         &self,
         input: CreateProductInput,
     ) -> Result<ProductModel, ServiceError> {
+        self.ensure_unique_sku(&input.sku, None).await?;
+
         let product_id = Uuid::new_v4();
+        let now = Utc::now();
 
         let product = product::ActiveModel {
             id: Set(product_id),
             name: Set(input.name.clone()),
-            // description is Option<String> in entity
-            description: Set(Some(input.description)),
-            sku: Set(input.slug),
-            price: Set(Decimal::ZERO),
-            currency: Set("USD".to_string()),
-            weight_kg: Set(None),
-            dimensions_cm: Set(None),
+            description: Set(input.description.clone()),
+            sku: Set(input.sku.clone()),
+            price: Set(input.price),
+            currency: Set(input.currency.clone()),
+            weight_kg: Set(input.weight_kg),
+            dimensions_cm: Set(input.dimensions_cm.clone()),
             barcode: Set(None),
-            brand: Set(None),
-            manufacturer: Set(None),
-            is_active: Set(true),
-            is_digital: Set(false),
-            image_url: Set(None),
+            brand: Set(input.brand.clone()),
+            manufacturer: Set(input.manufacturer.clone()),
+            is_active: Set(input.is_active),
+            is_digital: Set(input.is_digital),
+            image_url: Set(input.image_url.clone()),
             category_id: Set(None),
-            reorder_point: Set(None),
-            tax_rate: Set(None),
-            cost_price: Set(None),
-            msrp: Set(None),
-            tags: Set(None),
-            meta_title: Set(None),
-            meta_description: Set(None),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Some(Utc::now())),
+            reorder_point: Set(input.reorder_point),
+            tax_rate: Set(input.tax_rate),
+            cost_price: Set(input.cost_price),
+            msrp: Set(input.msrp),
+            tags: Set(input.tags.clone()),
+            meta_title: Set(input.meta_title.clone()),
+            meta_description: Set(input.meta_description.clone()),
+            created_at: Set(now),
+            updated_at: Set(Some(now)),
         };
 
         let product = product.insert(&*self.db).await?;
@@ -71,6 +76,85 @@ impl ProductCatalogService {
             .await;
 
         info!("Created product: {}", product_id);
+        Ok(product)
+    }
+
+    /// Update an existing product
+    #[instrument(skip(self))]
+    pub async fn update_product(
+        &self,
+        product_id: Uuid,
+        input: UpdateProductInput,
+    ) -> Result<ProductModel, ServiceError> {
+        if let Some(ref sku) = input.sku {
+            self.ensure_unique_sku(sku, Some(product_id)).await?;
+        }
+
+        let product = self.get_product(product_id).await?;
+        let mut active: product::ActiveModel = product.into();
+
+        if let Some(name) = input.name {
+            active.name = Set(name);
+        }
+        if let Some(description) = input.description {
+            active.description = Set(Some(description));
+        }
+        if let Some(sku) = input.sku {
+            active.sku = Set(sku);
+        }
+        if let Some(price) = input.price {
+            active.price = Set(price);
+        }
+        if let Some(currency) = input.currency {
+            active.currency = Set(currency);
+        }
+        if let Some(is_active) = input.is_active {
+            active.is_active = Set(is_active);
+        }
+        if let Some(is_digital) = input.is_digital {
+            active.is_digital = Set(is_digital);
+        }
+        if let Some(image_url) = input.image_url {
+            active.image_url = Set(Some(image_url));
+        }
+        if let Some(brand) = input.brand {
+            active.brand = Set(Some(brand));
+        }
+        if let Some(manufacturer) = input.manufacturer {
+            active.manufacturer = Set(Some(manufacturer));
+        }
+        if let Some(weight) = input.weight_kg {
+            active.weight_kg = Set(Some(weight));
+        }
+        if let Some(dimensions) = input.dimensions_cm {
+            active.dimensions_cm = Set(Some(dimensions));
+        }
+        if let Some(tags) = input.tags {
+            active.tags = Set(Some(tags));
+        }
+        if let Some(cost_price) = input.cost_price {
+            active.cost_price = Set(Some(cost_price));
+        }
+        if let Some(msrp) = input.msrp {
+            active.msrp = Set(Some(msrp));
+        }
+        if let Some(tax_rate) = input.tax_rate {
+            active.tax_rate = Set(Some(tax_rate));
+        }
+        if let Some(meta_title) = input.meta_title {
+            active.meta_title = Set(Some(meta_title));
+        }
+        if let Some(meta_description) = input.meta_description {
+            active.meta_description = Set(Some(meta_description));
+        }
+        if let Some(reorder_point) = input.reorder_point {
+            active.reorder_point = Set(Some(reorder_point));
+        }
+
+        active.updated_at = Set(Some(Utc::now()));
+
+        let product = active.update(&*self.db).await?;
+        info!("Updated product: {}", product_id);
         Ok(product)
     }
 
@@ -183,10 +267,13 @@ impl ProductCatalogService {
 
         let total = db_query.clone().count(&*self.db).await?;
 
+        let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+        let offset = query.offset.unwrap_or(0);
+
         let products = db_query
             .order_by_desc(product::Column::CreatedAt)
-            .limit(query.limit.unwrap_or(20))
-            .offset(query.offset.unwrap_or(0))
+            .limit(limit)
+            .offset(offset)
             .all(&*self.db)
             .await?;
 
@@ -213,19 +300,74 @@ impl ProductCatalogService {
         info!("Updated variant {} price to {}", variant_id, price);
         Ok(())
     }
+
+    async fn ensure_unique_sku(
+        &self,
+        sku: &str,
+        exclude_id: Option<Uuid>,
+    ) -> Result<(), ServiceError> {
+        let mut query = Product::find().filter(product::Column::Sku.eq(sku));
+        if let Some(id) = exclude_id {
+            query = query.filter(product::Column::Id.ne(id));
+        }
+
+        if query.one(&*self.db).await?.is_some() {
+            return Err(ServiceError::ValidationError(format!(
+                "SKU {} already exists",
+                sku
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 /// Input for creating a product
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CreateProductInput {
     pub name: String,
-    pub slug: String,
-    pub description: String,
-    // Simplified fields to match entity
-    // pub status: product::ProductStatus,
-    // pub product_type: product::ProductType,
-    pub attributes: Vec<serde_json::Value>,
-    pub seo: serde_json::Value,
+    pub sku: String,
+    pub description: Option<String>,
+    pub price: Decimal,
+    pub currency: String,
+    pub is_active: bool,
+    pub is_digital: bool,
+    pub image_url: Option<String>,
+    pub brand: Option<String>,
+    pub manufacturer: Option<String>,
+    pub weight_kg: Option<Decimal>,
+    pub dimensions_cm: Option<String>,
+    pub tags: Option<String>,
+    pub cost_price: Option<Decimal>,
+    pub msrp: Option<Decimal>,
+    pub tax_rate: Option<Decimal>,
+    pub meta_title: Option<String>,
+    pub meta_description: Option<String>,
+    pub reorder_point: Option<i32>,
+}
+
+/// Input for updating a product
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct UpdateProductInput {
+    pub name: Option<String>,
+    pub sku: Option<String>,
+    pub description: Option<String>,
+    pub price: Option<Decimal>,
+    pub currency: Option<String>,
+    pub is_active: Option<bool>,
+    pub is_digital: Option<bool>,
+    pub image_url: Option<String>,
+    pub brand: Option<String>,
+    pub manufacturer: Option<String>,
+    pub weight_kg: Option<Decimal>,
+    pub dimensions_cm: Option<String>,
+    pub tags: Option<String>,
+    pub cost_price: Option<Decimal>,
+    pub msrp: Option<Decimal>,
+    pub tax_rate: Option<Decimal>,
+    pub meta_title: Option<String>,
+    pub meta_description: Option<String>,
+    pub reorder_point: Option<i32>,
 }
 
 /// Input for creating a variant
@@ -245,7 +387,7 @@ pub struct CreateVariantInput {
 }
 
 /// Product search query
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ProductSearchQuery {
     pub search: Option<String>,
     pub is_active: Option<bool>,

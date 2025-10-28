@@ -71,6 +71,7 @@ once_cell = "1.19"
 regex = "1.10"
 async-recursion = "1.0"
 argon2 = { version = "0.5", features = ["std"] }
+clap = { version = "4.5.4", features = ["derive"] }
 
 [features]
 default = []
@@ -125,3 +126,7 @@ path = "src/bin/migration.rs"
 [[bin]]
 name = "openapi-export"
 path = "src/bin/openapi_export.rs"
+
+[[bin]]
+name = "stateset-cli"
+path = "src/bin/stateset_cli.rs"

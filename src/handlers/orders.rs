@@ -23,6 +23,7 @@ use crate::services::orders::{
 
 const DEFAULT_PAGE: u64 = 1;
 const DEFAULT_LIMIT: u64 = 20;
+const MAX_LIMIT: u64 = 100;
 
 fn default_page() -> u64 {
     DEFAULT_PAGE
@@ -30,6 +31,29 @@ fn default_page() -> u64 {
 
 fn default_limit() -> u64 {
     DEFAULT_LIMIT
+}
+
+fn validate_orders_list_query(query: &OrdersListQuery) -> Result<(), ServiceError> {
+    if query.page == 0 {
+        return Err(ServiceError::ValidationError(
+            "page must be greater than zero".to_string(),
+        ));
+    }
+
+    if query.limit == 0 {
+        return Err(ServiceError::ValidationError(
+            "limit must be greater than zero".to_string(),
+        ));
+    }
+
+    if query.limit > MAX_LIMIT {
+        return Err(ServiceError::ValidationError(format!(
+            "limit cannot exceed {}",
+            MAX_LIMIT
+        )));
+    }
+
+    Ok(())
 }
 
 fn parse_query_datetime(
@@ -433,6 +457,8 @@ pub async fn list_orders(
             "Insufficient permissions to read orders".to_string(),
         ));
     }
+
+    validate_orders_list_query(&query)?;
 
     let svc = state.services.order.clone();
 

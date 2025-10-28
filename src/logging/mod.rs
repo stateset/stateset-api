@@ -128,7 +128,7 @@ pub fn create_app(logger: Logger) -> Router<Arc<LoggingState>> {
 mod tests {
     use super::*;
     use axum::{
-        body::Body,
+        body::{to_bytes, Body},
         routing::get,
         Router,
     };
@@ -169,7 +169,9 @@ mod tests {
             .unwrap();
 
         let response = app.oneshot(request).await.unwrap();
-        let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(body, "Hello, World!");

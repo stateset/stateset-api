@@ -1,8 +1,12 @@
 use crate::{
-    auth::{AuthService, LoginCredentials, TokenPair},
+    auth::{user, AuthService, LoginCredentials, TokenPair},
     entities::commerce::{customer, customer_address, Customer, CustomerModel},
     errors::ServiceError,
     events::{Event, EventSender},
+};
+use argon2::{
+    password_hash::{PasswordHasher, SaltString},
+    Argon2,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -11,6 +15,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use rand::rngs::OsRng;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
@@ -53,18 +58,35 @@ impl CustomerService {
             ));
         }
 
+        let RegisterCustomerInput {
+            email,
+            password,
+            first_name,
+            last_name,
+            phone,
+            accepts_marketing,
+        } = input;
+
         let customer_id = Uuid::new_v4();
 
         // Hash password
-        let password_hash = self.hash_password(&input.password)?;
+        let password_hash = self.hash_password(&password)?;
+
+        let display_name = format!("{first_name} {last_name}");
+        let display_name = display_name.trim();
+        let display_name = if display_name.is_empty() {
+            first_name.clone()
+        } else {
+            display_name.to_string()
+        };
 
         let customer = customer::ActiveModel {
             id: Set(customer_id),
-            email: Set(input.email.clone()),
-            first_name: Set(input.first_name),
-            last_name: Set(input.last_name),
-            phone: Set(input.phone),
-            accepts_marketing: Set(input.accepts_marketing),
+            email: Set(email.clone()),
+            first_name: Set(first_name.clone()),
+            last_name: Set(last_name.clone()),
+            phone: Set(phone.clone()),
+            accepts_marketing: Set(accepts_marketing),
             customer_group_id: Set(None),
             default_shipping_address_id: Set(None),
             default_billing_address_id: Set(None),
@@ -80,7 +102,7 @@ impl CustomerService {
         let customer = customer.insert(&*self.db).await?;
 
         // Store password in auth system
-        self.store_customer_credentials(customer_id, &input.email, &password_hash)
+        self.store_customer_credentials(customer_id, &display_name, &email, &password_hash)
             .await?;
 
         self.event_sender
@@ -97,22 +119,38 @@ impl CustomerService {
         &self,
         credentials: LoginCredentials,
     ) -> Result<CustomerLoginResponse, ServiceError> {
-        // Find customer
-        let customer = Customer::find()
-            .filter(customer::Column::Email.eq(&credentials.email))
+        let user = self
+            .auth_service
+            .authenticate_user(&credentials.email, &credentials.password)
+            .await
+            .map_err(|_| ServiceError::AuthError("Invalid credentials".to_string()))?;
+
+        // Find matching customer record
+        let customer = match Customer::find_by_id(user.id)
             .one(&*self.db)
             .await?
-            .ok_or_else(|| ServiceError::AuthError("Invalid credentials".to_string()))?;
+        {
+            Some(model) => model,
+            None => Customer::find()
+                .filter(customer::Column::Email.eq(&user.email))
+                .one(&*self.db)
+                .await?
+                .ok_or_else(|| ServiceError::AuthError("Invalid credentials".to_string()))?,
+        };
+
+        if customer.email != user.email {
+            return Err(ServiceError::AuthError(
+                "Invalid credentials".to_string(),
+            ));
+        }
 
         if customer.status != customer::CustomerStatus::Active {
             return Err(ServiceError::AuthError("Account is not active".to_string()));
         }
 
-        // Generate auth tokens
-        let auth_user = self.create_auth_user(&customer);
         let tokens = self
             .auth_service
-            .generate_token(&auth_user)
+            .generate_token(&user)
             .await
             .map_err(|e| ServiceError::AuthError(e.to_string()))?;
 
@@ -238,34 +276,75 @@ impl CustomerService {
 
     /// Helper: Hash password
     fn hash_password(&self, password: &str) -> Result<String, ServiceError> {
-        // This would use bcrypt or argon2
-        Ok(format!("hashed_{}", password))
+        if password.trim().is_empty() {
+            return Err(ServiceError::ValidationError(
+                "Password cannot be empty".to_string(),
+            ));
+        }
+
+        let mut rng = OsRng;
+        let salt = SaltString::generate(&mut rng);
+        Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map(|hash| hash.to_string())
+            .map_err(|err| {
+                ServiceError::InternalError(format!("Failed to hash password: {}", err))
+            })
     }
 
     /// Helper: Store customer credentials
     async fn store_customer_credentials(
         &self,
-        _customer_id: Uuid,
-        _email: &str,
-        _password_hash: &str,
+        customer_id: Uuid,
+        name: &str,
+        email: &str,
+        password_hash: &str,
     ) -> Result<(), ServiceError> {
-        // This would store in auth system
+        let now = Utc::now();
+
+        // Ensure no other auth user is registered with the same email
+        if user::Entity::find()
+            .filter(user::Column::Email.eq(email))
+            .one(&*self.db)
+            .await?
+            .is_some()
+        {
+            return Err(ServiceError::ValidationError(
+                "Email already registered".to_string(),
+            ));
+        }
+
+        if user::Entity::find_by_id(customer_id)
+            .one(&*self.db)
+            .await?
+            .is_some()
+        {
+            return Err(ServiceError::ValidationError(
+                "Customer account already exists".to_string(),
+            ));
+        }
+
+        let display_name = if name.trim().is_empty() {
+            email.to_string()
+        } else {
+            name.trim().to_string()
+        };
+
+        let auth_user = user::ActiveModel {
+            id: Set(customer_id),
+            name: Set(display_name),
+            email: Set(email.to_string()),
+            password_hash: Set(password_hash.to_string()),
+            tenant_id: Set(None),
+            active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+
+        auth_user.insert(&*self.db).await?;
         Ok(())
     }
 
-    /// Helper: Create auth user from customer
-    fn create_auth_user(&self, customer: &CustomerModel) -> crate::auth::User {
-        crate::auth::User {
-            id: customer.id,
-            name: format!("{} {}", customer.first_name, customer.last_name),
-            email: customer.email.clone(),
-            password_hash: String::new(), // Would be fetched from auth store
-            tenant_id: None,
-            active: customer.status == customer::CustomerStatus::Active,
-            created_at: customer.created_at,
-            updated_at: customer.updated_at,
-        }
-    }
 }
 
 /// Input for registering a customer
