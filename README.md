@@ -143,6 +143,124 @@ Requests to unknown routes return a JSON 404 response.
 
 Docker: `docker-compose up -d` starts the API and Redis. Compose reads values from `.env` for container env, which is separate from the app’s `APP__*` variables used by the config system.
 
+## Stateset CLI
+
+This repository also provides a CLI binary (`stateset-cli`) that reuses the same service layer as the HTTP API. It is ideal for local development, quick smoke tests, or scripting operational tasks without crafting raw REST requests.
+
+### Build or Run the CLI
+
+```sh
+# Build once
+cargo build --bin stateset-cli
+
+# Or run ad hoc with arguments
+cargo run --bin stateset-cli -- --help
+```
+
+By default the CLI reads configuration exactly like the server (via `AppConfig`). Set the usual `APP__*` environment variables (e.g. `APP__DATABASE_URL`) before running it.
+
+### Authentication Helpers
+
+```sh
+# Login and persist tokens to ~/.stateset/session.json
+stateset-cli auth login \
+  --email admin@stateset.com \
+  --password "secret" \
+  --save
+
+# Refresh saved tokens or inspect claims
+stateset-cli auth refresh --save
+stateset-cli auth whoami --include-refresh
+
+# Revoke tokens (and optionally clear the session file)
+stateset-cli auth logout --clear
+```
+
+The session file defaults to `~/.stateset/session.json`. Override with `STATESET_CLI_HOME=/custom/path.json`.
+
+### Orders
+
+```sh
+# Create an order with two line items
+stateset-cli orders create \
+  --customer-id 2ddfeabd-0e6b-47f1-b63b-e1d755d094d6 \
+  --item sku=SKU-123,quantity=2,price=19.99 \
+  --item sku=SKU-456,quantity=1,price=49.00
+
+# Explore and manage orders
+stateset-cli orders list --page 1 --per-page 20 --status pending
+stateset-cli orders update-status --order-id <uuid> --status shipped --notes "Label printed"
+stateset-cli orders delete --order-id <uuid>
+stateset-cli orders items --id <uuid> --json
+```
+
+### Products
+
+```sh
+# Create or update catalog entries
+stateset-cli products create \
+  --name "Widget" \
+  --sku WIDGET-001 \
+  --price 25.00 \
+  --brand "Stateset"
+
+stateset-cli products update \
+  --id <uuid> \
+  --price 27.50 \
+  --deactivate
+
+# Add variants and search the catalog
+stateset-cli products create-variant \
+  --product-id <uuid> \
+  --sku WIDGET-001-RED-S \
+  --name "Widget / Red / Small" \
+  --price 27.50 \
+  --option color=Red \
+  --option size=Small
+
+stateset-cli products search --query widget --limit 10 --json
+stateset-cli products variants --product-id <uuid>
+```
+
+### Customers
+
+```sh
+# Register, authenticate, and browse customers
+stateset-cli customers create \
+  --email customer@example.com \
+  --password "P@ssw0rd!" \
+  --first-name Ada \
+  --last-name Lovelace
+
+stateset-cli customers login \
+  --email customer@example.com \
+  --password "P@ssw0rd!" \
+  --save
+
+stateset-cli customers list --search "@stateset.com" --limit 25
+stateset-cli customers get --id <uuid> --json
+
+# Manage addresses
+stateset-cli customers add-address \
+  --customer-id <uuid> \
+  --first-name Ada \
+  --last-name Lovelace \
+  --address-line-1 "1 Infinite Loop" \
+  --city Cupertino \
+  --province CA \
+  --country-code US \
+  --postal-code 95014 \
+  --default-shipping
+
+stateset-cli customers addresses --id <uuid> --json
+```
+
+### Tips
+
+- Append `--json` to any subcommand for machine-readable pretty output.
+- Validation mirrors the API: expect the same error messages and permission requirements.
+- Because the CLI instantiates the full service stack, ensure Redis/database dependencies are reachable when commands require them (orders, inventory, etc.).
+
 ## Continuous Integration & Quality Gates
 
 StateSet API ships with GitHub Actions workflows that enforce quality gates:
