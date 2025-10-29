@@ -72,7 +72,7 @@ mod tests {
                 "street": "123 Main St",
                 "city": "Anytown",
                 "state": "CA",
-                "zip_code": "12345",
+                "postal_code": "12345",
                 "country": "US"
             }
         });

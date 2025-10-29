@@ -10,6 +10,7 @@ use axum::{
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
+use sea_orm::{ConnectionTrait, DatabaseBackend as DbBackend, Statement};
 use serde_json::{json, Value};
 use stateset_api::entities::commerce::product_variant;
 use stateset_api::{
@@ -30,6 +31,7 @@ pub struct TestApp {
     router: Router,
     pub state: AppState,
     token: String,
+    #[allow(dead_code)]
     auth_service: Arc<AuthService>,
     _event_task: tokio::task::JoinHandle<()>,
 }
@@ -53,6 +55,26 @@ impl TestApp {
         let pool = db::establish_connection_from_app_config(&cfg)
             .await
             .expect("failed to create test database");
+
+        // Ensure a clean schema for each test run by clearing key tables before migrations.
+        let reset_statements = [
+            "DROP TABLE IF EXISTS order_items;",
+            "DROP TABLE IF EXISTS orders;",
+            "DROP TABLE IF EXISTS product_variants;",
+            "DROP TABLE IF EXISTS products;",
+            "DROP TABLE IF EXISTS customer_addresses;",
+            "DROP TABLE IF EXISTS customers;",
+            "DROP TABLE IF EXISTS users;",
+            "DROP TABLE IF EXISTS user_roles;",
+            "DROP TABLE IF EXISTS refresh_tokens;",
+            "DROP TABLE IF EXISTS api_keys;",
+        ];
+        for sql in reset_statements {
+            let _ = pool
+                .execute(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+                .await;
+        }
+
         db::run_migrations(&pool)
             .await
             .expect("failed to run migrations in tests");
@@ -168,6 +190,7 @@ impl TestApp {
     }
 
     /// Access the auth service used by the test application.
+    #[allow(dead_code)]
     pub fn auth_service(&self) -> Arc<AuthService> {
         self.auth_service.clone()
     }

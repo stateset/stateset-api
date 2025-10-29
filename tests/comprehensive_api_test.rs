@@ -5,7 +5,11 @@ use axum::{
     http::{Method, StatusCode},
 };
 use common::TestApp;
+use rust_decimal::Decimal;
+use sea_orm::EntityTrait;
 use serde_json::{json, Value};
+use stateset_api::entities::order::Entity as OrderEntity;
+use uuid::Uuid;
 
 async fn make_request(
     app: &TestApp,
@@ -40,6 +44,10 @@ async fn make_request(
 #[tokio::test]
 async fn comprehensive_smoke_test() {
     let app = TestApp::new().await;
+    let variant = app
+        .seed_product_variant("COMPREHENSIVE-SKU", Decimal::new(1999, 2))
+        .await;
+    let customer_id = Uuid::new_v4().to_string();
 
     // Health endpoints should respond without authentication.
     let (status, body) = make_request(&app, Method::GET, "/health", None, false).await;
@@ -60,12 +68,11 @@ async fn comprehensive_smoke_test() {
 
     // Create an order and ensure it can be fetched.
     let order_payload = json!({
-        "customer_id": "cust-comprehensive",
+        "customer_id": customer_id,
         "items": [
             {
-                "product_id": "prod-comprehensive",
-                "quantity": 1,
-                "price": 19.99
+                "product_id": variant.id.to_string(),
+                "quantity": 1
             }
         ],
         "notes": "comprehensive smoke test"
@@ -79,17 +86,49 @@ async fn comprehensive_smoke_test() {
         true,
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
+    if status != StatusCode::CREATED {
+        panic!("create order failed (status {}): {}", status, order_body);
+    }
     let order_id = order_body["data"]["id"]
         .as_str()
         .expect("order id present")
         .to_string();
+    let order_number = order_body["data"]["order_number"]
+        .as_str()
+        .expect("order number present")
+        .to_string();
 
-    let (status, _) = make_request(&app, Method::GET, "/api/v1/orders", None, true).await;
-    assert_eq!(status, StatusCode::OK);
+    let (status, orders_list) = make_request(&app, Method::GET, "/api/v1/orders", None, true).await;
+    assert_eq!(
+        orders_list["items"][0]["id"].as_str(),
+        Some(order_id.as_str())
+    );
 
-    let order_uri = format!("/api/v1/orders/{}", order_id);
-    let (status, _) = make_request(&app, Method::GET, &order_uri, None, true).await;
+    let service_order = app
+        .state
+        .services
+        .order
+        .get_order(order_id.parse().expect("uuid"))
+        .await
+        .expect("order service call");
+    assert!(service_order.is_some());
+
+    let service_by_number = app
+        .state
+        .services
+        .order
+        .get_order_by_order_number(&order_number)
+        .await
+        .expect("order by number");
+    assert!(service_by_number.is_some());
+
+    let stored_orders = OrderEntity::find()
+        .all(app.state.db.as_ref())
+        .await
+        .expect("load orders from db");
+    assert!(stored_orders
+        .iter()
+        .any(|stored| stored.id.to_string() == order_id));
     assert_eq!(status, StatusCode::OK);
 
     // Basic inventory read should also succeed.

@@ -11,6 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use rust_decimal::Decimal;
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use stateset_api::{
     auth::{AuthConfig, AuthService, LoginCredentials, TokenPair},
@@ -27,8 +28,8 @@ use stateset_api::{
                 AddAddressInput, CustomerResponse, CustomerService, RegisterCustomerInput,
             },
             product_catalog_service::{
-                CreateProductInput, CreateVariantInput, ProductCatalogService,
-                ProductSearchQuery, ProductSearchResult, UpdateProductInput,
+                CreateProductInput, CreateVariantInput, ProductCatalogService, ProductSearchQuery,
+                ProductSearchResult, UpdateProductInput,
             },
         },
         orders::{
@@ -37,7 +38,6 @@ use stateset_api::{
         },
     },
 };
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use tokio::sync::mpsc;
 use tracing::debug;
 use uuid::Uuid;
@@ -51,7 +51,9 @@ async fn main() -> Result<()> {
         Commands::Auth(command) => handle_auth_command(&context, command, cli.json).await?,
         Commands::Orders(command) => handle_orders_command(&context, command, cli.json).await?,
         Commands::Products(command) => handle_products_command(&context, command, cli.json).await?,
-        Commands::Customers(command) => handle_customers_command(&context, command, cli.json).await?,
+        Commands::Customers(command) => {
+            handle_customers_command(&context, command, cli.json).await?
+        }
         Commands::Create(command) => handle_create_command(&context, command, cli.json).await?,
     }
 
@@ -92,7 +94,11 @@ async fn handle_customer_login(
 }
 
 #[derive(Parser)]
-#[command(name = "stateset", about = "Stateset CLI for auth and resource management", version)]
+#[command(
+    name = "stateset",
+    about = "Stateset CLI for auth and resource management",
+    version
+)]
 struct Cli {
     #[arg(
         long,
@@ -459,7 +465,11 @@ struct GetCustomerArgs {
 struct ListCustomersArgs {
     #[arg(long, help = "Optional search term to match name or email")]
     search: Option<String>,
-    #[arg(long, help = "Maximum number of customers to return", default_value_t = 25)]
+    #[arg(
+        long,
+        help = "Maximum number of customers to return",
+        default_value_t = 25
+    )]
     limit: u64,
     #[arg(long, help = "Offset for pagination", default_value_t = 0)]
     offset: u64,
@@ -713,7 +723,11 @@ impl CliContext {
     }
 }
 
-async fn handle_auth_command(context: &CliContext, command: AuthCommands, json: bool) -> Result<()> {
+async fn handle_auth_command(
+    context: &CliContext,
+    command: AuthCommands,
+    json: bool,
+) -> Result<()> {
     match command {
         AuthCommands::Login(args) => handle_auth_login(context, args, json).await,
         AuthCommands::Refresh(args) => handle_auth_refresh(context, args, json).await,
@@ -838,10 +852,7 @@ async fn handle_orders_command(
             if json {
                 print_json(&updated)?;
             } else {
-                println!(
-                    "Updated order {} status to {}",
-                    updated.id, updated.status
-                );
+                println!("Updated order {} status to {}", updated.id, updated.status);
                 render_order(&updated);
             }
             Ok(())
@@ -905,7 +916,9 @@ async fn handle_products_command(
             let variants = service
                 .get_product_variants(args.product_id)
                 .await
-                .with_context(|| format!("failed to fetch variants for product {}", args.product_id))?;
+                .with_context(|| {
+                    format!("failed to fetch variants for product {}", args.product_id)
+                })?;
             if json {
                 print_json(&variants)?;
             } else if variants.is_empty() {
@@ -996,7 +1009,10 @@ async fn handle_customers_command(
             if json {
                 print_json(&address)?;
             } else {
-                println!("Added address {} to customer {}", address.id, address.customer_id);
+                println!(
+                    "Added address {} to customer {}",
+                    address.id, address.customer_id
+                );
             }
             Ok(())
         }
@@ -1086,7 +1102,10 @@ async fn handle_auth_refresh(
         };
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
-        println!("Issued new access token (expires in {}s)", tokens.expires_in);
+        println!(
+            "Issued new access token (expires in {}s)",
+            tokens.expires_in
+        );
         if let Some(path) = saved_path {
             println!("Session saved to: {}", path);
         }
@@ -1095,11 +1114,7 @@ async fn handle_auth_refresh(
     Ok(())
 }
 
-async fn handle_auth_whoami(
-    context: &CliContext,
-    args: AuthWhoAmIArgs,
-    json: bool,
-) -> Result<()> {
+async fn handle_auth_whoami(context: &CliContext, args: AuthWhoAmIArgs, json: bool) -> Result<()> {
     let session = read_session()?;
     let token = if let Some(token) = args.token {
         token
@@ -1219,11 +1234,7 @@ async fn handle_create_customer(
     if json {
         println!("{}", serde_json::to_string_pretty(&customer)?);
     } else {
-        println!(
-            "Created customer {} ({})",
-            customer.id,
-            customer.email
-        );
+        println!("Created customer {} ({})", customer.id, customer.email);
     }
 
     Ok(())
@@ -1392,12 +1403,9 @@ async fn handle_create_order(
 
     let order_service = context.order_service();
 
-    let total_amount = args
-        .items
-        .iter()
-        .fold(Decimal::ZERO, |acc, item| {
-            acc + item.unit_price * Decimal::from(item.quantity)
-        });
+    let total_amount = args.items.iter().fold(Decimal::ZERO, |acc, item| {
+        acc + item.unit_price * Decimal::from(item.quantity)
+    });
 
     let currency = args
         .currency
@@ -1458,11 +1466,8 @@ async fn handle_create_variant(
     args: CreateVariantArgs,
 ) -> Result<ProductVariantModel> {
     let service = context.product_service();
-    let options_map: HashMap<String, String> = args
-        .options
-        .into_iter()
-        .map(|(k, v)| (k, v))
-        .collect();
+    let options_map: HashMap<String, String> =
+        args.options.into_iter().map(|(k, v)| (k, v)).collect();
 
     let input = CreateVariantInput {
         product_id: args.product_id,
@@ -1655,13 +1660,13 @@ fn parse_order_item(raw: &str) -> Result<OrderItemInput, String> {
                 quantity = Some(qty);
             }
             "price" | "unit_price" => {
-                let price = Decimal::from_str(value)
-                    .map_err(|_| format!("invalid price '{value}'"))?;
+                let price =
+                    Decimal::from_str(value).map_err(|_| format!("invalid price '{value}'"))?;
                 unit_price = Some(price);
             }
             "product_id" => {
-                let id = Uuid::parse_str(value)
-                    .map_err(|_| format!("invalid product_id '{value}'"))?;
+                let id =
+                    Uuid::parse_str(value).map_err(|_| format!("invalid product_id '{value}'"))?;
                 product_id = Some(id);
             }
             "name" => {
@@ -1670,8 +1675,8 @@ fn parse_order_item(raw: &str) -> Result<OrderItemInput, String> {
                 }
             }
             "tax_rate" => {
-                let rate = Decimal::from_str(value)
-                    .map_err(|_| format!("invalid tax_rate '{value}'"))?;
+                let rate =
+                    Decimal::from_str(value).map_err(|_| format!("invalid tax_rate '{value}'"))?;
                 tax_rate = Some(rate);
             }
             other => {
@@ -1681,10 +1686,8 @@ fn parse_order_item(raw: &str) -> Result<OrderItemInput, String> {
     }
 
     let sku = sku.ok_or_else(|| "item must include sku=<value>".to_string())?;
-    let quantity =
-        quantity.ok_or_else(|| "item must include quantity=<integer>".to_string())?;
-    let unit_price =
-        unit_price.ok_or_else(|| "item must include price=<decimal>".to_string())?;
+    let quantity = quantity.ok_or_else(|| "item must include quantity=<integer>".to_string())?;
+    let unit_price = unit_price.ok_or_else(|| "item must include price=<decimal>".to_string())?;
 
     Ok(OrderItemInput {
         sku,
@@ -1806,8 +1809,7 @@ fn read_session() -> Result<Option<(PathBuf, StoredSession)>> {
 
 fn clear_session_file(path: &Path) -> Result<()> {
     if path.exists() {
-        fs::remove_file(path)
-            .with_context(|| format!("failed to remove {}", path.display()))?;
+        fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
     }
     Ok(())
 }

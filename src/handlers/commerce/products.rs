@@ -77,7 +77,7 @@ pub fn products_routes() -> Router<AppState> {
 /// Create a new product
 async fn create_product(
     _user: AuthenticatedUser,
-   State(state): State<AppState>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateProductRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     validate_input(&payload)?;
@@ -113,9 +113,7 @@ async fn create_product(
 
     let sku = normalize_string(sku);
     if sku.is_empty() {
-        return Err(ApiError::ValidationError(
-            "SKU cannot be blank".to_string(),
-        ));
+        return Err(ApiError::ValidationError("SKU cannot be blank".to_string()));
     }
 
     let description = normalize_optional_string(description);
@@ -246,9 +244,7 @@ async fn update_product(
         .map(normalize_string)
         .map(|value| {
             if value.is_empty() {
-                Err(ApiError::ValidationError(
-                    "SKU cannot be blank".to_string(),
-                ))
+                Err(ApiError::ValidationError("SKU cannot be blank".to_string()))
             } else {
                 Ok(value)
             }

@@ -8,7 +8,7 @@ This guide summarizes the HTTP APIs exposed by `stateset-api` so that operations
 - **Staging**: `https://staging-api.stateset.com/v1`
 - **Local development**: `http://localhost:8080/api/v1`
 - **Interactive docs**: `GET /swagger-ui` (serves the OpenAPI UI backed by `GET /api-docs/openapi.json`)
-- **Version**: Published as `StateSet API 0.1.4` (see OpenAPI info block in `src/openapi/mod.rs`)
+- **Version**: Published as `StateSet API 0.1.5` (see OpenAPI info block in `src/openapi/mod.rs`)
 
 All endpoints below are rooted at `/api/v1` unless otherwise noted.
 

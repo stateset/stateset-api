@@ -575,6 +575,218 @@ async fn ensure_core_tables_sqlite(pool: &DbPool) -> Result<(), AppError> {
             is_signature_required INTEGER NOT NULL DEFAULT 0
         );
         "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id BLOB PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            tenant_id TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS user_roles (
+            id BLOB PRIMARY KEY,
+            user_id BLOB NOT NULL,
+            role_name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id BLOB PRIMARY KEY,
+            user_id BLOB NOT NULL,
+            token_id TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id BLOB PRIMARY KEY,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL,
+            user_id BLOB NOT NULL,
+            tenant_id TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            last_used_at TEXT,
+            revoked INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_api_keys_revoked ON api_keys(revoked);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS products (
+            id BLOB PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            sku TEXT NOT NULL UNIQUE,
+            price REAL NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            weight_kg REAL,
+            dimensions_cm TEXT,
+            barcode TEXT,
+            brand TEXT,
+            manufacturer TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_digital INTEGER NOT NULL DEFAULT 0,
+            image_url TEXT,
+            category_id BLOB,
+            reorder_point INTEGER,
+            tax_rate REAL,
+            cost_price REAL,
+            msrp REAL,
+            tags TEXT,
+            meta_title TEXT,
+            meta_description TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_products_is_active ON products(is_active);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS product_variants (
+            id BLOB PRIMARY KEY,
+            product_id BLOB NOT NULL,
+            sku TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            price REAL NOT NULL,
+            compare_at_price REAL,
+            cost REAL,
+            weight REAL,
+            dimensions TEXT,
+            options TEXT NOT NULL DEFAULT '{}',
+            inventory_tracking INTEGER NOT NULL DEFAULT 1,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_product_variants_product_id ON product_variants(product_id);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS customers (
+            id BLOB PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            phone TEXT,
+            accepts_marketing INTEGER NOT NULL DEFAULT 0,
+            customer_group_id BLOB,
+            default_shipping_address_id BLOB,
+            default_billing_address_id BLOB,
+            tags TEXT NOT NULL DEFAULT '[]',
+            metadata TEXT,
+            email_verified INTEGER NOT NULL DEFAULT 0,
+            email_verified_at TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_customers_status ON customers(status);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS customer_addresses (
+            id BLOB PRIMARY KEY,
+            customer_id BLOB NOT NULL,
+            name TEXT,
+            company TEXT,
+            address_line_1 TEXT NOT NULL,
+            address_line_2 TEXT,
+            city TEXT NOT NULL,
+            province TEXT NOT NULL,
+            country_code TEXT NOT NULL,
+            postal_code TEXT NOT NULL,
+            phone TEXT,
+            is_default_shipping INTEGER NOT NULL DEFAULT 0,
+            is_default_billing INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_customer_addresses_customer_id ON customer_addresses(customer_id);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS orders (
+            id BLOB PRIMARY KEY,
+            order_number TEXT NOT NULL UNIQUE,
+            customer_id BLOB NOT NULL,
+            status TEXT NOT NULL,
+            order_date TEXT NOT NULL,
+            total_amount REAL NOT NULL DEFAULT 0.0,
+            currency TEXT NOT NULL DEFAULT 'USD',
+            payment_status TEXT NOT NULL DEFAULT 'pending',
+            fulfillment_status TEXT NOT NULL DEFAULT 'unfulfilled',
+            payment_method TEXT,
+            shipping_method TEXT,
+            tracking_number TEXT,
+            notes TEXT,
+            shipping_address TEXT,
+            billing_address TEXT,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            version INTEGER NOT NULL DEFAULT 1
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS order_items (
+            id BLOB PRIMARY KEY,
+            order_id BLOB NOT NULL,
+            product_id BLOB NOT NULL,
+            sku TEXT NOT NULL,
+            name TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            unit_price REAL NOT NULL,
+            total_price REAL NOT NULL,
+            discount REAL NOT NULL DEFAULT 0.0,
+            tax_rate REAL NOT NULL DEFAULT 0.0,
+            tax_amount REAL NOT NULL DEFAULT 0.0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+        "#,
     ];
 
     for sql in statements {

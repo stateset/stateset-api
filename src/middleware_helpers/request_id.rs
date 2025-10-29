@@ -94,9 +94,7 @@ mod tests {
         let header = response.headers().get(REQUEST_ID_HEADER).cloned();
         assert!(header.is_some());
 
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body_str = String::from_utf8(body.to_vec()).unwrap();
         assert!(body_str.starts_with("request-id:"));
     }

@@ -1,0 +1,268 @@
+use sea_orm_migration::prelude::*;
+
+pub struct Migration;
+
+impl MigrationName for Migration {
+    fn name(&self) -> &str {
+        "m20250105_000019_create_customers_table"
+    }
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Customers::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Customers::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::Email)
+                            .string_len(255)
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::FirstName)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::LastName)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Customers::Phone).string_len(50).null())
+                    .col(
+                        ColumnDef::new(Customers::AcceptsMarketing)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(ColumnDef::new(Customers::CustomerGroupId).uuid().null())
+                    .col(
+                        ColumnDef::new(Customers::DefaultShippingAddressId)
+                            .uuid()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::DefaultBillingAddressId)
+                            .uuid()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::Tags)
+                            .json()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(ColumnDef::new(Customers::Metadata).json().null())
+                    .col(
+                        ColumnDef::new(Customers::EmailVerified)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::EmailVerifiedAt)
+                            .timestamp()
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::Status)
+                            .string_len(20)
+                            .not_null()
+                            .default("active"),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::CreatedAt)
+                            .timestamp()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Customers::UpdatedAt)
+                            .timestamp()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(CustomerAddresses::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(CustomerAddresses::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::CustomerId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::Name)
+                            .string_len(255)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::Company)
+                            .string_len(255)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::AddressLine1)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::AddressLine2)
+                            .string_len(255)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::City)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::Province)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::CountryCode)
+                            .string_len(2)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::PostalCode)
+                            .string_len(20)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::Phone)
+                            .string_len(50)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::IsDefaultShipping)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::IsDefaultBilling)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::CreatedAt)
+                            .timestamp()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(CustomerAddresses::UpdatedAt)
+                            .timestamp()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_customer_addresses_customer_id")
+                            .from(CustomerAddresses::Table, CustomerAddresses::CustomerId)
+                            .to(Customers::Table, Customers::Id)
+                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_customers_status")
+                    .table(Customers::Table)
+                    .col(Customers::Status)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_customer_addresses_customer_id")
+                    .table(CustomerAddresses::Table)
+                    .col(CustomerAddresses::CustomerId)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(CustomerAddresses::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Customers::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Customers {
+    Table,
+    Id,
+    Email,
+    FirstName,
+    LastName,
+    Phone,
+    AcceptsMarketing,
+    CustomerGroupId,
+    DefaultShippingAddressId,
+    DefaultBillingAddressId,
+    Tags,
+    Metadata,
+    EmailVerified,
+    EmailVerifiedAt,
+    Status,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum CustomerAddresses {
+    Table,
+    Id,
+    CustomerId,
+    Name,
+    Company,
+    AddressLine1,
+    AddressLine2,
+    City,
+    Province,
+    CountryCode,
+    PostalCode,
+    Phone,
+    IsDefaultShipping,
+    IsDefaultBilling,
+    CreatedAt,
+    UpdatedAt,
+}

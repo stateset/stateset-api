@@ -1,3 +1,9 @@
+## v0.1.5
+
+- add dedicated products, product variants, and customers migrations plus order metadata columns, and mirror the schema bootstrap in SQLite so dev/test environments match production
+- harden the test harness by resetting commerce/auth tables between runs and adding helpers to seed real catalog variants for end-to-end scenarios
+- expand the comprehensive API smoke test to create orders from seeded products and assert both service-level and database reads for improved release confidence
+
 ## v0.1.4
 
 - roll out a dedicated manufacturing schema with SeaORM entities, migrations, and a rebuilt bill of materials service that tracks components, audits, and work order readiness

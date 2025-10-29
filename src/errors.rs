@@ -396,9 +396,7 @@ mod tests {
             .await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload.request_id.as_deref(), Some("req-123"));
     }
@@ -412,9 +410,7 @@ mod tests {
             .await;
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload.request_id.as_deref(), Some("req-api-42"));
     }

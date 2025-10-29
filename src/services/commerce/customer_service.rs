@@ -9,13 +9,13 @@ use argon2::{
     Argon2,
 };
 use chrono::Utc;
+use rand::rngs::OsRng;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use rand::rngs::OsRng;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
@@ -126,10 +126,7 @@ impl CustomerService {
             .map_err(|_| ServiceError::AuthError("Invalid credentials".to_string()))?;
 
         // Find matching customer record
-        let customer = match Customer::find_by_id(user.id)
-            .one(&*self.db)
-            .await?
-        {
+        let customer = match Customer::find_by_id(user.id).one(&*self.db).await? {
             Some(model) => model,
             None => Customer::find()
                 .filter(customer::Column::Email.eq(&user.email))
@@ -139,9 +136,7 @@ impl CustomerService {
         };
 
         if customer.email != user.email {
-            return Err(ServiceError::AuthError(
-                "Invalid credentials".to_string(),
-            ));
+            return Err(ServiceError::AuthError("Invalid credentials".to_string()));
         }
 
         if customer.status != customer::CustomerStatus::Active {
@@ -287,9 +282,7 @@ impl CustomerService {
         Argon2::default()
             .hash_password(password.as_bytes(), &salt)
             .map(|hash| hash.to_string())
-            .map_err(|err| {
-                ServiceError::InternalError(format!("Failed to hash password: {}", err))
-            })
+            .map_err(|err| ServiceError::InternalError(format!("Failed to hash password: {}", err)))
     }
 
     /// Helper: Store customer credentials
@@ -344,7 +337,6 @@ impl CustomerService {
         auth_user.insert(&*self.db).await?;
         Ok(())
     }
-
 }
 
 /// Input for registering a customer
