@@ -23,8 +23,8 @@ pub mod purchase_receipt;
 pub mod sales_fulfillment;
 
 // Manufacturing and Supply Chain
-pub mod billofmaterials;
 pub mod asn;
+pub mod billofmaterials;
 pub mod procurement;
 // pub mod suppliers;
 

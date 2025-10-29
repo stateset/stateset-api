@@ -2,10 +2,8 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::message_queue::MessageQueue;
 use crate::{
     commands::advancedshippingnotice::{
-        add_item_to_asn_command::AddItemToASNCommand,
-        cancel_asn_command::CancelASNCommand,
-        create_asn_command::CreateASNCommand,
-        hold_asn_command::HoldASNCommand,
+        add_item_to_asn_command::AddItemToASNCommand, cancel_asn_command::CancelASNCommand,
+        create_asn_command::CreateASNCommand, hold_asn_command::HoldASNCommand,
         mark_asn_delivered_command::MarkASNDeliveredCommand,
         mark_asn_in_transit_command::MarkASNInTransitCommand,
         release_asn_from_hold_command::ReleaseASNFromHoldCommand,
@@ -58,10 +56,7 @@ impl ASNService {
 
     /// Creates a new ASN
     #[instrument(skip(self))]
-    pub async fn create_asn(
-        &self,
-        command: CreateASNCommand,
-    ) -> Result<Uuid, ServiceError> {
+    pub async fn create_asn(&self, command: CreateASNCommand) -> Result<Uuid, ServiceError> {
         let result = command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
@@ -70,10 +65,7 @@ impl ASNService {
 
     /// Gets an ASN by ID
     #[instrument(skip(self))]
-    pub async fn get_asn(
-        &self,
-        asn_id: &Uuid,
-    ) -> Result<Option<asn_entity::Model>, ServiceError> {
+    pub async fn get_asn(&self, asn_id: &Uuid) -> Result<Option<asn_entity::Model>, ServiceError> {
         let db = &*self.db_pool;
         let asn = asn_entity::Entity::find_by_id(*asn_id)
             .one(db)
@@ -96,13 +88,13 @@ impl ASNService {
     ) -> Result<(Vec<asn_entity::Model>, u64), ServiceError> {
         if page == 0 {
             return Err(ServiceError::ValidationError(
-                "Page number must be greater than 0".to_string()
+                "Page number must be greater than 0".to_string(),
             ));
         }
 
         if limit == 0 || limit > 1000 {
             return Err(ServiceError::ValidationError(
-                "Limit must be between 1 and 1000".to_string()
+                "Limit must be between 1 and 1000".to_string(),
             ));
         }
 
@@ -139,10 +131,7 @@ impl ASNService {
 
     /// Cancels an ASN
     #[instrument(skip(self))]
-    pub async fn cancel_asn(
-        &self,
-        command: CancelASNCommand,
-    ) -> Result<(), ServiceError> {
+    pub async fn cancel_asn(&self, command: CancelASNCommand) -> Result<(), ServiceError> {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
@@ -175,10 +164,7 @@ impl ASNService {
 
     /// Puts an ASN on hold
     #[instrument(skip(self))]
-    pub async fn hold_asn(
-        &self,
-        command: HoldASNCommand,
-    ) -> Result<(), ServiceError> {
+    pub async fn hold_asn(&self, command: HoldASNCommand) -> Result<(), ServiceError> {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
@@ -199,10 +185,7 @@ impl ASNService {
 
     /// Adds an item to an ASN
     #[instrument(skip(self))]
-    pub async fn add_item_to_asn(
-        &self,
-        command: AddItemToASNCommand,
-    ) -> Result<(), ServiceError> {
+    pub async fn add_item_to_asn(&self, command: AddItemToASNCommand) -> Result<(), ServiceError> {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
@@ -211,10 +194,7 @@ impl ASNService {
 
     /// Deletes an ASN
     #[instrument(skip(self))]
-    pub async fn delete_asn(
-        &self,
-        asn_id: &Uuid,
-    ) -> Result<(), ServiceError> {
+    pub async fn delete_asn(&self, asn_id: &Uuid) -> Result<(), ServiceError> {
         let db = &*self.db_pool;
 
         // Check if ASN exists
@@ -230,7 +210,7 @@ impl ASNService {
         // Check if ASN can be deleted (only draft status)
         if asn.status != asn_entity::ASNStatus::Draft {
             return Err(ServiceError::ValidationError(
-                "Only draft ASNs can be deleted".to_string()
+                "Only draft ASNs can be deleted".to_string(),
             ));
         }
 
@@ -249,7 +229,9 @@ impl ASNService {
             asn_number: asn.asn_number,
         };
 
-        self.event_sender.send(event).await
+        self.event_sender
+            .send(event)
+            .await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 
         info!("ASN {} deleted successfully", asn_id);

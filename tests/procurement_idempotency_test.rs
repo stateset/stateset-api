@@ -161,12 +161,7 @@ async fn asn_create_is_idempotent() {
         .to_string();
 
     let second = app
-        .request_authenticated_with_headers(
-            Method::POST,
-            "/api/v1/asns",
-            Some(payload),
-            &headers,
-        )
+        .request_authenticated_with_headers(Method::POST, "/api/v1/asns", Some(payload), &headers)
         .await;
 
     assert_eq!(second.status(), StatusCode::CREATED);

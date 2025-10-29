@@ -1,3 +1,9 @@
+## v0.1.6
+
+- introduce procurement endpoints: wire purchase orders and ASN services into the API with full permission gating, structured payload validation, and response serialization
+- strengthen idempotency by adding an in-process cache fallback when Redis is unavailable, keeping duplicate protection intact for tests and degenerate environments
+- expand integration coverage with procurement idempotency tests and new helper utilities so the harness can send custom headers (e.g., `Idempotency-Key`) end-to-end
+
 ## v0.1.5
 
 - add dedicated products, product variants, and customers migrations plus order metadata columns, and mirror the schema bootstrap in SQLite so dev/test environments match production

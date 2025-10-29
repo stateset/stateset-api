@@ -10,8 +10,8 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, warn};
 use tokio::sync::Mutex;
+use tracing::{error, warn};
 
 lazy_static! {
     static ref FALLBACK_STORE: Mutex<HashMap<String, Stored>> = Mutex::new(HashMap::new());
@@ -169,7 +169,10 @@ async fn fallback_idempotency(cache_key: String, req: Request, next: Next) -> Re
             Response::from_parts(parts, axum::body::Body::from(bytes))
         }
         Err(e) => {
-            error!("Failed to buffer response body for idempotency fallback: {}", e);
+            error!(
+                "Failed to buffer response body for idempotency fallback: {}",
+                e
+            );
             Response::from_parts(parts, axum::body::Body::empty())
         }
     }

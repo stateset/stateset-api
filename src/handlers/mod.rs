@@ -1,20 +1,20 @@
 // Re-enabling all handler modules after implementing them
+pub mod asn;
 pub mod auth;
+pub mod bom;
+pub mod cash_sales;
 pub mod common;
+pub mod customers;
 pub mod inventory;
+pub mod notifications;
 pub mod orders;
+pub mod payment_webhooks;
+pub mod payments;
+pub mod purchase_orders;
 pub mod returns;
 pub mod shipments;
 pub mod warranties;
 pub mod work_orders;
-pub mod asn;
-pub mod bom;
-pub mod cash_sales;
-pub mod customers;
-pub mod notifications;
-pub mod payment_webhooks;
-pub mod payments;
-pub mod purchase_orders;
 // pub mod reports; // Disabled due to missing service dependencies
 // pub mod suppliers; // Disabled due to missing service dependencies
 pub mod agents;
@@ -69,8 +69,7 @@ impl AppServices {
         let returns_logger = base_logger.new(slog::o!("component" => "returns_service"));
         let shipments_logger = base_logger.new(slog::o!("component" => "shipments_service"));
         let warranties_logger = base_logger.new(slog::o!("component" => "warranties_service"));
-        let procurement_logger =
-            base_logger.new(slog::o!("component" => "procurement_service"));
+        let procurement_logger = base_logger.new(slog::o!("component" => "procurement_service"));
         let asn_logger = base_logger.new(slog::o!("component" => "asn_service"));
 
         let product_catalog = Arc::new(crate::services::commerce::ProductCatalogService::new(

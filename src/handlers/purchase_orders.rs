@@ -98,16 +98,15 @@ pub struct ReceivePurchaseOrderRequest {
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct ItemReceivedRequest {
     pub line_item_id: Uuid,
-    
+
     pub quantity_received: i32,
     pub condition: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct DateRangeParams {
-    
     pub start_date: String,
-    
+
     pub end_date: String,
 }
 

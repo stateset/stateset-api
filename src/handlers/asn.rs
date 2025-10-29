@@ -368,12 +368,11 @@ fn build_create_command(payload: CreateAsnRequest) -> Result<CreateASNCommand, A
         .packages
         .into_iter()
         .map(|pkg| {
-            let weight_unit = parse_weight_unit(&pkg.weight_unit)
-                .map_err(ApiError::ValidationError)?;
+            let weight_unit =
+                parse_weight_unit(&pkg.weight_unit).map_err(ApiError::ValidationError)?;
 
             let dimensions = if let Some(dims) = pkg.dimensions {
-                let unit = parse_dimension_unit(&dims.unit)
-                    .map_err(ApiError::ValidationError)?;
+                let unit = parse_dimension_unit(&dims.unit).map_err(ApiError::ValidationError)?;
                 Some(CommandDimensions {
                     length: dims.length,
                     width: dims.width,
