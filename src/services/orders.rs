@@ -80,6 +80,33 @@ pub struct OrderListResponse {
     pub per_page: u64,
 }
 
+/// Lightweight representation of an order item used when creating an order transactionally.
+#[derive(Debug, Clone)]
+pub struct NewOrderItemInput {
+    pub sku: String,
+    pub product_id: Option<Uuid>,
+    pub name: Option<String>,
+    pub quantity: i32,
+    pub unit_price: Decimal,
+    pub tax_rate: Option<Decimal>,
+}
+
+/// Parameters required to atomically create an order and its items.
+#[derive(Debug, Clone)]
+pub struct CreateOrderWithItemsInput {
+    pub customer_id: Uuid,
+    pub total_amount: Decimal,
+    pub currency: String,
+    pub payment_status: String,
+    pub fulfillment_status: String,
+    pub payment_method: Option<String>,
+    pub shipping_method: Option<String>,
+    pub shipping_address: Option<String>,
+    pub billing_address: Option<String>,
+    pub notes: Option<String>,
+    pub items: Vec<NewOrderItemInput>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderSortField {
@@ -205,6 +232,126 @@ impl OrderService {
         }
 
         Ok(self.model_to_response(model))
+    }
+
+    /// Creates an order together with the provided items inside a single transaction.
+    #[instrument(skip(self, input), fields(customer_id = %input.customer_id))]
+    pub async fn create_order_with_items(
+        &self,
+        mut input: CreateOrderWithItemsInput,
+    ) -> Result<(OrderResponse, Vec<OrderItemModel>), ServiceError> {
+        if input.items.is_empty() {
+            return Err(ServiceError::ValidationError(
+                "orders must include at least one item".to_string(),
+            ));
+        }
+
+        if input.total_amount < Decimal::ZERO {
+            return Err(ServiceError::ValidationError(
+                "total amount cannot be negative".to_string(),
+            ));
+        }
+
+        let db = &*self.db_pool;
+        let now = Utc::now();
+        let order_id = Uuid::new_v4();
+
+        let txn = db.begin().await.map_err(|e| {
+            error!(error = %e, "Failed to start transaction for order creation");
+            ServiceError::db_error(e)
+        })?;
+
+        let order_active = OrderActiveModel {
+            id: Set(order_id),
+            order_number: Set(format!("ORD-{}", now.timestamp_millis())),
+            customer_id: Set(input.customer_id),
+            status: Set(STATUS_PENDING.to_string()),
+            order_date: Set(now),
+            total_amount: Set(input.total_amount),
+            currency: Set(input.currency.clone()),
+            payment_status: Set(input.payment_status.clone()),
+            fulfillment_status: Set(input.fulfillment_status.clone()),
+            payment_method: Set(input.payment_method.clone()),
+            shipping_method: Set(input.shipping_method.clone()),
+            tracking_number: Set(None),
+            notes: Set(input.notes.clone()),
+            shipping_address: Set(input.shipping_address.clone()),
+            billing_address: Set(input.billing_address.clone()),
+            is_archived: Set(false),
+            created_at: Set(now),
+            updated_at: Set(Some(now)),
+            version: Set(1),
+        };
+
+        let order_model = order_active.insert(&txn).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to persist order header");
+            ServiceError::db_error(e)
+        })?;
+
+        let mut saved_items = Vec::with_capacity(input.items.len());
+        for item in input.items.drain(..) {
+            if item.quantity <= 0 {
+                return Err(ServiceError::ValidationError(format!(
+                    "invalid quantity {} for SKU {}",
+                    item.quantity, item.sku
+                )));
+            }
+
+            let total_price = item.unit_price * Decimal::from(item.quantity);
+            let tax_rate = item.tax_rate.unwrap_or(Decimal::ZERO);
+            let tax_amount = (total_price * tax_rate).round_dp(2);
+
+            let am = OrderItemActiveModel {
+                id: Set(Uuid::new_v4()),
+                order_id: Set(order_id),
+                product_id: Set(item.product_id.unwrap_or_else(Uuid::new_v4)),
+                sku: Set(item.sku),
+                name: Set(item.name.unwrap_or_else(|| "".to_string())),
+                quantity: Set(item.quantity),
+                unit_price: Set(item.unit_price),
+                total_price: Set(total_price),
+                discount: Set(Decimal::ZERO),
+                tax_rate: Set(tax_rate),
+                tax_amount: Set(tax_amount),
+                status: Set("pending".to_string()),
+                notes: Set(None),
+                created_at: Set(now),
+                updated_at: Set(Some(now)),
+            };
+
+            let saved = am.insert(&txn).await.map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to persist order item");
+                ServiceError::db_error(e)
+            })?;
+            saved_items.push(saved);
+        }
+
+        let payload = serde_json::json!({ "order_id": order_id.to_string() });
+        if let Err(e) =
+            crate::events::outbox::enqueue(&txn, "order", Some(order_id), "OrderCreated", &payload)
+                .await
+        {
+            warn!(
+                error = %e,
+                order_id = %order_id,
+                "Failed to enqueue outbox event for OrderCreated"
+            );
+        }
+
+        txn.commit().await.map_err(|e| {
+            error!(
+                error = %e,
+                order_id = %order_id,
+                "Failed to commit order creation transaction"
+            );
+            ServiceError::db_error(e)
+        })?;
+
+        if let Some(sender) = &self.event_sender {
+            sender.send_or_log(Event::OrderCreated(order_id)).await;
+        }
+
+        Ok((self.model_to_response(order_model), saved_items))
     }
 
     /// Creates a new order in the database

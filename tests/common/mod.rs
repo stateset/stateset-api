@@ -121,6 +121,7 @@ impl TestApp {
 
         // Ensure generated tokens include admin role and useful permissions.
         std::env::set_var("AUTH_ADMIN", "1");
+        std::env::set_var("STATESET_AUTH_ALLOW_ADMIN_OVERRIDE", "1");
         std::env::set_var(
             "AUTH_DEFAULT_PERMISSIONS",
             "orders:read,orders:create,orders:update",

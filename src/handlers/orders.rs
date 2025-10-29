@@ -602,9 +602,11 @@ pub async fn create_order(
     })?;
 
     struct PreparedItem {
-        api_item: OrderItem,
         variant_id: Uuid,
         storage_sku: String,
+        product_name: String,
+        quantity: i32,
+        unit_price: Decimal,
         tax_rate: Option<Decimal>,
     }
 
@@ -625,11 +627,6 @@ pub async fn create_order(
         } else {
             variant.sku.clone()
         };
-        let display_sku = if variant.sku.is_empty() {
-            None
-        } else {
-            Some(variant.sku.clone())
-        };
         let product_name = if variant.name.is_empty() {
             storage_sku.clone()
         } else {
@@ -647,64 +644,59 @@ pub async fn create_order(
 
         let unit_price = item.unit_price.unwrap_or(variant.price);
         let total_price = unit_price * Decimal::from(item.quantity);
-        let tax_amount = item.tax_rate.map(|rate| total_price * rate);
 
         total_amount += total_price;
         prepared_items.push(PreparedItem {
-            api_item: OrderItem {
-                id: format!("item_{}", index + 1),
-                product_id: variant.id.to_string(),
-                product_name,
-                sku: display_sku,
-                quantity: item.quantity,
-                unit_price,
-                total_price,
-                discount: None,
-                tax_rate: item.tax_rate,
-                tax_amount,
-            },
+            product_name,
             variant_id: variant.id,
             storage_sku,
+            quantity: item.quantity,
+            unit_price,
             tax_rate: item.tax_rate,
         });
     }
 
-    // Persist minimal order header via service
-    let created = state
+    let item_inputs: Vec<svc_orders::NewOrderItemInput> = prepared_items
+        .iter()
+        .map(|prepared| svc_orders::NewOrderItemInput {
+            sku: prepared.storage_sku.clone(),
+            product_id: Some(prepared.variant_id),
+            name: Some(prepared.product_name.clone()),
+            quantity: prepared.quantity,
+            unit_price: prepared.unit_price,
+            tax_rate: prepared.tax_rate,
+        })
+        .collect();
+
+    let shipping_address = request
+        .shipping_address
+        .as_ref()
+        .map(|addr| format_order_address(addr));
+    let billing_address = request
+        .billing_address
+        .as_ref()
+        .map(|addr| format_order_address(addr));
+
+    let (created, stored_items) = state
         .services
         .order
-        .create_order_minimal(
-            customer_uuid,
+        .create_order_with_items(svc_orders::CreateOrderWithItemsInput {
+            customer_id: customer_uuid,
             total_amount,
-            Some("USD".to_string()),
-            request.notes.clone(),
-            request.shipping_address.as_ref().map(format_order_address),
-            request.billing_address.as_ref().map(format_order_address),
-            request.payment_method_id.clone(),
-        )
+            currency: "USD".to_string(),
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: request.payment_method_id.clone(),
+            shipping_method: None,
+            shipping_address,
+            billing_address,
+            notes: request.notes.clone(),
+            items: item_inputs,
+        })
         .await?;
 
-    // Persist items for this order
-    let created_id = created.id;
-    for prepared in &prepared_items {
-        let _ = state
-            .services
-            .order
-            .add_order_item(
-                created_id,
-                prepared.storage_sku.clone(),
-                Some(prepared.variant_id),
-                Some(prepared.api_item.product_name.clone()),
-                prepared.api_item.quantity,
-                prepared.api_item.unit_price,
-                prepared.tax_rate,
-            )
-            .await?;
-    }
-
     // Build API response using created header, then re-fetch items from DB
-    let persisted = state.services.order.get_order_items(created_id).await?;
-    let api_order = map_service_order(&created, Some(persisted.as_slice()))?;
+    let api_order = map_service_order(&created, Some(stored_items.as_slice()))?;
     Ok((StatusCode::CREATED, Json(ApiResponse::success(api_order))))
 }
 

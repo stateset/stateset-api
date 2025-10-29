@@ -382,11 +382,16 @@ impl AuthService {
             }
         }
 
-        if std::env::var("AUTH_ADMIN")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-        {
-            roles.insert("admin".to_string());
+        if Self::env_truthy("AUTH_ADMIN") {
+            let allow_override =
+                cfg!(test) || Self::env_truthy("STATESET_AUTH_ALLOW_ADMIN_OVERRIDE");
+            if allow_override {
+                roles.insert("admin".to_string());
+            } else {
+                warn!(
+                    "AUTH_ADMIN override ignored because STATESET_AUTH_ALLOW_ADMIN_OVERRIDE is not enabled"
+                );
+            }
         }
 
         if roles.is_empty() {
@@ -417,6 +422,12 @@ impl AuthService {
         let mut permissions: Vec<String> = permissions.into_iter().collect();
         permissions.sort_unstable();
         permissions
+    }
+
+    fn env_truthy(var: &str) -> bool {
+        std::env::var(var)
+            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false)
     }
 
     /// Store a refresh token

@@ -4,7 +4,7 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, State
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +34,14 @@ pub async fn enqueue(
     event_type: &str,
     payload: &Value,
 ) -> Result<(), ServiceError> {
+    if db.get_database_backend() != DbBackend::Postgres {
+        debug!(
+            "outbox enqueue skipped for non-Postgres backend (aggregate_type={}, event_type={})",
+            aggregate_type, event_type
+        );
+        return Ok(());
+    }
+
     let id = Uuid::new_v4();
     let sql = r#"INSERT INTO outbox_events
         (id, aggregate_type, aggregate_id, event_type, payload, status, attempts, created_at)
@@ -59,6 +67,14 @@ pub async fn enqueue(
 
 /// Background worker to poll and dispatch outbox events via in-process EventSender.
 pub async fn start_worker(db: Arc<DatabaseConnection>, sender: EventSender) {
+    if db.get_database_backend() != DbBackend::Postgres {
+        info!(
+            "Outbox worker disabled for {:?} backend; relying on direct event emission",
+            db.get_database_backend()
+        );
+        return;
+    }
+
     tokio::spawn(async move {
         loop {
             if let Err(e) = drain_once(&db, &sender, 50).await {
