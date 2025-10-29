@@ -39,6 +39,8 @@ impl Resources {
     pub const BOMS: &'static str = "boms";
     pub const RETURNS: &'static str = "returns";
     pub const SHIPMENTS: &'static str = "shipments";
+    pub const PURCHASE_ORDERS: &'static str = "purchaseorders";
+    pub const ASNS: &'static str = "asns";
     pub const CUSTOMERS: &'static str = "customers";
     pub const SUPPLIERS: &'static str = "suppliers";
     pub const USERS: &'static str = "users";
@@ -92,6 +94,12 @@ pub mod consts {
 
     // Manufacturing BOMs
     pub const BOMS_MANAGE: &str = "boms:manage";
+
+    // Purchase Orders
+    pub const PURCHASEORDERS_MANAGE: &str = "purchaseorders:manage";
+
+    // Advanced Shipping Notices
+    pub const ASNS_MANAGE: &str = "asns:manage";
 }
 
 /// Format a permission string
@@ -171,6 +179,26 @@ lazy_static! {
                 name: format_permission(Resources::BOMS, Actions::MANAGE),
                 description: "Manage bill of materials".to_string(),
                 resource_type: Resources::BOMS.to_string(),
+                action: Actions::MANAGE.to_string(),
+            },
+        );
+
+        perms.insert(
+            format_permission(Resources::PURCHASE_ORDERS, Actions::MANAGE),
+            Permission {
+                name: format_permission(Resources::PURCHASE_ORDERS, Actions::MANAGE),
+                description: "Manage purchase orders".to_string(),
+                resource_type: Resources::PURCHASE_ORDERS.to_string(),
+                action: Actions::MANAGE.to_string(),
+            },
+        );
+
+        perms.insert(
+            format_permission(Resources::ASNS, Actions::MANAGE),
+            Permission {
+                name: format_permission(Resources::ASNS, Actions::MANAGE),
+                description: "Manage advanced shipping notices".to_string(),
+                resource_type: Resources::ASNS.to_string(),
                 action: Actions::MANAGE.to_string(),
             },
         );

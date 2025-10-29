@@ -124,7 +124,7 @@ impl TestApp {
         std::env::set_var("STATESET_AUTH_ALLOW_ADMIN_OVERRIDE", "1");
         std::env::set_var(
             "AUTH_DEFAULT_PERMISSIONS",
-            "orders:read,orders:create,orders:update",
+            "orders:read,orders:create,orders:update,purchaseorders:manage,asns:manage",
         );
 
         let user = User {
@@ -238,6 +238,34 @@ impl TestApp {
         body: Option<Value>,
     ) -> axum::response::Response {
         self.request(method, uri, body, Some(self.token())).await
+    }
+
+    pub async fn request_authenticated_with_headers(
+        &self,
+        method: Method,
+        uri: &str,
+        body: Option<Value>,
+        headers: &[(&str, &str)],
+    ) -> axum::response::Response {
+        let mut builder = Request::builder().method(method).uri(uri);
+        builder = builder.header("authorization", format!("Bearer {}", self.token()));
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+
+        let body = if let Some(json) = body {
+            builder = builder.header("content-type", "application/json");
+            Body::from(serde_json::to_vec(&json).expect("failed to serialize json request body"))
+        } else {
+            Body::empty()
+        };
+
+        let request = builder.body(body).expect("failed to build request");
+        self.router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("router error during test request")
     }
 
     pub async fn seed_product_variant(&self, sku: &str, price: Decimal) -> product_variant::Model {

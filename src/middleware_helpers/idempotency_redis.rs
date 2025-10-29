@@ -5,12 +5,19 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use http_body_util::BodyExt as _;
+use lazy_static::lazy_static;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{error, warn};
+use tokio::sync::Mutex;
 
-#[derive(Serialize, Deserialize)]
+lazy_static! {
+    static ref FALLBACK_STORE: Mutex<HashMap<String, Stored>> = Mutex::new(HashMap::new());
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 struct Stored {
     status: u16,
     content_type: Option<String>,
@@ -50,7 +57,7 @@ pub async fn idempotency_redis_middleware(
         Ok(c) => c,
         Err(e) => {
             warn!("Idempotency Redis connection failed: {}", e);
-            return next.run(req).await;
+            return fallback_idempotency(cache_key, req, next).await;
         }
     };
 
@@ -120,6 +127,49 @@ pub async fn idempotency_redis_middleware(
         Err(e) => {
             error!("Failed to buffer response body for idempotency: {}", e);
             let _: Result<(), _> = conn.del(&lock_key).await;
+            Response::from_parts(parts, axum::body::Body::empty())
+        }
+    }
+}
+
+async fn fallback_idempotency(cache_key: String, req: Request, next: Next) -> Response {
+    // Replay if cached in fallback store
+    if let Some(stored) = {
+        let store = FALLBACK_STORE.lock().await;
+        store.get(&cache_key).cloned()
+    } {
+        let mut resp = Response::new(axum::body::Body::from(stored.body));
+        *resp.status_mut() = StatusCode::from_u16(stored.status).unwrap_or(StatusCode::OK);
+        if let Some(ct) = stored.content_type.and_then(|s| s.parse().ok()) {
+            resp.headers_mut()
+                .insert(HeaderName::from_static("content-type"), ct);
+        }
+        return resp;
+    }
+
+    let resp = next.run(req).await;
+    let (parts, body) = resp.into_parts();
+    match body.collect().await {
+        Ok(collected) => {
+            let bytes = collected.to_bytes();
+            let ct = parts
+                .headers
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            let stored = Stored {
+                status: parts.status.as_u16(),
+                content_type: ct,
+                body: String::from_utf8_lossy(&bytes).to_string(),
+            };
+            {
+                let mut store = FALLBACK_STORE.lock().await;
+                store.insert(cache_key, stored);
+            }
+            Response::from_parts(parts, axum::body::Body::from(bytes))
+        }
+        Err(e) => {
+            error!("Failed to buffer response body for idempotency fallback: {}", e);
             Response::from_parts(parts, axum::body::Body::empty())
         }
     }

@@ -7,14 +7,14 @@ pub mod returns;
 pub mod shipments;
 pub mod warranties;
 pub mod work_orders;
-// pub mod asn; // File removed due to compilation issues
+pub mod asn;
 pub mod bom;
 pub mod cash_sales;
 pub mod customers;
 pub mod notifications;
 pub mod payment_webhooks;
 pub mod payments;
-// pub mod purchase_orders; // Disabled due to missing service dependencies
+pub mod purchase_orders;
 // pub mod reports; // Disabled due to missing service dependencies
 // pub mod suppliers; // Disabled due to missing service dependencies
 pub mod agents;
@@ -49,6 +49,8 @@ pub struct AppServices {
     pub shipments: Arc<crate::services::shipments::ShipmentService>,
     pub warranties: Arc<crate::services::warranties::WarrantyService>,
     pub bill_of_materials: Arc<crate::services::billofmaterials::BillOfMaterialsService>,
+    pub procurement: Arc<crate::services::procurement::ProcurementService>,
+    pub asn: Arc<crate::services::asn::ASNService>,
     // pub reports: Arc<crate::services::reports::ReportService>,
 }
 
@@ -67,6 +69,9 @@ impl AppServices {
         let returns_logger = base_logger.new(slog::o!("component" => "returns_service"));
         let shipments_logger = base_logger.new(slog::o!("component" => "shipments_service"));
         let warranties_logger = base_logger.new(slog::o!("component" => "warranties_service"));
+        let procurement_logger =
+            base_logger.new(slog::o!("component" => "procurement_service"));
+        let asn_logger = base_logger.new(slog::o!("component" => "asn_service"));
 
         let product_catalog = Arc::new(crate::services::commerce::ProductCatalogService::new(
             db_pool.clone(),
@@ -125,11 +130,27 @@ impl AppServices {
         ));
         let warranties = Arc::new(crate::services::warranties::WarrantyService::new(
             db_pool.clone(),
+            event_sender.clone(),
+            redis_client.clone(),
+            message_queue.clone(),
+            circuit_breaker.clone(),
+            warranties_logger,
+        ));
+        let procurement = Arc::new(crate::services::procurement::ProcurementService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+            redis_client.clone(),
+            message_queue.clone(),
+            circuit_breaker.clone(),
+            procurement_logger,
+        ));
+        let asn = Arc::new(crate::services::asn::ASNService::new(
+            db_pool,
             event_sender,
             redis_client,
             message_queue,
             circuit_breaker,
-            warranties_logger,
+            asn_logger,
         ));
 
         Self {
@@ -144,6 +165,8 @@ impl AppServices {
             shipments,
             warranties,
             bill_of_materials,
+            procurement,
+            asn,
         }
     }
 }

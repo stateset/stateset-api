@@ -1,25 +1,25 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::message_queue::MessageQueue;
 use crate::{
-    // commands::advancedshippingnotice::{
-        // create_asn_command::CreateASNCommand,
-        // cancel_asn_command::CancelASNCommand,
-        // mark_asn_in_transit_command::MarkASNInTransitCommand,
-        // mark_asn_delivered_command::MarkASNDeliveredCommand,
-        // hold_asn_command::HoldASNCommand,
-        // release_asn_from_hold_command::ReleaseASNFromHoldCommand,
-        // add_item_to_asn_command::AddItemToASNCommand,
-        // update_asn_details_command::UpdateAsnDetailsCommand,
-    // },
+    commands::advancedshippingnotice::{
+        add_item_to_asn_command::AddItemToASNCommand,
+        cancel_asn_command::CancelASNCommand,
+        create_asn_command::CreateASNCommand,
+        hold_asn_command::HoldASNCommand,
+        mark_asn_delivered_command::MarkASNDeliveredCommand,
+        mark_asn_in_transit_command::MarkASNInTransitCommand,
+        release_asn_from_hold_command::ReleaseASNFromHoldCommand,
+    },
     commands::Command,
     db::DbPool,
     errors::ServiceError,
     events::{Event, EventSender},
     models::asn_entity,
 };
-use anyhow::Result;
 use redis::Client as RedisClient;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, PaginatorTrait};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+};
 use slog::Logger;
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -135,18 +135,6 @@ impl ASNService {
         })?;
 
         Ok((asns, total))
-    }
-
-    /// Updates an ASN
-    #[instrument(skip(self))]
-    pub async fn update_asn(
-        &self,
-        command: UpdateAsnDetailsCommand,
-    ) -> Result<(), ServiceError> {
-        command
-            .execute(self.db_pool.clone(), self.event_sender.clone())
-            .await?;
-        Ok(())
     }
 
     /// Cancels an ASN

@@ -445,6 +445,11 @@ pub fn api_v1_routes() -> Router<AppState> {
         axum::routing::post(handlers::payment_webhooks::payment_webhook),
     );
 
+    // Procurement routes
+    let purchase_orders = handlers::purchase_orders::purchase_order_routes()
+        .with_permission(perm::PURCHASEORDERS_MANAGE);
+    let asns = handlers::asn::asn_routes().with_permission(perm::ASNS_MANAGE);
+
     Router::new()
         // Status and health endpoints
         .route("/status", get(api_status))
@@ -493,6 +498,9 @@ pub fn api_v1_routes() -> Router<AppState> {
         // Payments API
         .nest("/payments", payments)
         .merge(payment_webhook)
+        // Procurement
+        .nest("/purchase-orders", purchase_orders)
+        .nest("/asns", asns)
         // Commerce API (products, carts, checkout)
         .nest("/products", handlers::commerce::products_routes())
         .nest("/carts", handlers::commerce::carts_routes())
