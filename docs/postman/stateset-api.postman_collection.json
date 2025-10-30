@@ -1,0 +1,4701 @@
+{
+  "info": {
+    "name": "StateSet API",
+    "_postman_id": "f81da28f-c254-4df3-a71a-a4168f8105a8",
+    "description": "Postman collection covering the StateSet API surface.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "webhook_timestamp",
+      "value": "{{timestamp}}",
+      "type": "string"
+    },
+    {
+      "key": "webhook_signature",
+      "value": "{{signature}}",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Operational",
+      "item": [
+        {
+          "name": "API Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "status"
+              ]
+            },
+            "description": "Retrieve service version and deployment metadata."
+          }
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check database and cache connectivity status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "status",
+                  "value": "processing",
+                  "description": "Filter by order status"
+                }
+              ]
+            },
+            "description": "Get a paginated list of orders with optional filters."
+          }
+        },
+        {
+          "name": "Get Order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve an order by its identifier."
+          }
+        },
+        {
+          "name": "Get Order By Number",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/by-number/:order_number",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "by-number",
+                ":order_number"
+              ],
+              "variable": [
+                {
+                  "key": "order_number",
+                  "value": "ORD-ABC123",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve an order using the public order number."
+          }
+        },
+        {
+          "name": "Get Order Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "items"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "List line items associated with an order."
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders"
+              ]
+            },
+            "description": "Create a new order with one or more items.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"22222222-2222-2222-2222-222222222222\",\n  \"items\": [\n    {\n      \"product_id\": \"SKU-12345\",\n      \"quantity\": 2,\n      \"unit_price\": \"99.99\",\n      \"tax_rate\": \"0.07\"\n    }\n  ],\n  \"shipping_address\": {\n    \"street\": \"123 Distribution Way\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"postal_code\": \"94107\",\n    \"country\": \"US\"\n  },\n  \"billing_address\": {\n    \"street\": \"123 Distribution Way\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"postal_code\": \"94107\",\n    \"country\": \"US\"\n  },\n  \"payment_method_id\": \"pm_123\",\n  \"notes\": \"Expedite fulfillment\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Order",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update addresses or metadata for an order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shipping_address\": {\n    \"street\": \"123 Distribution Way\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"postal_code\": \"94107\",\n    \"country\": \"US\"\n  },\n  \"billing_address\": {\n    \"street\": \"123 Distribution Way\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"postal_code\": \"94107\",\n    \"country\": \"US\"\n  },\n  \"payment_method_id\": \"pm_456\",\n  \"notes\": \"Updated shipping instructions\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Delete (hard delete) an order by id."
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "status"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Advance the order status and optionally store a reason.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"shipped\",\n  \"reason\": \"Carrier handoff completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Add Order Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "items"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Append an item to an existing order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": \"SKU-67890\",\n  \"quantity\": 1,\n  \"unit_price\": \"49.50\",\n  \"tax_rate\": \"0.07\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Cancel an order and record the cancellation reason.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer requested cancellation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Archive Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/orders/:order_id/archive",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                ":order_id",
+                "archive"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Archive an order without deleting it."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "List Inventory",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory"
+              ],
+              "query": [
+                {
+                  "key": "product_id",
+                  "value": "33333333-3333-3333-3333-333333333333",
+                  "description": "Filter by product id"
+                },
+                {
+                  "key": "location_id",
+                  "value": "1",
+                  "description": "Filter by location"
+                },
+                {
+                  "key": "limit",
+                  "value": "25",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "Retrieve inventory snapshots with optional filters."
+          }
+        },
+        {
+          "name": "Create Inventory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory"
+              ]
+            },
+            "description": "Create inventory for a given item and location.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_number\": \"SKU-12345\",\n  \"description\": \"Widget\",\n  \"primary_uom_code\": \"EA\",\n  \"organization_id\": 1,\n  \"location_id\": 100,\n  \"quantity_on_hand\": 25,\n  \"reason\": \"Initial import\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Inventory Item",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory/:inventory_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory",
+                ":inventory_id"
+              ],
+              "variable": [
+                {
+                  "key": "inventory_id",
+                  "value": "SKU-12345",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Get inventory details by id or item number."
+          }
+        },
+        {
+          "name": "Update Inventory Item",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory/:inventory_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory",
+                ":inventory_id"
+              ],
+              "variable": [
+                {
+                  "key": "inventory_id",
+                  "value": "SKU-12345",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update inventory location or descriptive fields.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location_id\": 100,\n  \"on_hand\": 30,\n  \"description\": \"Updated widget description\",\n  \"primary_uom_code\": \"EA\",\n  \"organization_id\": 1,\n  \"reason\": \"Cycle count adjustment\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Inventory Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory/:inventory_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory",
+                ":inventory_id"
+              ],
+              "variable": [
+                {
+                  "key": "inventory_id",
+                  "value": "SKU-12345",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Delete an inventory record."
+          }
+        },
+        {
+          "name": "Reserve Inventory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory/:inventory_id/reserve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory",
+                ":inventory_id",
+                "reserve"
+              ],
+              "variable": [
+                {
+                  "key": "inventory_id",
+                  "value": "SKU-12345",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Reserve inventory against a reference id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location_id\": 100,\n  \"quantity\": 5,\n  \"reference_id\": \"ORD-1001\",\n  \"reference_type\": \"order\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Release Inventory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory/:inventory_id/release",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory",
+                ":inventory_id",
+                "release"
+              ],
+              "variable": [
+                {
+                  "key": "inventory_id",
+                  "value": "SKU-12345",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Release a prior inventory reservation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location_id\": 100,\n  \"quantity\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Low Stock Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/inventory/low-stock",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "inventory",
+                "low-stock"
+              ],
+              "query": [
+                {
+                  "key": "threshold",
+                  "value": "10",
+                  "description": "Quantity threshold"
+                }
+              ]
+            },
+            "description": "Identify items below a threshold."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Returns",
+      "item": [
+        {
+          "name": "List Returns",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/returns",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "returns"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "List product returns with pagination."
+          }
+        },
+        {
+          "name": "Get Return",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/returns/:return_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "returns",
+                ":return_id"
+              ],
+              "variable": [
+                {
+                  "key": "return_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve a return by id."
+          }
+        },
+        {
+          "name": "Create Return",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/returns",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "returns"
+              ]
+            },
+            "description": "Create a new return for an order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"reason\": \"Damaged on arrival\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approve Return",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/returns/:return_id/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "returns",
+                ":return_id",
+                "approve"
+              ],
+              "variable": [
+                {
+                  "key": "return_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Approve a pending return."
+          }
+        },
+        {
+          "name": "Restock Return",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/returns/:return_id/restock",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "returns",
+                ":return_id",
+                "restock"
+              ],
+              "variable": [
+                {
+                  "key": "return_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Trigger restocking for an approved return."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shipments",
+      "item": [
+        {
+          "name": "List Shipments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "status",
+                  "value": "in_transit",
+                  "description": "Shipment status filter"
+                }
+              ]
+            },
+            "description": "List shipments with optional status filter."
+          }
+        },
+        {
+          "name": "Get Shipment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments/:shipment_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments",
+                ":shipment_id"
+              ],
+              "variable": [
+                {
+                  "key": "shipment_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Fetch shipment details by id."
+          }
+        },
+        {
+          "name": "Create Shipment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments"
+              ]
+            },
+            "description": "Create a shipment for an order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"shipping_address\": \"123 Shipping Lane, San Francisco, CA 94105\",\n  \"shipping_method\": \"standard\",\n  \"tracking_number\": \"1Z9999999999999999\",\n  \"recipient_name\": \"Ada Lovelace\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mark Shipment Shipped",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments/:shipment_id/ship",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments",
+                ":shipment_id",
+                "ship"
+              ],
+              "variable": [
+                {
+                  "key": "shipment_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Mark a shipment as shipped."
+          }
+        },
+        {
+          "name": "Mark Shipment Delivered",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments/:shipment_id/deliver",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments",
+                ":shipment_id",
+                "deliver"
+              ],
+              "variable": [
+                {
+                  "key": "shipment_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Mark a shipment as delivered."
+          }
+        },
+        {
+          "name": "Track Shipment By Id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments/:shipment_id/track",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments",
+                ":shipment_id",
+                "track"
+              ],
+              "variable": [
+                {
+                  "key": "shipment_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Request the latest tracking status by shipment id."
+          }
+        },
+        {
+          "name": "Track Shipment By Number",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/shipments/track/:tracking_number",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "shipments",
+                "track",
+                ":tracking_number"
+              ],
+              "variable": [
+                {
+                  "key": "tracking_number",
+                  "value": "1Z9999999999999999",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Request tracking details using a carrier tracking number."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Warranties",
+      "item": [
+        {
+          "name": "List Warranties",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/warranties",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "warranties"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Warranty status"
+                }
+              ]
+            },
+            "description": "List warranty registrations with optional status filter."
+          }
+        },
+        {
+          "name": "Get Warranty",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/warranties/:warranty_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "warranties",
+                ":warranty_id"
+              ],
+              "variable": [
+                {
+                  "key": "warranty_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve a warranty record by id."
+          }
+        },
+        {
+          "name": "Create Warranty",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/warranties",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "warranties"
+              ]
+            },
+            "description": "Register a new warranty for a product/customer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": \"33333333-3333-3333-3333-333333333333\",\n  \"customer_id\": \"22222222-2222-2222-2222-222222222222\",\n  \"serial_number\": \"SN-001\",\n  \"warranty_type\": \"standard\",\n  \"expiration_date\": \"2025-12-31T00:00:00Z\",\n  \"terms\": \"One year standard warranty\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Warranty Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/warranties/claims",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "warranties",
+                "claims"
+              ]
+            },
+            "description": "Submit a warranty claim for review.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"warranty_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"customer_id\": \"22222222-2222-2222-2222-222222222222\",\n  \"description\": \"Screen malfunction\",\n  \"evidence\": [\n    \"https://example.com/photos/issue.jpg\"\n  ],\n  \"contact_email\": \"customer@example.com\",\n  \"contact_phone\": \"+1-415-555-0123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approve Warranty Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/warranties/claims/:claim_id/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "warranties",
+                "claims",
+                ":claim_id",
+                "approve"
+              ],
+              "variable": [
+                {
+                  "key": "claim_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Approve an existing warranty claim.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approved_by\": \"11111111-1111-1111-1111-111111111111\",\n  \"resolution\": \"Replacement unit shipped\",\n  \"notes\": \"Approved under extended coverage\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Extend Warranty",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/warranties/:warranty_id/extend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "warranties",
+                ":warranty_id",
+                "extend"
+              ],
+              "variable": [
+                {
+                  "key": "warranty_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Extend an active warranty by additional months.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"additional_months\": 12\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "Get Product Recommendations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agents/recommendations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "recommendations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "per_page",
+                  "value": "10",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "search",
+                  "value": "widget",
+                  "description": "Search keyword"
+                }
+              ]
+            },
+            "description": "Fetch recommended products for an agent context."
+          }
+        },
+        {
+          "name": "Agent Add Item To Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agents/customers/:customer_id/carts/:cart_id/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "agents",
+                "customers",
+                ":customer_id",
+                "carts",
+                ":cart_id",
+                "items"
+              ],
+              "variable": [
+                {
+                  "key": "customer_id",
+                  "value": "22222222-2222-2222-2222-222222222222",
+                  "description": ""
+                },
+                {
+                  "key": "cart_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Agent adds an item into a customer's cart.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"variant_id\": \"33333333-3333-3333-3333-333333333333\",\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Work Orders",
+      "item": [
+        {
+          "name": "List Work Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "in_progress",
+                  "description": "Status filter"
+                },
+                {
+                  "key": "priority",
+                  "value": "high",
+                  "description": "Priority filter"
+                },
+                {
+                  "key": "limit",
+                  "value": "25",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "List work orders with filter options."
+          }
+        },
+        {
+          "name": "Create Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders"
+              ]
+            },
+            "description": "Create a new work order for production or maintenance.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"ORD-1001\",\n  \"product_id\": \"33333333-3333-3333-3333-333333333333\",\n  \"bom_id\": \"BOM-001\",\n  \"quantity\": 100,\n  \"priority\": \"high\",\n  \"work_center_id\": \"wc_assembly\",\n  \"scheduled_start\": \"2024-11-01T08:00:00Z\",\n  \"scheduled_end\": \"2024-11-01T16:00:00Z\",\n  \"estimated_hours\": 8,\n  \"notes\": \"Build for enterprise customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Work Order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve a work order by id."
+          }
+        },
+        {
+          "name": "Update Work Order",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update status, priority, or schedule for a work order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"scheduled\",\n  \"priority\": \"urgent\",\n  \"assigned_to\": \"tech-42\",\n  \"scheduled_start\": \"2024-11-02T08:00:00Z\",\n  \"scheduled_end\": \"2024-11-02T16:00:00Z\",\n  \"estimated_hours\": 10,\n  \"notes\": \"Customer escalated\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete Work Order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Delete a work order."
+          }
+        },
+        {
+          "name": "Schedule Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/schedule",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "schedule"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Schedule a work order at a specific work center.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"work_center_id\": \"wc_assembly\",\n  \"scheduled_start\": \"2024-11-03T08:00:00Z\",\n  \"scheduled_end\": \"2024-11-03T16:00:00Z\",\n  \"assigned_to\": \"tech-42\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Start Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "start"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Mark a work order as in progress."
+          }
+        },
+        {
+          "name": "Complete Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/complete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "complete"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Complete a work order and capture timestamps."
+          }
+        },
+        {
+          "name": "Hold Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/hold",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "hold"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Place a work order on hold with a reason.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Awaiting parts\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Cancel a work order with context.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer cancelled order\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Assign Work Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/assign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "assign"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Assign a work order to a technician.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"technician_id\": \"tech-99\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Work Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "status"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update the work order status explicitly.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Consume Material",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/materials/:material_id/consume",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "materials",
+                ":material_id",
+                "consume"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                },
+                {
+                  "key": "material_id",
+                  "value": "mat_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Record material consumption for a work order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"material_id\": \"mat_001\",\n  \"quantity_consumed\": 10,\n  \"notes\": \"Batch 42\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Work Order Task",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/:work_order_id/tasks/:task_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                ":work_order_id",
+                "tasks",
+                ":task_id"
+              ],
+              "variable": [
+                {
+                  "key": "work_order_id",
+                  "value": "wo_001",
+                  "description": ""
+                },
+                {
+                  "key": "task_id",
+                  "value": "wot_001",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update status or hours for a specific task.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"actual_hours\": 1.5,\n  \"notes\": \"Task underway\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Work Center Capacity",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/work-orders/capacity/:work_center_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "work-orders",
+                "capacity",
+                ":work_center_id"
+              ],
+              "variable": [
+                {
+                  "key": "work_center_id",
+                  "value": "wc_assembly",
+                  "description": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "start_date",
+                  "value": "2024-06-01",
+                  "description": "Start date"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2024-06-30",
+                  "description": "End date"
+                }
+              ]
+            },
+            "description": "Inspect capacity information for a work center."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Manufacturing BOM",
+      "item": [
+        {
+          "name": "List BOMs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                }
+              ]
+            },
+            "description": "List bill of materials records with pagination query params."
+          }
+        },
+        {
+          "name": "Create BOM",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms"
+              ]
+            },
+            "description": "Create a bill of materials with components.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Widget BOM\",\n  \"description\": \"Assembly for widget\",\n  \"product_id\": \"33333333-3333-3333-3333-333333333333\",\n  \"revision\": \"A\",\n  \"components\": [\n    {\n      \"component_id\": \"44444444-4444-4444-4444-444444444444\",\n      \"quantity\": 2,\n      \"unit_of_measure\": \"EA\",\n      \"position\": \"1\",\n      \"notes\": \"Primary component\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get BOM",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms/:bom_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms",
+                ":bom_id"
+              ],
+              "variable": [
+                {
+                  "key": "bom_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve a BOM by id."
+          }
+        },
+        {
+          "name": "Update BOM",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms/:bom_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms",
+                ":bom_id"
+              ],
+              "variable": [
+                {
+                  "key": "bom_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update metadata for a BOM.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Widget BOM\",\n  \"description\": \"Updated description\",\n  \"revision\": \"B\",\n  \"status\": \"released\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Audit BOM",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms/:bom_id/audit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms",
+                ":bom_id",
+                "audit"
+              ],
+              "variable": [
+                {
+                  "key": "bom_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Audit a BOM revision.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auditor\": \"quality@stateset.io\",\n  \"notes\": \"Annual compliance review\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List BOM Components",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms/:bom_id/components",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms",
+                ":bom_id",
+                "components"
+              ],
+              "variable": [
+                {
+                  "key": "bom_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "List components within a BOM."
+          }
+        },
+        {
+          "name": "Add BOM Component",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms/:bom_id/components",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms",
+                ":bom_id",
+                "components"
+              ],
+              "variable": [
+                {
+                  "key": "bom_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Add a component to the BOM.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"component_id\": \"55555555-5555-5555-5555-555555555555\",\n  \"quantity\": 4,\n  \"unit_of_measure\": \"EA\",\n  \"position\": \"2\",\n  \"notes\": \"Secondary component\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove BOM Component",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/manufacturing/boms/:bom_id/components/:component_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "manufacturing",
+                "boms",
+                ":bom_id",
+                "components",
+                ":component_id"
+              ],
+              "variable": [
+                {
+                  "key": "bom_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                },
+                {
+                  "key": "component_id",
+                  "value": "55555555-5555-5555-5555-555555555555",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Remove a component from the BOM."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Process Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "Process a payment for an order.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"amount\": \"150.00\",\n  \"payment_method\": \"credit_card\",\n  \"payment_method_id\": \"pm_123\",\n  \"currency\": \"USD\",\n  \"description\": \"Order settlement\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "status",
+                  "value": "succeeded",
+                  "description": "Status filter"
+                }
+              ]
+            },
+            "description": "List payments with pagination and optional status filter."
+          }
+        },
+        {
+          "name": "Get Payment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/:payment_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                ":payment_id"
+              ],
+              "variable": [
+                {
+                  "key": "payment_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve a payment by id."
+          }
+        },
+        {
+          "name": "Get Order Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/order/:order_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "order",
+                ":order_id"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "List payments associated with an order."
+          }
+        },
+        {
+          "name": "Get Order Payment Total",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/order/:order_id/total",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "order",
+                ":order_id",
+                "total"
+              ],
+              "variable": [
+                {
+                  "key": "order_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Compute the total amount collected for an order."
+          }
+        },
+        {
+          "name": "Refund Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/refund",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "refund"
+              ]
+            },
+            "description": "Process a refund against an existing payment.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"amount\": \"50.00\",\n  \"reason\": \"Partial refund for damaged item\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Payment Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Timestamp",
+                "value": "{{webhook_timestamp}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Signature",
+                "value": "{{webhook_signature}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "webhook"
+              ]
+            },
+            "description": "Receive asynchronous payment notifications.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_123\",\n  \"type\": \"payment.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"order_id\": \"11111111-1111-1111-1111-111111111111\",\n      \"amount\": 15000\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Procurement",
+      "item": [
+        {
+          "name": "Purchase Orders",
+          "item": [
+            {
+              "name": "Create Purchase Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders"
+                  ]
+                },
+                "description": "Create a purchase order with one or more line items.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"supplier_id\": \"66666666-6666-6666-6666-666666666666\",\n  \"expected_delivery_date\": \"2024-12-01\",\n  \"shipping_address\": {\n    \"street\": \"500 Supply Chain Rd\",\n    \"city\": \"Oakland\",\n    \"state\": \"CA\",\n    \"postal_code\": \"94607\",\n    \"country\": \"US\"\n  },\n  \"items\": [\n    {\n      \"product_id\": \"33333333-3333-3333-3333-333333333333\",\n      \"quantity\": 50,\n      \"unit_price\": 45.5,\n      \"tax_rate\": 0.08,\n      \"currency\": \"USD\",\n      \"description\": \"Widget assemblies\"\n    }\n  ],\n  \"payment_terms\": \"Net 30\",\n  \"currency\": \"USD\",\n  \"notes\": \"Priority supplier\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Purchase Order",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/:purchase_order_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    ":purchase_order_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "purchase_order_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Retrieve a purchase order by id."
+              }
+            },
+            {
+              "name": "Update Purchase Order",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/:purchase_order_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    ":purchase_order_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "purchase_order_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Update expected delivery, notes, or status for a purchase order.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"expected_delivery_date\": \"2024-12-15\",\n  \"shipping_address\": \"Updated shipping dock\",\n  \"notes\": \"Please ship in two batches\",\n  \"status\": \"approved\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Approve Purchase Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/:purchase_order_id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    ":purchase_order_id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "purchase_order_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Approve a drafted purchase order.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"approver_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"notes\": \"Budget approved\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Cancel Purchase Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/:purchase_order_id/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    ":purchase_order_id",
+                    "cancel"
+                  ],
+                  "variable": [
+                    {
+                      "key": "purchase_order_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Cancel a purchase order.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Supplier unable to fulfill\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Receive Purchase Order",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/:purchase_order_id/receive",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    ":purchase_order_id",
+                    "receive"
+                  ],
+                  "variable": [
+                    {
+                      "key": "purchase_order_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Record receipt of purchase order items.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"received_by\": \"11111111-1111-1111-1111-111111111111\",\n  \"notes\": \"Received in good condition\",\n  \"items_received\": [\n    {\n      \"line_item_id\": \"77777777-7777-7777-7777-777777777777\",\n      \"quantity_received\": 50,\n      \"condition\": \"good\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Purchase Orders By Supplier",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/supplier/:supplier_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    "supplier",
+                    ":supplier_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "supplier_id",
+                      "value": "66666666-6666-6666-6666-666666666666",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "List purchase orders for a supplier."
+              }
+            },
+            {
+              "name": "Purchase Orders By Status",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/status/:status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    "status",
+                    ":status"
+                  ],
+                  "variable": [
+                    {
+                      "key": "status",
+                      "value": "approved",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "List purchase orders filtered by status."
+              }
+            },
+            {
+              "name": "Purchase Orders By Delivery Date",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/delivery-date",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    "delivery-date"
+                  ],
+                  "query": [
+                    {
+                      "key": "start_date",
+                      "value": "2024-11-01",
+                      "description": "Start date (YYYY-MM-DD)"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "End date (YYYY-MM-DD)"
+                    }
+                  ]
+                },
+                "description": "List purchase orders within a delivery date range."
+              }
+            },
+            {
+              "name": "Purchase Order Total Value",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/purchase-orders/value",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "purchase-orders",
+                    "value"
+                  ],
+                  "query": [
+                    {
+                      "key": "start_date",
+                      "value": "2024-11-01",
+                      "description": "Start date"
+                    },
+                    {
+                      "key": "end_date",
+                      "value": "2024-12-31",
+                      "description": "End date"
+                    }
+                  ]
+                },
+                "description": "Sum purchase order value for a date range."
+              }
+            }
+          ]
+        },
+        {
+          "name": "ASNs",
+          "item": [
+            {
+              "name": "Create ASN",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/asns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "asns"
+                  ]
+                },
+                "description": "Create an advanced shipping notice.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"purchase_order_id\": \"11111111-1111-1111-1111-111111111111\",\n  \"supplier_id\": \"66666666-6666-6666-6666-666666666666\",\n  \"supplier_name\": \"Global Supplier Co\",\n  \"expected_delivery_date\": \"2024-12-20\",\n  \"shipping_address\": {\n    \"street\": \"500 Receiving Dock\",\n    \"city\": \"Los Angeles\",\n    \"state\": \"CA\",\n    \"postal_code\": \"90001\",\n    \"country\": \"US\"\n  },\n  \"carrier\": {\n    \"carrier_name\": \"DHL\",\n    \"tracking_number\": \"JD000223344\",\n    \"service_level\": \"express\"\n  },\n  \"items\": [\n    {\n      \"product_id\": \"33333333-3333-3333-3333-333333333333\",\n      \"product_name\": \"Widget\",\n      \"product_sku\": \"SKU-12345\",\n      \"quantity\": 50,\n      \"unit_price\": 45.5\n    }\n  ],\n  \"packages\": [\n    {\n      \"package_number\": \"PKG-1\",\n      \"weight\": 200.5,\n      \"weight_unit\": \"kg\",\n      \"dimensions\": {\n        \"length\": 120.0,\n        \"width\": 60.0,\n        \"height\": 55.0,\n        \"unit\": \"cm\"\n      }\n    }\n  ],\n  \"notes\": \"Handle with care\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List ASNs",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/asns",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "asns"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number"
+                    },
+                    {
+                      "key": "per_page",
+                      "value": "20",
+                      "description": "Items per page"
+                    }
+                  ]
+                },
+                "description": "List ASNs with pagination."
+              }
+            },
+            {
+              "name": "Get ASN",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/asns/:asn_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "asns",
+                    ":asn_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "asn_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Retrieve an ASN by id."
+              }
+            },
+            {
+              "name": "Mark ASN In Transit",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/asns/:asn_id/in-transit",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "asns",
+                    ":asn_id",
+                    "in-transit"
+                  ],
+                  "variable": [
+                    {
+                      "key": "asn_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Mark an ASN as in transit.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"version\": 1,\n  \"departure_time\": \"2024-12-18T08:00:00Z\",\n  \"estimated_delivery\": \"2024-12-20T17:00:00Z\",\n  \"carrier\": {\n    \"carrier_name\": \"DHL\",\n    \"tracking_number\": \"JD000223344\",\n    \"service_level\": \"express\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Mark ASN Delivered",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/asns/:asn_id/delivered",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "asns",
+                    ":asn_id",
+                    "delivered"
+                  ],
+                  "variable": [
+                    {
+                      "key": "asn_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Mark an ASN as delivered.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"version\": 1,\n  \"delivery_date\": \"2024-12-20T15:30:00Z\",\n  \"recipient_name\": \"Receiving Lead\",\n  \"delivery_notes\": \"All pallets received\",\n  \"proof_of_delivery\": \"https://example.com/pod/JD000223344.jpg\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Commerce",
+      "item": [
+        {
+          "name": "Products",
+          "item": [
+            {
+              "name": "List Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "20",
+                      "description": "Items per page"
+                    },
+                    {
+                      "key": "search",
+                      "value": "widget",
+                      "description": "Search term"
+                    }
+                  ]
+                },
+                "description": "List products with pagination and optional search."
+              }
+            },
+            {
+              "name": "Create Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products"
+                  ]
+                },
+                "description": "Create a new product in the catalog.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Widget Pro\",\n  \"sku\": \"WID-PRO-01\",\n  \"description\": \"Next generation widget\",\n  \"price\": \"129.99\",\n  \"currency\": \"USD\",\n  \"is_active\": true,\n  \"is_digital\": false,\n  \"brand\": \"StateSet\",\n  \"manufacturer\": \"StateSet Manufacturing\",\n  \"weight_kg\": \"1.25\",\n  \"dimensions_cm\": \"25x15x10\",\n  \"tags\": \"featured,new\",\n  \"tax_rate\": \"0.08\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Product",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "33333333-3333-3333-3333-333333333333",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Retrieve product details by id."
+              }
+            },
+            {
+              "name": "Update Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products/:product_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":product_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "33333333-3333-3333-3333-333333333333",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Update product metadata.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Widget Pro\",\n  \"description\": \"Updated marketing copy\",\n  \"price\": \"119.99\",\n  \"is_active\": true,\n  \"tags\": \"featured\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List Product Variants",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products/:product_id/variants",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":product_id",
+                    "variants"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "33333333-3333-3333-3333-333333333333",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "List variants for a product."
+              }
+            },
+            {
+              "name": "Create Product Variant",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products/:product_id/variants",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products",
+                    ":product_id",
+                    "variants"
+                  ],
+                  "variable": [
+                    {
+                      "key": "product_id",
+                      "value": "33333333-3333-3333-3333-333333333333",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Create a variant for a product.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sku\": \"WID-PRO-01-BLK\",\n  \"name\": \"Widget Pro - Black\",\n  \"price\": \"129.99\",\n  \"compare_at_price\": \"149.99\",\n  \"cost\": \"80.00\",\n  \"weight\": 1.3,\n  \"options\": {\n    \"color\": \"black\",\n    \"size\": \"standard\"\n  },\n  \"inventory_tracking\": true,\n  \"position\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Variant Price",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products/variants/:variant_id/price",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products",
+                    "variants",
+                    ":variant_id",
+                    "price"
+                  ],
+                  "variable": [
+                    {
+                      "key": "variant_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Update the price for a product variant.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price\": \"124.99\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Search Products",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/products/search",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "products",
+                    "search"
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "widget",
+                      "description": "Search term"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10",
+                      "description": "Items per page"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0",
+                      "description": "Pagination offset"
+                    }
+                  ]
+                },
+                "description": "Search products using keyword and pagination."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Carts",
+          "item": [
+            {
+              "name": "Create Cart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/carts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "carts"
+                  ]
+                },
+                "description": "Create a new shopping cart.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"session_id\": \"sess_abc123\",\n  \"customer_id\": \"22222222-2222-2222-2222-222222222222\",\n  \"currency\": \"USD\",\n  \"metadata\": {\n    \"channel\": \"web\"\n  }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Cart",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/carts/:cart_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "carts",
+                    ":cart_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "cart_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Retrieve cart with items."
+              }
+            },
+            {
+              "name": "Add Cart Item",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/carts/:cart_id/items",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "carts",
+                    ":cart_id",
+                    "items"
+                  ],
+                  "variable": [
+                    {
+                      "key": "cart_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Add an item to the cart.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"variant_id\": \"33333333-3333-3333-3333-333333333333\",\n  \"quantity\": 2\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Update Cart Item Quantity",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/carts/:cart_id/items/:item_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "carts",
+                    ":cart_id",
+                    "items",
+                    ":item_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "cart_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    },
+                    {
+                      "key": "item_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Update quantity for a cart line item.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"quantity\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Remove Cart Item",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/carts/:cart_id/items/:item_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "carts",
+                    ":cart_id",
+                    "items",
+                    ":item_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "cart_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    },
+                    {
+                      "key": "item_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Remove an item from the cart."
+              }
+            },
+            {
+              "name": "Clear Cart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/carts/:cart_id/clear",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "carts",
+                    ":cart_id",
+                    "clear"
+                  ],
+                  "variable": [
+                    {
+                      "key": "cart_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Remove all items from the cart."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Checkout",
+          "item": [
+            {
+              "name": "Start Checkout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/checkout",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "checkout"
+                  ]
+                },
+                "description": "Create a checkout session from a cart.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cart_id\": \"11111111-1111-1111-1111-111111111111\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Checkout Session",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/checkout/:session_id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "checkout",
+                    ":session_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "session_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Retrieve checkout session details."
+              }
+            },
+            {
+              "name": "Set Checkout Customer",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/checkout/:session_id/customer",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "checkout",
+                    ":session_id",
+                    "customer"
+                  ],
+                  "variable": [
+                    {
+                      "key": "session_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Set customer information for checkout.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"ada@example.com\",\n  \"subscribe_newsletter\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Set Shipping Address",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/checkout/:session_id/shipping-address",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "checkout",
+                    ":session_id",
+                    "shipping-address"
+                  ],
+                  "variable": [
+                    {
+                      "key": "session_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Set the shipping address for checkout.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Lovelace\",\n  \"company\": \"StateSet\",\n  \"address_line_1\": \"123 Market St\",\n  \"address_line_2\": \"Suite 500\",\n  \"city\": \"San Francisco\",\n  \"province\": \"CA\",\n  \"country_code\": \"US\",\n  \"postal_code\": \"94105\",\n  \"phone\": \"+1-415-555-0101\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Select Shipping Method",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/checkout/:session_id/shipping-method",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "checkout",
+                    ":session_id",
+                    "shipping-method"
+                  ],
+                  "variable": [
+                    {
+                      "key": "session_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Select a shipping method for the checkout session.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"method\": \"Standard\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Complete Checkout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/checkout/:session_id/complete",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "checkout",
+                    ":session_id",
+                    "complete"
+                  ],
+                  "variable": [
+                    {
+                      "key": "session_id",
+                      "value": "11111111-1111-1111-1111-111111111111",
+                      "description": ""
+                    }
+                  ]
+                },
+                "description": "Complete checkout with a payment token.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"payment_method\": \"CreditCard\",\n  \"payment_token\": \"tok_test_visa\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Customers",
+          "item": [
+            {
+              "name": "Register Customer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/customers/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "register"
+                  ]
+                },
+                "description": "Register a new commerce customer.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"new.customer@example.com\",\n  \"password\": \"Str0ngPass!\",\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Lovelace\",\n  \"phone\": \"+1-415-555-0199\",\n  \"accepts_marketing\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Customer Login",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/customers/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "login"
+                  ]
+                },
+                "description": "Authenticate a customer with email and password.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"new.customer@example.com\",\n  \"password\": \"Str0ngPass!\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Get Current Customer",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/customers/me",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "me"
+                  ]
+                },
+                "description": "Retrieve profile for the authenticated customer."
+              }
+            },
+            {
+              "name": "Update Current Customer",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/customers/me",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "me"
+                  ]
+                },
+                "description": "Update profile details for the authenticated customer.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Lovelace\",\n  \"phone\": \"+1-415-555-0199\",\n  \"accepts_marketing\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "List Customer Addresses",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/customers/me/addresses",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "me",
+                    "addresses"
+                  ]
+                },
+                "description": "List saved addresses for the authenticated customer."
+              }
+            },
+            {
+              "name": "Add Customer Address",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-API-Key",
+                    "value": "{{api_key}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/customers/me/addresses",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "me",
+                    "addresses"
+                  ]
+                },
+                "description": "Add a new address to the customer profile.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"first_name\": \"Ada\",\n  \"last_name\": \"Lovelace\",\n  \"company\": \"StateSet\",\n  \"address_line_1\": \"123 Market St\",\n  \"address_line_2\": \"Suite 500\",\n  \"city\": \"San Francisco\",\n  \"province\": \"CA\",\n  \"country_code\": \"US\",\n  \"postal_code\": \"94105\",\n  \"phone\": \"+1-415-555-0101\",\n  \"is_default_shipping\": true,\n  \"is_default_billing\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Agentic Checkout",
+      "item": [
+        {
+          "name": "Create Agentic Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "idem-12345",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/checkout_sessions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "checkout_sessions"
+              ]
+            },
+            "description": "Create agentic checkout session with buyer and items.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyer\": {\n    \"first_name\": \"Ada\",\n    \"last_name\": \"Lovelace\",\n    \"email\": \"ada@example.com\",\n    \"phone_number\": \"+1-415-555-0101\"\n  },\n  \"items\": [\n    {\n      \"id\": \"sku-123\",\n      \"quantity\": 2\n    }\n  ],\n  \"fulfillment_address\": {\n    \"name\": \"Ada Lovelace\",\n    \"line_one\": \"123 Example St\",\n    \"line_two\": null,\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"country\": \"US\",\n    \"postal_code\": \"94105\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Agentic Checkout Session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/checkout_sessions/:checkout_session_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "checkout_sessions",
+                ":checkout_session_id"
+              ],
+              "variable": [
+                {
+                  "key": "checkout_session_id",
+                  "value": "csn_123456",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retrieve an agentic checkout session by id."
+          }
+        },
+        {
+          "name": "Update Agentic Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/checkout_sessions/:checkout_session_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "checkout_sessions",
+                ":checkout_session_id"
+              ],
+              "variable": [
+                {
+                  "key": "checkout_session_id",
+                  "value": "csn_123456",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update an agentic checkout session with new items or address.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"id\": \"sku-123\",\n      \"quantity\": 2\n    },\n    {\n      \"id\": \"sku-456\",\n      \"quantity\": 1\n    }\n  ],\n  \"fulfillment_option_id\": \"ship_standard\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Complete Agentic Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/checkout_sessions/:checkout_session_id/complete",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "checkout_sessions",
+                ":checkout_session_id",
+                "complete"
+              ],
+              "variable": [
+                {
+                  "key": "checkout_session_id",
+                  "value": "csn_123456",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Complete the agentic checkout session with payment data.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_data\": {\n    \"token\": \"tok_agentic_card\",\n    \"provider\": \"stripe\",\n    \"billing_address\": {\n      \"name\": \"Ada Lovelace\",\n      \"line_one\": \"123 Example St\",\n      \"line_two\": null,\n      \"city\": \"San Francisco\",\n      \"state\": \"CA\",\n      \"country\": \"US\",\n      \"postal_code\": \"94105\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel Agentic Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/checkout_sessions/:checkout_session_id/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "checkout_sessions",
+                ":checkout_session_id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "checkout_session_id",
+                  "value": "csn_123456",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Cancel an agentic checkout session."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List Outbox Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/outbox",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "outbox"
+              ]
+            },
+            "description": "List pending or failed outbox events for retry."
+          }
+        },
+        {
+          "name": "Retry Outbox Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/outbox/:event_id/retry",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "outbox",
+                ":event_id",
+                "retry"
+              ],
+              "variable": [
+                {
+                  "key": "event_id",
+                  "value": "11111111-1111-1111-1111-111111111111",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retry processing a specific outbox event."
+          }
+        }
+      ]
+    }
+  ]
+}
