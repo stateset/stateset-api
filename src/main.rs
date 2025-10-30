@@ -120,6 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
         )
         .nest("/api/v1", api::api_v1_routes())
+        .merge(api::openapi::swagger_ui())
         // HTTP tracing layer for consistent request/response telemetry
         .layer(api::tracing::configure_http_tracing())
         // Apply compression and timeouts

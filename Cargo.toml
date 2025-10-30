@@ -42,7 +42,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 migrations = { path = "migrations" }
 # OpenAPI documentation
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid", "decimal"] }
-utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
 dashmap = "5.5"
 config = "0.13"
 rust_decimal_macros = "1.30"
