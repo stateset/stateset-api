@@ -119,7 +119,14 @@ List endpoints support pagination with the following query parameters:
         // Webhooks
         crate::handlers::payment_webhooks::payment_webhook,
 
-        // Analytics & Health intentionally omitted from OpenAPI paths for now
+        // Analytics
+        crate::handlers::analytics::get_dashboard_metrics,
+        crate::handlers::analytics::get_sales_metrics,
+        crate::handlers::analytics::get_sales_trends,
+        crate::handlers::analytics::get_inventory_metrics,
+        crate::handlers::analytics::get_shipment_metrics,
+
+        // Health intentionally omitted from OpenAPI paths for now
     ),
     components(
         schemas(
@@ -152,6 +159,7 @@ List endpoints support pagination with the following query parameters:
             crate::services::analytics::SalesMetrics,
             crate::services::analytics::InventoryMetrics,
             crate::services::analytics::ShipmentMetrics,
+            crate::services::analytics::SalesTrendPoint,
 
             // Error types
             crate::errors::ErrorResponse

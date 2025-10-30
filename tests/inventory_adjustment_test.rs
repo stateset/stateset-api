@@ -1,9 +1,10 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set,
+    TransactionTrait,
 };
+use sea_orm::QueryOrder;
 use stateset_api::{
     db::{create_db_pool, run_migrations},
     entities::{

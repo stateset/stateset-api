@@ -449,6 +449,7 @@ pub fn api_v1_routes() -> Router<AppState> {
     let purchase_orders = handlers::purchase_orders::purchase_order_routes()
         .with_permission(perm::PURCHASEORDERS_MANAGE);
     let asns = handlers::asn::asn_routes().with_permission(perm::ASNS_MANAGE);
+    let analytics = handlers::analytics::analytics_routes().with_permission(perm::ANALYTICS_READ);
 
     Router::new()
         // Status and health endpoints
@@ -510,6 +511,8 @@ pub fn api_v1_routes() -> Router<AppState> {
         .merge(handlers::commerce::agentic_checkout_routes())
         // Admin
         .nest("/admin/outbox", outbox_admin)
+        // Analytics
+        .nest("/analytics", analytics)
 }
 
 async fn api_status() -> Result<Json<ApiResponse<Value>>, errors::ServiceError> {

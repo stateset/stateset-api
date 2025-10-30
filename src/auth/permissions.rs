@@ -100,6 +100,9 @@ pub mod consts {
 
     // Advanced Shipping Notices
     pub const ASNS_MANAGE: &str = "asns:manage";
+
+    // Analytics & Metrics
+    pub const ANALYTICS_READ: &str = "metrics:read";
 }
 
 /// Format a permission string
@@ -200,6 +203,16 @@ lazy_static! {
                 description: "Manage advanced shipping notices".to_string(),
                 resource_type: Resources::ASNS.to_string(),
                 action: Actions::MANAGE.to_string(),
+            },
+        );
+
+        perms.insert(
+            format_permission(Resources::METRICS, Actions::READ),
+            Permission {
+                name: format_permission(Resources::METRICS, Actions::READ),
+                description: "View analytics dashboards and metrics".to_string(),
+                resource_type: Resources::METRICS.to_string(),
+                action: Actions::READ.to_string(),
             },
         );
 

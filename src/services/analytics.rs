@@ -4,7 +4,7 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use tracing::info;
 use utoipa::ToSchema;
 
@@ -54,6 +54,15 @@ pub struct DashboardMetrics {
     pub inventory: InventoryMetrics,
     pub shipments: ShipmentMetrics,
     pub generated_at: DateTime<Utc>,
+}
+
+/// Point-in-time revenue data used for sales trend charts.
+#[derive(Debug, Serialize, Deserialize, ToSchema, PartialEq)]
+pub struct SalesTrendPoint {
+    /// ISO 8601 date string (YYYY-MM-DD)
+    pub date: String,
+    /// Total revenue captured on the date
+    pub revenue: Decimal,
 }
 
 /// Analytics service for generating business intelligence reports
@@ -301,10 +310,7 @@ impl AnalyticsService {
     }
 
     /// Get sales trends over time
-    pub async fn get_sales_trends(
-        &self,
-        days: i32,
-    ) -> Result<Vec<(String, Decimal)>, ServiceError> {
+    pub async fn get_sales_trends(&self, days: i32) -> Result<Vec<SalesTrendPoint>, ServiceError> {
         let db = &*self.db;
         let start_date = Utc::now() - Duration::days(days as i64);
 
@@ -316,17 +322,33 @@ impl AnalyticsService {
             .map_err(|e| ServiceError::db_error(e))?;
 
         // Group by date and sum revenue
-        let mut daily_revenue: std::collections::HashMap<String, Decimal> =
-            std::collections::HashMap::new();
+        let mut daily_revenue: BTreeMap<String, Decimal> = BTreeMap::new();
 
         for order in orders {
             let date_key = order.created_at.format("%Y-%m-%d").to_string();
             *daily_revenue.entry(date_key).or_insert(Decimal::ZERO) += order.total_amount;
         }
 
-        let mut result: Vec<(String, Decimal)> = daily_revenue.into_iter().collect();
-        result.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(daily_revenue
+            .into_iter()
+            .map(|(date, revenue)| SalesTrendPoint { date, revenue })
+            .collect())
+    }
+}
 
-        Ok(result)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sales_trend_point_serializes_to_json_object() {
+        let point = SalesTrendPoint {
+            date: "2024-02-01".to_string(),
+            revenue: Decimal::new(12345, 2),
+        };
+
+        let json = serde_json::to_value(point).expect("serialize trend point");
+        assert_eq!(json["date"], serde_json::json!("2024-02-01"));
+        assert_eq!(json["revenue"], serde_json::json!("123.45"));
     }
 }

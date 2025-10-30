@@ -1,4 +1,5 @@
 // Re-enabling all handler modules after implementing them
+pub mod analytics;
 pub mod asn;
 pub mod auth;
 pub mod bom;
@@ -173,4 +174,3 @@ impl AppServices {
 // Note: AppState is defined in main.rs and re-exported from lib.rs
 
 // Common utility functions are in the separate common.rs file
-pub mod analytics;
