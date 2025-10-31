@@ -24,7 +24,7 @@ pub mod outbox_admin;
 pub mod users;
 
 use crate::events::EventSender;
-use crate::message_queue::{InMemoryMessageQueue, MessageQueue};
+use crate::message_queue::MessageQueue;
 use crate::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry},
     db::DbPool,
@@ -63,11 +63,11 @@ impl AppServices {
         event_sender: Arc<EventSender>,
         redis_client: Arc<redis::Client>,
         auth_service: Arc<crate::auth::AuthService>,
+        message_queue: Arc<dyn MessageQueue>,
+        base_logger: Logger,
     ) -> Self {
-        let message_queue: Arc<dyn MessageQueue> = Arc::new(InMemoryMessageQueue::new());
         let circuit_breaker = Arc::new(CircuitBreaker::new(5, Duration::from_secs(60), 2));
         let circuit_breaker_registry = Arc::new(CircuitBreakerRegistry::new(None));
-        let base_logger = Logger::root(slog::Discard, slog::o!());
         let returns_logger = base_logger.new(slog::o!("component" => "returns_service"));
         let shipments_logger = base_logger.new(slog::o!("component" => "shipments_service"));
         let warranties_logger = base_logger.new(slog::o!("component" => "warranties_service"));

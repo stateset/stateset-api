@@ -19,6 +19,7 @@ use stateset_api::{
     db,
     events::{self, EventSender},
     handlers::AppServices,
+    message_queue::InMemoryMessageQueue,
     services::commerce::product_catalog_service::{CreateProductInput, CreateVariantInput},
     AppState,
 };
@@ -103,11 +104,15 @@ impl TestApp {
         );
         let auth_service = Arc::new(AuthService::new(auth_cfg, db_arc.clone()));
 
+        let base_logger =
+            stateset_api::logging::setup_logger(stateset_api::logging::LoggerConfig::default());
         let services = AppServices::new(
             db_arc.clone(),
             Arc::new(event_sender.clone()),
             redis_client.clone(),
             auth_service.clone(),
+            Arc::new(InMemoryMessageQueue::new()),
+            base_logger,
         );
 
         let state = AppState {

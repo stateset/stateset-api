@@ -68,6 +68,18 @@ RATE_LIMIT_REQUESTS_PER_MINUTE=60
 RATE_LIMIT_BURST=10
 ```
 
+### Message Queue
+```bash
+# Backend driver for the internal queue (in-memory, redis)
+APP__MESSAGE_QUEUE_BACKEND=redis
+
+# Namespace prefix for Redis queue keys (only if backend=redis)
+APP__MESSAGE_QUEUE_NAMESPACE=stateset:mq
+
+# Seconds to block while polling the queue before returning control
+APP__MESSAGE_QUEUE_BLOCK_TIMEOUT_SECS=5
+```
+
 ### Cache Configuration
 ```bash
 # Cache backend (redis, memory)

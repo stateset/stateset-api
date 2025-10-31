@@ -151,6 +151,53 @@ async fn test_create_order_rejects_price_mismatch() {
 }
 
 #[tokio::test]
+async fn test_update_order_status_to_confirmed() {
+    let app = TestApp::new().await;
+    let order_service = app.state.services.order.clone();
+
+    let created = order_service
+        .create_order_minimal(
+            Uuid::new_v4(),
+            Decimal::from_str("10.00").unwrap(),
+            Some("USD".to_string()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("create order");
+
+    let payload = json!({ "status": "confirmed" });
+
+    let response = app
+        .request_authenticated(
+            Method::PUT,
+            &format!("/api/v1/orders/{}/status", created.id),
+            Some(payload),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read response body");
+    let response_data: Value = serde_json::from_slice(&body_bytes).expect("parse response body");
+
+    assert!(response_data["success"].as_bool().unwrap_or(false));
+    let data = &response_data["data"];
+    assert_eq!(data["status"], "confirmed");
+
+    let persisted = order_service
+        .get_order(created.id)
+        .await
+        .expect("fetch order")
+        .expect("order should exist");
+    assert_eq!(persisted.status, "confirmed");
+}
+
+#[tokio::test]
 async fn test_get_order_endpoint() {
     let app = TestApp::new().await;
     let order_service = app.state.services.order.clone();

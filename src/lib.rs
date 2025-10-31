@@ -21,6 +21,7 @@ pub mod handlers;
 pub mod health;
 pub mod message_queue;
 pub mod metrics;
+pub mod logging;
 pub mod middleware_helpers;
 pub mod migrator;
 pub mod models;

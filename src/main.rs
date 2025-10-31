@@ -50,12 +50,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let auth_service = Arc::new(api::auth::AuthService::new(auth_cfg, db_arc.clone()));
 
+    // Prepare shared queue and logger infrastructure
+    let base_logger = api::logging::setup_logger(api::logging::LoggerConfig::default());
+    let message_queue: Arc<dyn api::message_queue::MessageQueue> =
+        match cfg.message_queue_backend.to_ascii_lowercase().as_str() {
+            "redis" => match api::message_queue::RedisMessageQueue::new(
+                redis_client.clone(),
+                cfg.message_queue_namespace.clone(),
+                Duration::from_secs(cfg.message_queue_block_timeout_secs),
+            )
+            .await
+            {
+                Ok(queue) => Arc::new(queue),
+                Err(err) => {
+                    error!(
+                        "Failed to initialize Redis message queue (falling back to in-memory): {}",
+                        err
+                    );
+                    Arc::new(api::message_queue::InMemoryMessageQueue::new())
+                }
+            },
+            _ => Arc::new(api::message_queue::InMemoryMessageQueue::new()),
+        };
+
     // Aggregate app services used by HTTP handlers
     let services = api::handlers::AppServices::new(
         db_arc.clone(),
         Arc::new(event_sender.clone()),
         redis_client.clone(),
         auth_service.clone(),
+        message_queue,
+        base_logger,
     );
 
     // Compose shared app state

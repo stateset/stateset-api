@@ -6,6 +6,7 @@ use stateset_api::{
     config, db,
     events::{process_events, EventSender},
     handlers::AppServices,
+    message_queue::{InMemoryMessageQueue, MessageQueue, RedisMessageQueue},
     proto::*,
     services, AppState,
 };
@@ -338,11 +339,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db_arc.clone(),
     ));
 
+    let base_logger =
+        stateset_api::logging::setup_logger(stateset_api::logging::LoggerConfig::default());
+    let message_queue: Arc<dyn MessageQueue> =
+        match config.message_queue_backend.to_ascii_lowercase().as_str() {
+            "redis" => match RedisMessageQueue::new(
+                redis_client.clone(),
+                config.message_queue_namespace.clone(),
+                Duration::from_secs(config.message_queue_block_timeout_secs),
+            )
+            .await
+            {
+                Ok(queue) => Arc::new(queue),
+                Err(err) => {
+                    tracing::error!(
+                        "Failed to initialize Redis message queue (falling back to in-memory): {}",
+                        err
+                    );
+                    Arc::new(InMemoryMessageQueue::new())
+                }
+            },
+            _ => Arc::new(InMemoryMessageQueue::new()),
+        };
+
     let services = AppServices::new(
         db_arc.clone(),
         event_sender_arc.clone(),
         redis_client.clone(),
         auth_service,
+        message_queue,
+        base_logger,
     );
 
     // Create app state

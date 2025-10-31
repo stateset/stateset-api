@@ -129,7 +129,7 @@ fn map_status_str(status: &str) -> Result<OrderStatus, ServiceError> {
 fn order_status_to_service_str(status: &OrderStatus) -> &'static str {
     match status {
         OrderStatus::Pending => "pending",
-        OrderStatus::Confirmed => "processing",
+        OrderStatus::Confirmed => "confirmed",
         OrderStatus::Processing => "processing",
         OrderStatus::Shipped => "shipped",
         OrderStatus::Delivered => "delivered",

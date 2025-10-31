@@ -167,6 +167,7 @@ pub struct OrderService {
 
 // Order status constants
 const STATUS_PENDING: &str = "pending";
+const STATUS_CONFIRMED: &str = "confirmed";
 const STATUS_PROCESSING: &str = "processing";
 const STATUS_SHIPPED: &str = "shipped";
 const STATUS_DELIVERED: &str = "delivered";
@@ -593,9 +594,12 @@ impl OrderService {
             .validate()
             .map_err(|e| ServiceError::ValidationError(format!("Invalid status update: {}", e)))?;
 
+        let normalized_status = request.status.to_ascii_lowercase();
+
         // Validate status transition
         let valid_statuses = vec![
             STATUS_PENDING,
+            STATUS_CONFIRMED,
             STATUS_PROCESSING,
             STATUS_SHIPPED,
             STATUS_DELIVERED,
@@ -603,7 +607,7 @@ impl OrderService {
             STATUS_REFUNDED,
         ];
 
-        if !valid_statuses.contains(&request.status.as_str()) {
+        if !valid_statuses.contains(&normalized_status.as_str()) {
             return Err(ServiceError::ValidationError(format!(
                 "Invalid status: {}. Must be one of: {:?}",
                 request.status, valid_statuses
@@ -636,7 +640,7 @@ impl OrderService {
         let old_status = order.status.clone();
 
         // Validate status transition rules
-        if !self.is_valid_status_transition(&old_status, &request.status) {
+        if !self.is_valid_status_transition(&old_status, &normalized_status) {
             return Err(ServiceError::ValidationError(format!(
                 "Invalid status transition from {} to {}",
                 old_status, request.status
@@ -645,7 +649,7 @@ impl OrderService {
 
         // Update the order
         let mut order_active_model: OrderActiveModel = order.into();
-        order_active_model.status = Set(request.status.clone());
+        order_active_model.status = Set(normalized_status.clone());
         order_active_model.updated_at = Set(Some(now));
         order_active_model.version = Set(order_active_model.version.unwrap() + 1);
 
@@ -659,7 +663,11 @@ impl OrderService {
         })?;
 
         // Enqueue status change outbox event
-        let payload = serde_json::json!({"order_id": order_id.to_string(), "old_status": old_status, "new_status": request.status});
+        let payload = serde_json::json!({
+            "order_id": order_id.to_string(),
+            "old_status": old_status,
+            "new_status": normalized_status
+        });
         if let Err(e) = crate::events::outbox::enqueue(
             &txn,
             "order",
@@ -678,7 +686,12 @@ impl OrderService {
             ServiceError::db_error(e)
         })?;
 
-        info!(order_id = %order_id, old_status = %old_status, new_status = %request.status, "Order status updated successfully");
+        info!(
+            order_id = %order_id,
+            old_status = %old_status,
+            new_status = %normalized_status,
+            "Order status updated successfully"
+        );
 
         // Send event if event sender is available
         if let Some(event_sender) = &self.event_sender {
@@ -686,7 +699,7 @@ impl OrderService {
                 .send(Event::OrderStatusChanged {
                     order_id,
                     old_status,
-                    new_status: request.status.clone(),
+                    new_status: normalized_status.clone(),
                 })
                 .await
             {
@@ -903,9 +916,16 @@ impl OrderService {
 
     /// Validates if a status transition is allowed
     fn is_valid_status_transition(&self, from: &str, to: &str) -> bool {
-        match (from, to) {
-            // From pending, can go to processing, cancelled
-            (STATUS_PENDING, STATUS_PROCESSING) | (STATUS_PENDING, STATUS_CANCELLED) => true,
+        let from = from.to_ascii_lowercase();
+        let to = to.to_ascii_lowercase();
+
+        match (from.as_str(), to.as_str()) {
+            // From pending, can go to confirmed, processing, cancelled
+            (STATUS_PENDING, STATUS_CONFIRMED)
+            | (STATUS_PENDING, STATUS_PROCESSING)
+            | (STATUS_PENDING, STATUS_CANCELLED) => true,
+            // From confirmed, can go to processing or cancelled
+            (STATUS_CONFIRMED, STATUS_PROCESSING) | (STATUS_CONFIRMED, STATUS_CANCELLED) => true,
             // From processing, can go to shipped, cancelled
             (STATUS_PROCESSING, STATUS_SHIPPED) | (STATUS_PROCESSING, STATUS_CANCELLED) => true,
             // From shipped, can go to delivered

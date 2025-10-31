@@ -2,14 +2,14 @@ use slog::{Drain, Logger, o};
 use slog_async::Async;
 use slog_term::{FullFormat, TermDecorator};
 use axum::{
+    body::Body,
+    http::{Request, StatusCode},
     middleware::Next,
     response::Response,
-    http::{Request, StatusCode},
     Router,
 };
-use std::time::Instant;
 use std::sync::Arc;
-use std::fmt;
+use std::time::Instant;
 
 /// Configuration for setting up the logger
 #[derive(Debug, Clone)]
@@ -29,19 +29,25 @@ impl Default for LoggerConfig {
 
 /// Sets up a logger with configurable options
 pub fn setup_logger(config: LoggerConfig) -> Logger {
-    let decorator = TermDecorator::new()
-        .force_color_if(config.use_color)
-        .build();
-    
+    let decorator = {
+        let builder = TermDecorator::new();
+        let builder = if config.use_color {
+            builder.force_color()
+        } else {
+            builder
+        };
+        builder.build()
+    };
+
     let drain = FullFormat::new(decorator)
         .build()
         .fuse();
-    
+
     let drain = Async::new(drain)
         .chan_size(config.async_buffer_size)
         .build()
         .fuse();
-    
+
     Logger::root(drain, o!("version" => env!("CARGO_PKG_VERSION")))
 }
 
@@ -57,30 +63,11 @@ impl LoggingState {
     }
 }
 
-/// Request logging information
-#[derive(Debug)]
-struct RequestInfo {
-    method: String,
-    path: String,
-    status: u16,
-    duration: std::time::Duration,
-}
-
-impl fmt::Display for RequestInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {} {} ({:?})",
-            self.method, self.path, self.status, self.duration
-        )
-    }
-}
-
 /// Logging middleware for Axum applications
-pub async fn logging_middleware<B>(
-    state: axum::extract::State<Arc<LoggingState>>,
-    req: Request<B>,
-    next: Next<B>,
+pub async fn logging_middleware(
+    axum::extract::State(state): axum::extract::State<Arc<LoggingState>>,
+    req: Request<Body>,
+    next: Next,
 ) -> Result<Response, StatusCode> {
     let start_time = Instant::now();
     let method = req.method().to_string();
@@ -88,21 +75,16 @@ pub async fn logging_middleware<B>(
 
     let response = next.run(req).await;
     let duration = start_time.elapsed();
-    
     let status = response.status().as_u16();
-    let request_info = RequestInfo {
-        method,
-        path,
-        status,
-        duration,
-    };
+    let duration_ms: u128 = duration.as_millis();
 
-    slog::info!(state.logger, "{}"; 
-        "request" => request_info.to_string(),
-        "method" => request_info.method,
-        "path" => request_info.path,
-        "status" => request_info.status,
-        "duration_ms" => request_info.duration.as_millis(),
+    slog::info!(
+        &state.logger,
+        "HTTP request handled";
+        "method" => method,
+        "path" => path,
+        "status" => status,
+        "duration_ms" => duration_ms,
     );
 
     Ok(response)

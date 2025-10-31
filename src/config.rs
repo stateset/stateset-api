@@ -17,6 +17,9 @@ const DEFAULT_CACHE_CAPACITY: usize = 1000;
 const DEFAULT_CLEANUP_INTERVAL: u64 = 60; // 60 seconds
 const DEFAULT_RATE_LIMIT_REQUESTS: u32 = 100;
 const DEFAULT_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+const DEFAULT_MESSAGE_QUEUE_BACKEND: &str = "in-memory";
+const DEFAULT_MESSAGE_QUEUE_NAMESPACE: &str = "stateset:mq";
+const DEFAULT_MESSAGE_QUEUE_BLOCK_TIMEOUT_SECS: u64 = 5;
 
 /// Cache configuration
 #[derive(Clone, Debug, Deserialize, Validate)]
@@ -161,6 +164,19 @@ pub struct AppConfig {
     #[serde(default)]
     pub rate_limit_path_policies: Option<String>,
 
+    /// Message queue backend selection ("in-memory" or "redis")
+    #[serde(default = "default_message_queue_backend")]
+    #[validate(custom = "validate_message_queue_backend")]
+    pub message_queue_backend: String,
+
+    /// Namespace prefix for queue keys when using Redis backend
+    #[serde(default = "default_message_queue_namespace")]
+    pub message_queue_namespace: String,
+
+    /// Blocking timeout (seconds) for queue subscriptions
+    #[serde(default = "default_message_queue_block_timeout_secs")]
+    pub message_queue_block_timeout_secs: u64,
+
     /// Payment provider identifier (e.g., "stripe")
     #[serde(default)]
     pub payment_provider: Option<String>,
@@ -224,6 +240,9 @@ impl AppConfig {
             rate_limit_api_key_policies: None,
             rate_limit_user_policies: None,
             rate_limit_path_policies: None,
+            message_queue_backend: default_message_queue_backend(),
+            message_queue_namespace: default_message_queue_namespace(),
+            message_queue_block_timeout_secs: default_message_queue_block_timeout_secs(),
             payment_provider: None,
             payment_webhook_secret: None,
             payment_webhook_tolerance_secs: None,
@@ -316,8 +335,28 @@ fn default_rate_limit_requests() -> u32 {
 fn default_rate_limit_window_secs() -> u64 {
     DEFAULT_RATE_LIMIT_WINDOW_SECS
 }
+fn default_message_queue_backend() -> String {
+    DEFAULT_MESSAGE_QUEUE_BACKEND.to_string()
+}
+fn default_message_queue_namespace() -> String {
+    DEFAULT_MESSAGE_QUEUE_NAMESPACE.to_string()
+}
+fn default_message_queue_block_timeout_secs() -> u64 {
+    DEFAULT_MESSAGE_QUEUE_BLOCK_TIMEOUT_SECS
+}
 fn default_true_bool() -> bool {
     true
+}
+
+fn validate_message_queue_backend(value: &str) -> Result<(), ValidationError> {
+    match value.to_ascii_lowercase().as_str() {
+        "in-memory" | "redis" => Ok(()),
+        _ => {
+            let mut err = ValidationError::new("message_queue_backend");
+            err.message = Some("Must be one of: in-memory, redis".into());
+            Err(err)
+        }
+    }
 }
 
 /// Validates log level values
