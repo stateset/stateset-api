@@ -4,7 +4,6 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set,
     TransactionTrait,
 };
-use sea_orm::QueryOrder;
 use stateset_api::{
     db::{create_db_pool, run_migrations},
     entities::{
@@ -235,14 +234,14 @@ async fn test_inventory_adjustments_with_item_master() {
 
     // Step 9: Query and display transaction history
     println!("\n=== Transaction History ===");
-    let transactions = InventoryTransaction::find()
-        .order_by_desc(inventory_transaction::Column::CreatedAt)
-        .limit(10)
+    let mut transactions = InventoryTransaction::find()
         .all(&txn)
         .await
         .expect("Failed to query transactions");
 
-    for trans in transactions {
+    transactions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    for trans in transactions.into_iter().take(10) {
         println!(
             "Transaction: {} - Type: {}, Qty: {}, Reference: {:?}",
             trans.id, trans.r#type, trans.quantity, trans.reference_type

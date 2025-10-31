@@ -67,9 +67,6 @@ pub mod warranty_service {
 pub mod shipment_service {
     pub use super::shipments::ShipmentService;
 }
-pub mod work_order_service {
-    pub use super::work_orders::WorkOrderService;
-}
 pub mod fulfillment_order_service {
     pub use super::fulfillment_orders::FulfillmentOrderService;
 }

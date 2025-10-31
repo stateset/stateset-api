@@ -32,13 +32,7 @@ pub fn validate_input<T: Validate>(input: &T) -> Result<(), ApiError> {
 
 /// Map service errors to API errors
 pub fn map_service_error(err: ServiceError) -> ApiError {
-    match err {
-        ServiceError::NotFound(msg) => ApiError::NotFound(msg),
-        ServiceError::ValidationError(msg) => ApiError::ValidationError(msg),
-        ServiceError::AuthError(msg) => ApiError::Unauthorized,
-        ServiceError::InvalidOperation(msg) => ApiError::ValidationError(msg),
-        _ => ApiError::InternalServerError,
-    }
+    ApiError::ServiceError(err)
 }
 
 /// Pagination parameters for list operations

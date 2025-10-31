@@ -69,6 +69,10 @@ impl AppState {
     pub fn warranty_service(&self) -> Arc<services::warranties::WarrantyService> {
         self.services.warranties.clone()
     }
+
+    pub fn work_order_service(&self) -> Arc<services::work_orders::WorkOrderService> {
+        self.services.work_orders.clone()
+    }
 }
 
 // Common query parameters for list endpoints

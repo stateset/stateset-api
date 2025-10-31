@@ -52,6 +52,7 @@ pub struct AppServices {
     pub bill_of_materials: Arc<crate::services::billofmaterials::BillOfMaterialsService>,
     pub procurement: Arc<crate::services::procurement::ProcurementService>,
     pub asn: Arc<crate::services::asn::ASNService>,
+    pub work_orders: Arc<crate::services::work_orders::WorkOrderService>,
     // pub reports: Arc<crate::services::reports::ReportService>,
 }
 
@@ -145,12 +146,21 @@ impl AppServices {
             procurement_logger,
         ));
         let asn = Arc::new(crate::services::asn::ASNService::new(
-            db_pool,
-            event_sender,
-            redis_client,
-            message_queue,
-            circuit_breaker,
+            db_pool.clone(),
+            event_sender.clone(),
+            redis_client.clone(),
+            message_queue.clone(),
+            circuit_breaker.clone(),
             asn_logger,
+        ));
+        let work_orders_logger = base_logger.new(slog::o!("component" => "work_orders_service"));
+        let work_orders = Arc::new(crate::services::work_orders::WorkOrderService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+            redis_client.clone(),
+            message_queue.clone(),
+            circuit_breaker.clone(),
+            work_orders_logger,
         ));
 
         Self {
@@ -167,6 +177,7 @@ impl AppServices {
             bill_of_materials,
             procurement,
             asn,
+            work_orders,
         }
     }
 }

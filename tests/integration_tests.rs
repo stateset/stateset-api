@@ -3,10 +3,13 @@ mod common;
 use axum::http::{Method, StatusCode};
 use chrono::Utc;
 use rust_decimal::Decimal;
+use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveModelTrait, EntityTrait};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use common::TestApp;
+use stateset_api::entities::inventory_location;
 
 #[allow(dead_code)]
 fn assert_app_state_bounds() {
@@ -129,6 +132,24 @@ async fn test_orders_crud() {
 #[tokio::test]
 async fn test_inventory_management() {
     let app = TestApp::new().await;
+    let db = app.state.db.clone();
+    let location_id: i32 = 501;
+
+    // Ensure supporting location exists for inventory operations
+    if inventory_location::Entity::find_by_id(location_id)
+        .one(db.as_ref())
+        .await
+        .unwrap()
+        .is_none()
+    {
+        inventory_location::ActiveModel {
+            location_id: Set(location_id),
+            location_name: Set("Integration Warehouse".to_string()),
+        }
+        .insert(db.as_ref())
+        .await
+        .expect("insert test location");
+    }
 
     // Test listing inventory
     let response = app
@@ -137,12 +158,15 @@ async fn test_inventory_management() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Test creating inventory item
+    // Test creating inventory item using the supported payload
     let create_payload = json!({
-        "product_id": "prod_abc",
-        "location_id": "loc_warehouse_001",
-        "quantity": 100,
-        "unit_cost": 25.99
+        "item_number": "SKU-INTEGRATION-01",
+        "description": "Integration test item",
+        "primary_uom_code": "EA",
+        "organization_id": 1,
+        "location_id": location_id,
+        "quantity_on_hand": 100,
+        "reason": "Initial stock load"
     });
 
     let response = app
@@ -155,36 +179,57 @@ async fn test_inventory_management() {
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    // Test inventory adjustment
-    let adjust_payload = json!({
-        "adjustment_type": "increase",
-        "quantity": 50,
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read create body");
+    let created_json: Value = serde_json::from_slice(&body).expect("parse inventory create");
+    let inventory_item_id = created_json["data"]["inventory_item_id"]
+        .as_i64()
+        .expect("inventory id present");
+    let inventory_path = format!("/api/v1/inventory/{}", inventory_item_id);
+
+    // Test updating on-hand quantity
+    let update_payload = json!({
+        "location_id": location_id,
+        "on_hand": 150,
         "reason": "Stock replenishment"
+    });
+
+    let response = app
+        .request_authenticated(Method::PUT, &inventory_path, Some(update_payload))
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Test reserving inventory (acts as allocation)
+    let reserve_payload = json!({
+        "location_id": location_id,
+        "quantity": 10,
+        "reference_id": Uuid::new_v4().to_string(),
+        "reference_type": "integration_test"
     });
 
     let response = app
         .request_authenticated(
             Method::POST,
-            "/api/v1/inventory/adjust",
-            Some(adjust_payload),
+            &format!("/api/v1/inventory/{}/reserve", inventory_item_id),
+            Some(reserve_payload),
         )
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Test inventory allocation
-    let allocate_payload = json!({
-        "product_id": "prod_abc",
-        "location_id": "loc_warehouse_001",
-        "quantity": 10,
-        "order_id": "order_123"
+    // Test releasing a portion of the reservation
+    let release_payload = json!({
+        "location_id": location_id,
+        "quantity": 5
     });
 
     let response = app
         .request_authenticated(
             Method::POST,
-            "/api/v1/inventory/allocate",
-            Some(allocate_payload),
+            &format!("/api/v1/inventory/{}/release", inventory_item_id),
+            Some(release_payload),
         )
         .await;
 
@@ -411,16 +456,12 @@ async fn test_warranties_management() {
 async fn test_work_orders_manufacturing() {
     let app = TestApp::new().await;
 
-    // Test creating a work order
     let create_payload = json!({
-        "order_id": "order_123",
-        "product_id": "prod_abc",
-        "bom_id": "bom_123",
-        "quantity": 100,
-        "priority": "high",
-        "work_center_id": "wc_assembly",
-        "estimated_hours": 8.0,
-        "notes": "High priority customer order"
+        "title": "Integration WO",
+        "description": "Integration test work order",
+        "priority": "normal",
+        "status": "pending",
+        "parts_required": {"component": 1}
     });
 
     let response = app
@@ -429,54 +470,58 @@ async fn test_work_orders_manufacturing() {
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    // Test scheduling work order
-    let schedule_payload = json!({
-        "work_center_id": "wc_assembly",
-        "scheduled_start": Utc::now(),
-        "scheduled_end": Utc::now() + chrono::Duration::hours(8),
-        "assigned_to": "worker_001"
-    });
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read create work order");
+    let create_json: Value = serde_json::from_slice(&body).expect("parse work order create");
+    let work_order_id = create_json["data"]["id"]
+        .as_str()
+        .expect("work order id present")
+        .to_string();
 
+    // List work orders and verify seeded record is returned
+    let response = app
+        .request_authenticated(Method::GET, "/api/v1/work-orders?limit=10&offset=0", None)
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let list_body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read work order list");
+    let list_json: Value = serde_json::from_slice(&list_body).expect("parse work order list");
+    let items = list_json["data"]["items"].as_array().expect("items array");
+    assert!(
+        items
+            .iter()
+            .any(|item| item["id"].as_str() == Some(work_order_id.as_str())),
+        "expected work order id in list"
+    );
+
+    // Fetch the specific work order
     let response = app
         .request_authenticated(
-            Method::POST,
-            "/api/v1/work-orders/wo_123/schedule",
-            Some(schedule_payload),
+            Method::GET,
+            &format!("/api/v1/work-orders/{}", work_order_id),
+            None,
         )
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    // Test starting work order
-    let response = app
-        .request_authenticated(Method::POST, "/api/v1/work-orders/wo_123/start", None)
-        .await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Test material consumption
-    let consume_payload = json!({
-        "material_id": "mat_123",
-        "quantity_consumed": 25.0,
-        "notes": "Used for production"
-    });
-
-    let response = app
-        .request_authenticated(
-            Method::POST,
-            "/api/v1/work-orders/wo_123/materials/mat_123/consume",
-            Some(consume_payload),
-        )
-        .await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    // Test completing work order
-    let response = app
-        .request_authenticated(Method::POST, "/api/v1/work-orders/wo_123/complete", None)
-        .await;
-
-    assert_eq!(response.status(), StatusCode::OK);
+    let detail_body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("read work order detail");
+    let detail_json: Value = serde_json::from_slice(&detail_body).expect("parse detail");
+    assert_eq!(
+        detail_json["data"]["id"].as_str(),
+        Some(work_order_id.as_str()),
+        "detail id mismatch"
+    );
+    assert_eq!(
+        detail_json["data"]["title"], "Integration WO",
+        "detail title mismatch"
+    );
 }
 
 #[tokio::test]
