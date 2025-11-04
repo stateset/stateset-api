@@ -1,5 +1,6 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
+use anyhow::Context;
 use axum::http::StatusCode;
 use axum::{routing::get, Router};
 use http::HeaderValue;
@@ -47,7 +48,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Duration::from_secs(cfg.jwt_expiration as u64),
         Duration::from_secs(cfg.refresh_token_expiration as u64),
         "sk_".to_string(),
-    );
+    )
+    .context("failed to create auth config")?;
     let auth_service = Arc::new(api::auth::AuthService::new(auth_cfg, db_arc.clone()));
 
     // Prepare shared queue and logger infrastructure

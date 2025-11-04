@@ -1,4 +1,5 @@
 use std::{sync::Arc, time::Duration};
+use anyhow::Context;
 use tokio::signal;
 use tonic::transport::Server;
 
@@ -327,15 +328,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         services::inventory::InventoryService::new(db_arc.clone(), event_sender.clone());
     let event_sender_arc = Arc::new(event_sender.clone());
 
+    let auth_config = stateset_api::auth::AuthConfig::new(
+        config.jwt_secret.clone(),
+        "stateset-api".to_string(),
+        "stateset-auth".to_string(),
+        Duration::from_secs(config.jwt_expiration as u64),
+        Duration::from_secs(config.refresh_token_expiration as u64),
+        "sk_".to_string(),
+    )
+    .context("failed to create auth config")?;
+
     let auth_service = Arc::new(stateset_api::auth::AuthService::new(
-        stateset_api::auth::AuthConfig::new(
-            config.jwt_secret.clone(),
-            "stateset-api".to_string(),
-            "stateset-auth".to_string(),
-            Duration::from_secs(config.jwt_expiration as u64),
-            Duration::from_secs(config.refresh_token_expiration as u64),
-            "sk_".to_string(),
-        ),
+        auth_config,
         db_arc.clone(),
     ));
 

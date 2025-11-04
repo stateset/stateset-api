@@ -259,15 +259,30 @@ impl ShipmentService {
         &self,
         page: u64,
         limit: u64,
+        status: Option<String>,
     ) -> Result<(Vec<shipment::Model>, u64), ServiceError> {
         let db = &*self.db_pool;
 
+        // Build query with optional status filter
+        let mut query = shipment::Entity::find();
+
+        // Apply status filter if provided (database-side filtering)
+        if let Some(status_filter) = status {
+            // Parse status to ensure it's valid
+            if let Ok(parsed_status) = status_filter.parse::<shipment::ShipmentStatus>() {
+                query = query.filter(shipment::Column::Status.eq(parsed_status));
+            } else {
+                // If invalid status, return empty results
+                return Ok((vec![], 0));
+            }
+        }
+
         // Create a paginator for the shipments
-        let paginator = shipment::Entity::find()
+        let paginator = query
             .order_by_desc(shipment::Column::CreatedAt)
             .paginate(db, limit);
 
-        // Get the total count of shipments
+        // Get the total count of shipments (with filter applied)
         let total = paginator
             .num_items()
             .await

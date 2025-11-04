@@ -76,20 +76,23 @@ pub async fn list_shipments(
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
 
-    let (records, total) = state.shipment_service().list_shipments(page, limit).await?;
+    // Pass status filter to service for database-side filtering
+    let (records, total) = state
+        .shipment_service()
+        .list_shipments(page, limit, query.status)
+        .await?;
 
-    let mut items: Vec<ShipmentSummary> = records.into_iter().map(ShipmentSummary::from).collect();
-    let filtered_total = if let Some(status) = query.status {
-        items.retain(|shipment| shipment.status.eq_ignore_ascii_case(&status));
-        items.len() as u64
-    } else {
-        total
-    };
-    let total_pages = (filtered_total + limit - 1) / limit;
+    // Convert to summary format (no client-side filtering needed)
+    let items: Vec<ShipmentSummary> = records
+        .into_iter()
+        .map(ShipmentSummary::from)
+        .collect();
+
+    let total_pages = (total + limit - 1) / limit;
 
     Ok(Json(ApiResponse::success(PaginatedResponse {
         items,
-        total: filtered_total,
+        total,
         page,
         limit,
         total_pages,

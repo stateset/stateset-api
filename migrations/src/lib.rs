@@ -12,6 +12,7 @@ mod m20250105_000017_create_products_table;
 mod m20250105_000018_create_product_variants_table;
 mod m20250105_000019_create_customers_table;
 mod m20250105_000020_update_orders_table;
+mod m20241103_000021_add_critical_indexes;
 
 pub struct Migrator;
 
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250105_000018_create_product_variants_table::Migration),
             Box::new(m20250105_000019_create_customers_table::Migration),
             Box::new(m20250105_000020_update_orders_table::Migration),
+            Box::new(m20241103_000021_add_critical_indexes::Migration),
         ]
     }
 }
