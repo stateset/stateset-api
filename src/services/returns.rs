@@ -22,8 +22,9 @@ use crate::{
 };
 use anyhow::Result;
 use redis::Client as RedisClient;
+use sea_orm::sea_query::{Expr, Func};
 use sea_orm::PaginatorTrait;
-use sea_orm::{EntityTrait, QueryOrder};
+use sea_orm::{Condition, EntityTrait, QueryFilter, QueryOrder};
 use slog::Logger;
 use std::sync::Arc;
 use tracing::{error, instrument};
@@ -189,13 +190,26 @@ impl ReturnService {
         &self,
         page: u64,
         limit: u64,
+        status_filter: Option<String>,
     ) -> Result<(Vec<return_entity::Model>, u64), ServiceError> {
         let db = &*self.db_pool;
 
+        let mut query =
+            return_entity::Entity::find().order_by_desc(return_entity::Column::CreatedAt);
+
+        if let Some(status) = status_filter {
+            let normalized = status.trim().to_ascii_lowercase();
+            if !normalized.is_empty() {
+                let condition = Condition::all().add(
+                    Expr::expr(Func::lower(Expr::col(return_entity::Column::Status)))
+                        .eq(normalized),
+                );
+                query = query.filter(condition);
+            }
+        }
+
         // Create a paginator for the returns
-        let paginator = return_entity::Entity::find()
-            .order_by_desc(return_entity::Column::CreatedAt)
-            .paginate(db, limit);
+        let paginator = query.paginate(db, limit);
 
         // Get the total count of returns
         let total = paginator

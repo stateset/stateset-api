@@ -5,6 +5,7 @@ use crate::handlers::AppState;
 use crate::services::payments::{
     PaymentMethod, PaymentService, PaymentStatus, ProcessPaymentRequest, RefundPaymentRequest,
 };
+use crate::ApiResponse;
 use axum::{
     extract::{Json, Path, Query, State},
     http::StatusCode,
@@ -51,7 +52,7 @@ pub struct PaymentStatusFilter {
     path = "/api/v1/payments",
     request_body = CreatePaymentRequest,
     responses(
-        (status = 201, description = "Payment processed", body = crate::services::payments::PaymentResponse),
+        (status = 201, description = "Payment processed", body = crate::ApiResponse<crate::services::payments::PaymentResponse>),
         (status = 400, description = "Bad request", body = crate::errors::ErrorResponse),
         (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
     ),
@@ -62,7 +63,13 @@ async fn process_payment(
     State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(request): Json<CreatePaymentRequest>,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiResponse<crate::services::payments::PaymentResponse>>,
+    ),
+    ServiceError,
+> {
     // Check permissions
     if !user.has_permission("payments:write") {
         return Err(ServiceError::Forbidden(
@@ -100,7 +107,7 @@ async fn process_payment(
         PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let response = payment_service.process_payment(payment_request).await?;
-    Ok((StatusCode::CREATED, Json(response)))
+    Ok((StatusCode::CREATED, Json(ApiResponse::success(response))))
 }
 
 /// Get payment by ID
@@ -111,7 +118,7 @@ async fn process_payment(
         ("payment_id" = Uuid, Path, description = "Payment ID")
     ),
     responses(
-        (status = 200, description = "Payment details", body = crate::services::payments::PaymentResponse),
+        (status = 200, description = "Payment details", body = crate::ApiResponse<crate::services::payments::PaymentResponse>),
         (status = 404, description = "Not found", body = crate::errors::ErrorResponse)
     ),
     security(("bearer_auth" = [])),
@@ -121,7 +128,7 @@ async fn get_payment(
     State(state): State<AppState>,
     Path(payment_id): Path<Uuid>,
     user: AuthenticatedUser,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<Json<ApiResponse<crate::services::payments::PaymentResponse>>, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
         return Err(ServiceError::Forbidden(
@@ -133,7 +140,7 @@ async fn get_payment(
         PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let payment = payment_service.get_payment(payment_id).await?;
-    Ok(Json(payment))
+    Ok(Json(ApiResponse::success(payment)))
 }
 
 /// Get payments for an order
@@ -144,7 +151,7 @@ async fn get_payment(
         ("order_id" = Uuid, Path, description = "Order ID")
     ),
     responses(
-        (status = 200, description = "Payments for order", body = [crate::services::payments::PaymentResponse])
+        (status = 200, description = "Payments for order", body = crate::ApiResponse<Vec<crate::services::payments::PaymentResponse>>)
     ),
     security(("bearer_auth" = [])),
     tag = "Payments"
@@ -153,7 +160,7 @@ async fn get_order_payments(
     State(state): State<AppState>,
     Path(order_id): Path<Uuid>,
     user: AuthenticatedUser,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<Json<ApiResponse<Vec<crate::services::payments::PaymentResponse>>>, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
         return Err(ServiceError::Forbidden(
@@ -165,7 +172,7 @@ async fn get_order_payments(
         PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let payments = payment_service.get_order_payments(order_id).await?;
-    Ok(Json(payments))
+    Ok(Json(ApiResponse::success(payments)))
 }
 
 /// List payments with pagination and filtering
@@ -177,7 +184,7 @@ async fn get_order_payments(
         PaymentStatusFilter
     ),
     responses(
-        (status = 200, description = "List payments", body = crate::PaginatedResponse<crate::services::payments::PaymentResponse>)
+        (status = 200, description = "List payments", body = crate::ApiResponse<crate::PaginatedResponse<crate::services::payments::PaymentResponse>>)
     ),
     security(("bearer_auth" = [])),
     tag = "Payments"
@@ -187,7 +194,10 @@ async fn list_payments(
     Query(params): Query<PaginationParams>,
     Query(filter): Query<PaymentStatusFilter>,
     user: AuthenticatedUser,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<
+    Json<ApiResponse<crate::PaginatedResponse<crate::services::payments::PaymentResponse>>>,
+    ServiceError,
+> {
     // Check permissions
     if !user.has_permission("payments:read") {
         return Err(ServiceError::Forbidden(
@@ -198,15 +208,10 @@ async fn list_payments(
     let page = params.page;
     let limit = params.per_page;
 
-    let status_filter = filter.status.map(|s| match s.to_lowercase().as_str() {
-        "pending" => PaymentStatus::Pending,
-        "processing" => PaymentStatus::Processing,
-        "succeeded" => PaymentStatus::Succeeded,
-        "failed" => PaymentStatus::Failed,
-        "cancelled" => PaymentStatus::Cancelled,
-        "refunded" => PaymentStatus::Refunded,
-        _ => PaymentStatus::Pending,
-    });
+    let status_filter = match filter.status {
+        Some(value) => Some(parse_status_filter(&value)?),
+        None => None,
+    };
 
     let payment_service =
         PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
@@ -223,7 +228,7 @@ async fn list_payments(
         total_pages: (total + limit - 1) / limit,
     };
 
-    Ok(Json(response))
+    Ok(Json(ApiResponse::success(response)))
 }
 
 /// Refund a payment
@@ -232,7 +237,7 @@ async fn list_payments(
     path = "/api/v1/payments/refund",
     request_body = RefundPaymentHandlerRequest,
     responses(
-        (status = 201, description = "Refund processed", body = crate::services::payments::PaymentResponse),
+        (status = 201, description = "Refund processed", body = crate::ApiResponse<crate::services::payments::PaymentResponse>),
         (status = 400, description = "Bad request", body = crate::errors::ErrorResponse)
     ),
     security(("bearer_auth" = [])),
@@ -242,7 +247,13 @@ async fn refund_payment(
     State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(request): Json<RefundPaymentHandlerRequest>,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiResponse<crate::services::payments::PaymentResponse>>,
+    ),
+    ServiceError,
+> {
     // Check permissions
     if !user.has_permission("payments:write") {
         return Err(ServiceError::Forbidden(
@@ -262,7 +273,7 @@ async fn refund_payment(
         PaymentService::new(state.db.clone(), Arc::new(state.event_sender.clone()));
 
     let refund = payment_service.refund_payment(refund_request).await?;
-    Ok((StatusCode::CREATED, Json(refund)))
+    Ok((StatusCode::CREATED, Json(ApiResponse::success(refund))))
 }
 
 /// Get total payments for an order
@@ -273,7 +284,7 @@ async fn refund_payment(
         ("order_id" = Uuid, Path, description = "Order ID")
     ),
     responses(
-        (status = 200, description = "Order total paid", body = serde_json::Value)
+        (status = 200, description = "Order total paid", body = crate::ApiResponse<serde_json::Value>)
     ),
     security(("bearer_auth" = [])),
     tag = "Payments"
@@ -282,7 +293,7 @@ async fn get_order_payment_total(
     State(state): State<AppState>,
     Path(order_id): Path<Uuid>,
     user: AuthenticatedUser,
-) -> Result<impl IntoResponse, ServiceError> {
+) -> Result<Json<ApiResponse<serde_json::Value>>, ServiceError> {
     // Check permissions
     if !user.has_permission("payments:read") {
         return Err(ServiceError::Forbidden(
@@ -300,7 +311,7 @@ async fn get_order_payment_total(
         "total_paid": total
     });
 
-    Ok(Json(response))
+    Ok(Json(ApiResponse::success(response)))
 }
 
 /// Payment routes
@@ -312,4 +323,26 @@ pub fn payment_routes() -> Router<AppState> {
         .route("/order/{order_id}", get(get_order_payments))
         .route("/order/{order_id}/total", get(get_order_payment_total))
         .route("/refund", post(refund_payment))
+}
+
+fn parse_status_filter(value: &str) -> Result<PaymentStatus, ServiceError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ServiceError::ValidationError(
+            "status filter cannot be empty".to_string(),
+        ));
+    }
+
+    match trimmed.to_ascii_lowercase().as_str() {
+        "pending" => Ok(PaymentStatus::Pending),
+        "processing" => Ok(PaymentStatus::Processing),
+        "succeeded" => Ok(PaymentStatus::Succeeded),
+        "failed" => Ok(PaymentStatus::Failed),
+        "cancelled" | "canceled" => Ok(PaymentStatus::Cancelled),
+        "refunded" => Ok(PaymentStatus::Refunded),
+        other => Err(ServiceError::ValidationError(format!(
+            "invalid payment status filter: {}",
+            other
+        ))),
+    }
 }

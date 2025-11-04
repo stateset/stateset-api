@@ -77,21 +77,24 @@ pub async fn list_returns(
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
 
-    let (records, total) = state.return_service().list_returns(page, limit).await?;
+    let status_filter = query
+        .status
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
 
-    let mut items: Vec<ReturnSummary> = records.into_iter().map(ReturnSummary::from).collect();
-    let filtered_total = if let Some(status) = query.status {
-        items.retain(|ret| ret.status.eq_ignore_ascii_case(&status));
-        items.len() as u64
-    } else {
-        total
-    };
+    let (records, total) = state
+        .return_service()
+        .list_returns(page, limit, status_filter)
+        .await?;
 
-    let total_pages = (filtered_total + limit - 1) / limit;
+    let items: Vec<ReturnSummary> = records.into_iter().map(ReturnSummary::from).collect();
+
+    let total_pages = (total + limit - 1) / limit;
 
     Ok(Json(ApiResponse::success(PaginatedResponse {
         items,
-        total: filtered_total,
+        total,
         page,
         limit,
         total_pages,
