@@ -142,27 +142,123 @@ impl AuthConfig {
         access_token_expiration: Duration,
         refresh_token_expiration: Duration,
         api_key_prefix: String,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, AuthError> {
+        let config = Self {
             jwt_secret,
             jwt_audience,
             jwt_issuer,
             access_token_expiration,
             refresh_token_expiration,
             api_key_prefix,
-        }
+        };
+
+        // Validate configuration before returning
+        config.validate()?;
+        Ok(config)
     }
 
-    /// Create default configuration with secure defaults
+    /// Create default configuration - FOR DEVELOPMENT ONLY
+    /// This will panic in production to prevent insecure defaults
     pub fn default() -> Self {
         Self {
-            jwt_secret: "your-secret-key".to_string(), // Never use this in production
+            jwt_secret: "INSECURE_DEFAULT_DO_NOT_USE_IN_PRODUCTION".to_string(),
             jwt_audience: "stateset-api".to_string(),
             jwt_issuer: "stateset-auth".to_string(),
             access_token_expiration: Duration::from_secs(30 * 60), // 30 minutes
             refresh_token_expiration: Duration::from_secs(7 * 24 * 60 * 60), // 7 days
             api_key_prefix: "sk_".to_string(),
         }
+    }
+
+    /// Validate authentication configuration
+    /// Returns an error if configuration is insecure or invalid
+    pub fn validate(&self) -> Result<(), AuthError> {
+        // Check JWT secret is not using default value
+        if self.jwt_secret == "your-secret-key"
+            || self.jwt_secret == "INSECURE_DEFAULT_DO_NOT_USE_IN_PRODUCTION"
+            || self.jwt_secret.contains("default")
+            || self.jwt_secret.contains("secret-key") {
+            return Err(AuthError::ConfigurationError(
+                "JWT secret cannot use default value. Set APP__JWT_SECRET environment variable with a secure random string.".to_string()
+            ));
+        }
+
+        // Ensure JWT secret meets minimum security requirements
+        const MIN_SECRET_LENGTH: usize = 32;
+        if self.jwt_secret.len() < MIN_SECRET_LENGTH {
+            return Err(AuthError::ConfigurationError(
+                format!(
+                    "JWT secret must be at least {} characters long for security. Current length: {}",
+                    MIN_SECRET_LENGTH,
+                    self.jwt_secret.len()
+                )
+            ));
+        }
+
+        // Warn if secret appears to be weak (all same character, sequential, etc.)
+        if self.is_weak_secret() {
+            warn!(
+                "JWT secret appears weak. Use a cryptographically secure random string. \
+                Generate with: openssl rand -base64 48"
+            );
+        }
+
+        // Validate token expiration times are reasonable
+        const MAX_ACCESS_TOKEN_DURATION: u64 = 24 * 60 * 60; // 24 hours
+        const MAX_REFRESH_TOKEN_DURATION: u64 = 90 * 24 * 60 * 60; // 90 days
+
+        if self.access_token_expiration.as_secs() > MAX_ACCESS_TOKEN_DURATION {
+            return Err(AuthError::ConfigurationError(
+                format!(
+                    "Access token expiration too long: {} seconds (max: {})",
+                    self.access_token_expiration.as_secs(),
+                    MAX_ACCESS_TOKEN_DURATION
+                )
+            ));
+        }
+
+        if self.refresh_token_expiration.as_secs() > MAX_REFRESH_TOKEN_DURATION {
+            return Err(AuthError::ConfigurationError(
+                format!(
+                    "Refresh token expiration too long: {} seconds (max: {})",
+                    self.refresh_token_expiration.as_secs(),
+                    MAX_REFRESH_TOKEN_DURATION
+                )
+            ));
+        }
+
+        // Access token should be shorter than refresh token
+        if self.access_token_expiration >= self.refresh_token_expiration {
+            return Err(AuthError::ConfigurationError(
+                "Access token expiration must be shorter than refresh token expiration".to_string()
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Check if the JWT secret appears to be weak
+    fn is_weak_secret(&self) -> bool {
+        let secret = &self.jwt_secret;
+
+        // Check if all characters are the same
+        if secret.chars().all(|c| c == secret.chars().next().unwrap()) {
+            return true;
+        }
+
+        // Check if it's a common pattern
+        let weak_patterns = [
+            "12345", "password", "test", "demo", "example",
+            "changeme", "secret", "key", "token"
+        ];
+
+        for pattern in &weak_patterns {
+            if secret.to_lowercase().contains(pattern) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -753,6 +849,9 @@ pub enum AuthError {
 
     #[error("Internal error: {0}")]
     InternalError(String),
+
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
 }
 
 impl IntoResponse for AuthError {
@@ -827,6 +926,11 @@ impl IntoResponse for AuthError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "AUTH_INTERNAL_ERROR",
                 msg.clone(),
+            ),
+            Self::ConfigurationError(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "AUTH_CONFIGURATION_ERROR",
+                format!("Invalid configuration: {}", msg),
             ),
         };
 
