@@ -1,9 +1,17 @@
 # StateSet API
 
 [![Rust CI](https://github.com/stateset/stateset-api/actions/workflows/rust.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/rust.yml)
-[![Build with Error Logging](https://github.com/stateset/stateset-api/actions/workflows/build-with-logging.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/build-with-logging.yml)
+[![Security Scan](https://github.com/stateset/stateset-api/actions/workflows/security.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/security.yml)
+[![codecov](https://codecov.io/gh/stateset/stateset-api/branch/master/graph/badge.svg)](https://codecov.io/gh/stateset/stateset-api)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust Version](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://www.rust-lang.org)
+[![GitHub release](https://img.shields.io/github/v/release/stateset/stateset-api)](https://github.com/stateset/stateset-api/releases)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![code style: rustfmt](https://img.shields.io/badge/code%20style-rustfmt-orange.svg)](https://github.com/rust-lang/rustfmt)
 
 StateSet API is a comprehensive, scalable, and robust backend system for order management, inventory control, returns processing, warranty management, shipment tracking, and work order handling. Built with Rust, it leverages modern web technologies and best practices to provide a high-performance, reliable solution for e-commerce and manufacturing businesses.
+
+**Quick Links**: [Getting Started](#getting-started) | [Documentation](#documentation) | [API Endpoints](#api-endpoints) | [Deployment](docs/DEPLOYMENT.md) | [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md)
 
 ## Features
 
@@ -395,10 +403,75 @@ Environment variables:
 - `APP__RATE_LIMIT_API_KEY_POLICIES="sk_live_abc:200:60"`
 - `APP__RATE_LIMIT_USER_POLICIES="user-123:500:60"`
 
+## Documentation
+
+- **[Getting Started](GETTING_STARTED.md)** - Quick setup guide
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[Database Guide](docs/DATABASE.md)** - Database management and migrations
+- **[Monitoring Guide](docs/MONITORING.md)** - Observability and alerting
+- **[API Versioning](API_VERSIONING.md)** - API versioning strategy
+- **[Security Policy](SECURITY.md)** - Security guidelines and reporting
+- **[Roadmap](ROADMAP.md)** - Feature roadmap and planning
+- **[Changelog](CHANGELOG.md)** - Release history and changes
+
+## Performance
+
+- **Benchmarks**: Run `cargo bench` to see performance benchmarks
+- **Load Testing**: Comprehensive load tests included in `tests/load_test.rs`
+- **Metrics**: Prometheus metrics available at `/metrics`
+- **Tracing**: OpenTelemetry support for distributed tracing
+
+## Community
+
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/stateset/stateset-api/discussions)
+- **Issue Tracker**: [Report bugs and request features](https://github.com/stateset/stateset-api/issues)
+- **Code of Conduct**: [Our commitment to a welcoming community](CODE_OF_CONDUCT.md)
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+Before contributing:
+1. Check existing issues or create a new one
+2. Fork the repository
+3. Create a feature branch
+4. Make your changes with tests
+5. Submit a pull request
+
+## Security
+
+Security is a top priority. If you discover a security vulnerability, please follow our [Security Policy](SECURITY.md).
+
+**Security Features**:
+- `#![forbid(unsafe_code)]` - Memory safe by design
+- JWT authentication with refresh tokens
+- Role-based access control (RBAC)
+- API key management
+- Rate limiting
+- Automated security scanning
+- Dependency auditing
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+Built with these amazing open-source projects:
+- [Rust](https://www.rust-lang.org/) - Systems programming language
+- [Axum](https://github.com/tokio-rs/axum) - Web framework
+- [SeaORM](https://www.sea-ql.org/SeaORM/) - Async ORM
+- [Tokio](https://tokio.rs/) - Async runtime
+- [Tower](https://github.com/tower-rs/tower) - Service middleware
+
+## Support
+
+- **Documentation**: https://docs.stateset.com
+- **Email**: support@stateset.io
+- **GitHub Issues**: https://github.com/stateset/stateset-api/issues
+
+---
+
+**⭐ Star us on GitHub** — it motivates us a lot!
+
+Made with ❤️ by the StateSet team

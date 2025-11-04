@@ -87,6 +87,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3.10"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bin]]
 name = "stateset-api"
@@ -132,3 +133,7 @@ path = "src/bin/openapi_export.rs"
 [[bin]]
 name = "stateset-cli"
 path = "src/bin/stateset_cli.rs"
+
+[[bench]]
+name = "api_benchmarks"
+harness = false

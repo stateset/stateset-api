@@ -1,44 +1,75 @@
 ---
-name: Feature request
+name: Feature Request
 about: Suggest an idea for this project
-title: ''
-labels: 'enhancement'
+title: '[FEATURE] '
+labels: enhancement
 assignees: ''
-
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## Feature Description
 
-**Describe the solution you'd like**
+A clear and concise description of the feature you'd like to see.
+
+## Problem Statement
+
+What problem does this feature solve? Who benefits from it?
+
+**Is your feature request related to a problem?**
+Example: "I'm always frustrated when [...]"
+
+## Proposed Solution
+
 A clear and concise description of what you want to happen.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+### API Design (if applicable)
 
-**API Design (if applicable)**
-```yaml
-# Example of proposed API endpoint
-POST /api/v1/new-feature
-{
-  "field1": "value1",
-  "field2": "value2"
-}
+```http
+POST /api/v1/new-endpoint
+Content-Type: application/json
 
-# Expected response
 {
-  "id": "123",
-  "status": "success"
+  "example": "request"
 }
 ```
 
-**Use Cases**
-Describe specific use cases for this feature:
-1. Use case 1
-2. Use case 2
+**Response:**
+```json
+{
+  "example": "response"
+}
+```
 
-**Implementation Ideas**
-If you have thoughts on how this could be implemented, please share them here.
+## Alternatives Considered
 
-**Additional context**
-Add any other context, mockups, or screenshots about the feature request here. 
+Describe any alternative solutions or features you've considered.
+
+## Use Cases
+
+Provide specific use cases or user stories:
+
+1. As a [user type], I want to [action] so that [benefit]
+2. ...
+
+## Implementation Considerations
+
+- [ ] Database schema changes required
+- [ ] Breaking API changes
+- [ ] New dependencies needed
+- [ ] Documentation updates needed
+- [ ] Migration path for existing users
+
+## Business Value
+
+How does this feature benefit the StateSet platform and its users?
+
+- **Customer Impact**: [Low/Medium/High]
+- **Technical Complexity**: [Low/Medium/High]
+- **Priority**: [Low/Medium/High]
+
+## Additional Context
+
+Add any other context, screenshots, mockups, or examples about the feature request here.
+
+## Related Issues
+
+Link to any related issues or discussions.

@@ -1,46 +1,76 @@
 ---
-name: Bug report
+name: Bug Report
 about: Create a report to help us improve
-title: ''
-labels: 'bug'
+title: '[BUG] '
+labels: bug
 assignees: ''
-
 ---
 
-**Describe the bug**
+## Bug Description
+
 A clear and concise description of what the bug is.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Configure '...'
-2. Send request to '...'
-3. See error
+## To Reproduce
 
-**Expected behavior**
+Steps to reproduce the behavior:
+1. Send request to '...'
+2. With payload '...'
+3. Observe error '...'
+
+## Expected Behavior
+
 A clear and concise description of what you expected to happen.
 
-**Actual behavior**
-What actually happened. Include error messages and stack traces if applicable.
+## Actual Behavior
 
-**Code Example**
-```rust
-// Minimal code example that reproduces the issue
+What actually happened instead.
+
+## Environment
+
+- **OS**: [e.g., Ubuntu 22.04, macOS 14.0, Windows 11]
+- **Rust version**: [e.g., 1.75.0 - run `rustc --version`]
+- **API version**: [e.g., 0.1.6 - from `/health/version`]
+- **Database**: [e.g., PostgreSQL 15, SQLite]
+- **Deployment**: [e.g., Docker, bare metal, Kubernetes]
+
+## Logs
+
+Please provide relevant log output. Include the `X-Request-Id` header value if available.
+
+```
+Paste logs here
 ```
 
-**Environment (please complete the following information):**
- - OS: [e.g. Ubuntu 22.04]
- - Rust version: [e.g. 1.70.0]
- - StateSet API version: [e.g. 0.1.0]
- - Database: [e.g. PostgreSQL 14.5]
- - Redis version: [e.g. 6.2]
+## API Request/Response
 
-**Logs**
+If applicable, provide the full request and response (sanitize sensitive data):
+
+**Request:**
+```http
+POST /api/v1/orders HTTP/1.1
+Authorization: Bearer <redacted>
+Content-Type: application/json
+
+{
+  "customer_id": "...",
+  ...
+}
 ```
-Please paste any relevant log output here
+
+**Response:**
+```json
+{
+  "error": {
+    "code": "...",
+    "message": "..."
+  }
+}
 ```
 
-**Additional context**
-Add any other context about the problem here.
+## Additional Context
 
-**Possible Solution**
-If you have ideas on how to fix this issue, please describe them here. 
+Add any other context about the problem here (screenshots, related issues, etc.).
+
+## Possible Solution
+
+If you have suggestions on how to fix the bug, please share them here.

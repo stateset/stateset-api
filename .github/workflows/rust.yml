@@ -1,4 +1,4 @@
-name: Rust
+name: Rust CI
 
 on:
   push:
@@ -8,10 +8,37 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build:
+  test:
+    name: Test Suite
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: stateset
+          POSTGRES_PASSWORD: stateset
+          POSTGRES_DB: stateset_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
 
     steps:
     - uses: actions/checkout@v4
@@ -23,14 +50,101 @@ jobs:
         override: true
         components: rustfmt, clippy
 
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
     - name: Check formatting
       run: cargo fmt --all -- --check
 
     - name: Lint with clippy
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --all-targets --all-features -- -D warnings
 
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --all-features
 
     - name: Run tests
-      run: cargo test --verbose
+      env:
+        DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
+        REDIS_URL: redis://localhost:6379
+        APP__DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
+        APP__REDIS_URL: redis://localhost:6379
+        APP__JWT_SECRET: test-secret-key-min-32-characters-long
+      run: cargo test --verbose --all-features
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: stateset
+          POSTGRES_PASSWORD: stateset
+          POSTGRES_DB: stateset_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install tarpaulin
+      run: cargo install cargo-tarpaulin
+
+    - name: Generate coverage
+      env:
+        DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
+        REDIS_URL: redis://localhost:6379
+        APP__DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
+        APP__REDIS_URL: redis://localhost:6379
+        APP__JWT_SECRET: test-secret-key-min-32-characters-long
+      run: cargo tarpaulin --verbose --all-features --workspace --timeout 300 --out xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./cobertura.xml
+        fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report
+        path: cobertura.xml
