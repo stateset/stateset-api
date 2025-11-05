@@ -28,13 +28,15 @@ SESSION_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions \
         "quantity": 1
       }
     ],
-    "fulfillment_address": {
-      "name": "Alice Smith",
-      "line_one": "456 Tech Avenue",
-      "city": "San Francisco",
-      "state": "CA",
-      "country": "US",
-      "postal_code": "94105"
+    "customer": {
+      "shipping_address": {
+        "name": "Alice Smith",
+        "line1": "456 Tech Avenue",
+        "city": "San Francisco",
+        "region": "CA",
+        "country": "US",
+        "postal_code": "94105"
+      }
     }
   }')
 
@@ -44,7 +46,7 @@ SESSION_ID=$(echo "$SESSION_RESPONSE" | jq -r '.id')
 echo
 echo -e "${GREEN}✓ Session created: $SESSION_ID${NC}"
 echo -e "   Status: $(echo "$SESSION_RESPONSE" | jq -r '.status')"
-echo -e "   Total: \$$(echo "$SESSION_RESPONSE" | jq -r '.totals[] | select(.type=="total") | .amount')  (cents)"
+echo -e "   Total: \$$(echo "$SESSION_RESPONSE" | jq -r '.totals.grand_total.amount')  (cents)"
 echo
 
 echo "═══════════════════════════════════════════════════════════════"
@@ -120,21 +122,29 @@ echo
 UPDATE_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions/$SESSION_ID \
   -H "Content-Type: application/json" \
   -d '{
-    "buyer": {
-      "first_name": "Alice",
-      "last_name": "Smith",
-      "email": "alice.smith@example.com",
-      "phone_number": "+14155559876"
+    "customer": {
+      "shipping_address": {
+        "name": "Alice Smith",
+        "line1": "456 Tech Avenue",
+        "city": "San Francisco",
+        "region": "CA",
+        "country": "US",
+        "postal_code": "94105",
+        "email": "alice.smith@example.com",
+        "phone": "+14155559876"
+      }
     },
-    "fulfillment_option_id": "standard_shipping"
+    "fulfillment": {
+      "selected_id": "standard_shipping"
+    }
   }')
 
-echo "$UPDATE_RESPONSE" | jq '{id, status, buyer, fulfillment_option_id, totals: [.totals[] | {type, amount}]}'
+echo "$UPDATE_RESPONSE" | jq '{id, status, customer: .customer.shipping_address.email, fulfillment: .fulfillment.selected_id, totals: .totals}'
 
 echo
 echo -e "${GREEN}✓ Session updated${NC}"
 echo -e "   Status: $(echo "$UPDATE_RESPONSE" | jq -r '.status')"
-echo -e "   Buyer: $(echo "$UPDATE_RESPONSE" | jq -r '.buyer.email')"
+echo -e "   Buyer: $(echo "$UPDATE_RESPONSE" | jq -r '.customer.shipping_address.email')"
 echo
 
 echo "═══════════════════════════════════════════════════════════════"
@@ -147,13 +157,12 @@ echo
 COMPLETE_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions/$SESSION_ID/complete \
   -H "Content-Type: application/json" \
   -d "{
-    \"payment_data\": {
-      \"token\": \"$VAULT_TOKEN\",
-      \"provider\": \"stripe\"
+    \"payment\": {
+      \"delegated_token\": \"$VAULT_TOKEN\"
     }
   }")
 
-echo "$COMPLETE_RESPONSE" | jq '{status, order: .order, buyer: .buyer.email}'
+echo "$COMPLETE_RESPONSE" | jq '{status, order: .order, customer: .customer.shipping_address.email}'
 
 echo
 ORDER_ID=$(echo "$COMPLETE_RESPONSE" | jq -r '.order.id')
@@ -173,18 +182,18 @@ echo
 # Create new session
 NEW_SESSION=$(curl -s -X POST http://localhost:8080/checkout_sessions \
   -H "Content-Type: application/json" \
-  -d '{"items":[{"id":"item_test","quantity":1}],"fulfillment_address":{"name":"Test User","line_one":"789 Test St","city":"SF","state":"CA","country":"US","postal_code":"94102"}}')
+  -d '{"items":[{"id":"item_test","quantity":1}],"customer":{"shipping_address":{"name":"Test User","line1":"789 Test St","city":"San Francisco","region":"CA","country":"US","postal_code":"94102"}}}')
 NEW_SESSION_ID=$(echo "$NEW_SESSION" | jq -r '.id')
 
-# Update with buyer
+# Update with customer + fulfillment
 curl -s -X POST http://localhost:8080/checkout_sessions/$NEW_SESSION_ID \
   -H "Content-Type: application/json" \
-  -d '{"buyer":{"first_name":"Test","last_name":"User","email":"test@example.com"},"fulfillment_option_id":"standard_shipping"}' > /dev/null
+  -d '{"customer":{"shipping_address":{"name":"Test User","line1":"789 Test St","city":"San Francisco","region":"CA","country":"US","postal_code":"94102","email":"test@example.com"}},"fulfillment":{"selected_id":"standard_shipping"}}' > /dev/null
 
 # Try to use same vault token
 REUSE_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions/$NEW_SESSION_ID/complete \
   -H "Content-Type: application/json" \
-  -d "{\"payment_data\":{\"token\":\"$VAULT_TOKEN\",\"provider\":\"stripe\"}}")
+  -d "{\"payment\":{\"delegated_token\":\"$VAULT_TOKEN\"}}")
 
 echo "$REUSE_RESPONSE" | jq .
 

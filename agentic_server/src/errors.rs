@@ -8,6 +8,11 @@ use thiserror::Error;
 
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
+    pub error: ErrorBody,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ErrorBody {
     #[serde(rename = "type")]
     pub error_type: String,
     pub code: String,
@@ -129,10 +134,12 @@ impl IntoResponse for ApiError {
         };
 
         let error_response = ErrorResponse {
-            error_type,
-            code,
-            message,
-            param: None,
+            error: ErrorBody {
+                error_type,
+                code,
+                message,
+                param: None,
+            },
         };
 
         (status, Json(error_response)).into_response()

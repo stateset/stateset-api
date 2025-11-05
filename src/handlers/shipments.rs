@@ -83,10 +83,7 @@ pub async fn list_shipments(
         .await?;
 
     // Convert to summary format (no client-side filtering needed)
-    let items: Vec<ShipmentSummary> = records
-        .into_iter()
-        .map(ShipmentSummary::from)
-        .collect();
+    let items: Vec<ShipmentSummary> = records.into_iter().map(ShipmentSummary::from).collect();
 
     let total_pages = (total + limit - 1) / limit;
 

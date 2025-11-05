@@ -285,7 +285,11 @@ impl MigrationTrait for Migration {
             .drop_index(Index::drop().name("idx_refresh_tokens_user_id").to_owned())
             .await?;
         manager
-            .drop_index(Index::drop().name("idx_refresh_tokens_token_hash").to_owned())
+            .drop_index(
+                Index::drop()
+                    .name("idx_refresh_tokens_token_hash")
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_index(Index::drop().name("idx_api_keys_key_hash").to_owned())
@@ -309,7 +313,11 @@ impl MigrationTrait for Migration {
             .drop_index(Index::drop().name("idx_work_orders_assignee").to_owned())
             .await?;
         manager
-            .drop_index(Index::drop().name("idx_work_orders_status_scheduled").to_owned())
+            .drop_index(
+                Index::drop()
+                    .name("idx_work_orders_status_scheduled")
+                    .to_owned(),
+            )
             .await?;
 
         // Inventory
@@ -336,7 +344,11 @@ impl MigrationTrait for Migration {
             .drop_index(Index::drop().name("idx_shipments_order_id").to_owned())
             .await?;
         manager
-            .drop_index(Index::drop().name("idx_shipments_tracking_number").to_owned())
+            .drop_index(
+                Index::drop()
+                    .name("idx_shipments_tracking_number")
+                    .to_owned(),
+            )
             .await?;
 
         // Order Items

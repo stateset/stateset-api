@@ -385,7 +385,11 @@ pub trait EventHandler: Send + Sync {
 }
 
 // Function to process incoming events and distribute them to registered event handlers.
-pub async fn process_events(mut rx: mpsc::Receiver<Event>) {
+pub async fn process_events(
+    mut rx: mpsc::Receiver<Event>,
+    webhook_service: Option<std::sync::Arc<crate::webhooks::AgenticCommerceWebhookService>>,
+    webhook_url: Option<String>,
+) {
     info!("Starting event processing loop");
 
     while let Some(event) = rx.recv().await {
@@ -535,6 +539,66 @@ pub async fn process_events(mut rx: mpsc::Receiver<Event>) {
             }
             Event::PaymentVoided(payment_id) => {
                 info!("Payment voided: {}", payment_id);
+            }
+            // Agentic Commerce webhook events
+            Event::CheckoutCompleted {
+                session_id,
+                order_id,
+            } => {
+                info!(
+                    "Checkout completed: session={}, order={}",
+                    session_id, order_id
+                );
+
+                // Send webhook to OpenAI if configured
+                if let (Some(service), Some(url)) = (&webhook_service, &webhook_url) {
+                    let permalink = format!("https://merchant.example.com/orders/{}", order_id);
+
+                    if let Err(e) = service
+                        .send_order_created(
+                            url,
+                            session_id.to_string(),
+                            order_id.to_string(),
+                            permalink.clone(),
+                        )
+                        .await
+                    {
+                        error!("Failed to send order_created webhook: {}", e);
+                    }
+
+                    // Also send order_updated webhook with initial status
+                    if let Err(e) = service
+                        .send_order_updated(
+                            url,
+                            session_id.to_string(),
+                            permalink,
+                            "created".to_string(),
+                            vec![],
+                        )
+                        .await
+                    {
+                        error!("Failed to send order_updated webhook: {}", e);
+                    }
+                }
+            }
+            Event::OrderUpdated(order_id) => {
+                info!("Order updated: {}", order_id);
+
+                // Send webhook to OpenAI if configured
+                // Note: In a real implementation, you'd fetch the order details to get:
+                // - checkout_session_id
+                // - current status
+                // - refunds
+                // For now, this is a placeholder
+                if let (Some(service), Some(url)) = (&webhook_service, &webhook_url) {
+                    // TODO: Fetch actual order details from database
+                    // This is a simplified version - in production you'd need to:
+                    // 1. Query the order from the database
+                    // 2. Get the associated checkout_session_id
+                    // 3. Get the current order status
+                    // 4. Get any refunds
+                    info!("Order update webhook would be sent for order {}", order_id);
+                }
             }
             // Add more event handlers as needed
             _ => {

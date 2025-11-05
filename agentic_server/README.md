@@ -115,25 +115,21 @@ curl -X POST http://localhost:8080/checkout_sessions \
   -H "API-Version: 2025-09-29" \
   -d '{
     "items": [
-      {
-        "id": "item_123",
-        "quantity": 2
-      }
+      { "id": "item_123", "quantity": 2 }
     ],
-    "buyer": {
-      "first_name": "John",
-      "last_name": "Doe",
-      "email": "john.doe@example.com",
-      "phone_number": "+1234567890"
+    "customer": {
+      "shipping_address": {
+        "name": "John Doe",
+        "line1": "123 Main St",
+        "city": "San Francisco",
+        "region": "CA",
+        "postal_code": "94105",
+        "country": "US",
+        "email": "john.doe@example.com"
+      }
     },
-    "fulfillment_address": {
-      "name": "John Doe",
-      "line_one": "123 Main St",
-      "line_two": "Apt 4B",
-      "city": "San Francisco",
-      "state": "CA",
-      "country": "US",
-      "postal_code": "94105"
+    "fulfillment": {
+      "selected_id": "standard_shipping"
     }
   }'
 ```
@@ -147,94 +143,98 @@ curl -X POST http://localhost:8080/checkout_sessions \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | Yes | Unique identifier for the Checkout Session |
-| `buyer` | [Buyer](#buyer) | No | Information about the buyer |
-| `payment_provider` | [PaymentProvider](#paymentprovider) | Yes | Payment provider configuration |
-| `status` | string | Yes | Current status: `not_ready_for_payment`, `ready_for_payment`, `completed`, `canceled` |
-| `currency` | string | Yes | Three-letter ISO currency code (lowercase) |
-| `line_items` | array of [LineItem](#lineitem) | Yes | Line items with calculated pricing |
-| `fulfillment_address` | [Address](#address) | No | Shipping address |
-| `fulfillment_options` | array of [FulfillmentOption](#fulfillmentoption) | Yes | Available shipping/fulfillment options |
-| `fulfillment_option_id` | string | No | ID of selected fulfillment option |
-| `totals` | array of [Total](#total) | Yes | Breakdown of charges and discounts |
-| `messages` | array of [Message](#message) | Yes | Messages or notifications for customer |
-| `links` | array of [Link](#link) | Yes | Related links (terms, privacy, etc.) |
+| `status` | string | Yes | `not_ready_for_payment`, `ready_for_payment`, `completed`, or `canceled` |
+| `items` | array of [LineItem](#lineitem) | Yes | Line items with computed unit pricing |
+| `totals` | [Totals](#totals) | Yes | Aggregated totals (subtotal, shipping, tax, grand total) |
+| `fulfillment` | [FulfillmentState](#fulfillmentstate) | No | Current fulfillment selection and options |
+| `customer` | [Customer](#customer) | No | Billing and shipping details |
+| `links` | [Links](#links) | No | Helpful URLs (terms, privacy, order permalink) |
+| `messages` | array of [Message](#message) | No | Informational or error messages for the buyer |
+| `created_at` | string | Yes | ISO-8601 timestamp for session creation |
+| `updated_at` | string | Yes | ISO-8601 timestamp for last update |
 
 **Example Response:**
 
 ```json
 {
   "id": "340a3ac3-a373-40a1-bdf0-9b1be083c874",
-  "buyer": {
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john.doe@example.com",
-    "phone_number": "+1234567890"
-  },
-  "payment_provider": {
-    "provider": "stripe",
-    "supported_payment_methods": ["card"]
-  },
   "status": "ready_for_payment",
-  "currency": "usd",
-  "line_items": [
+  "items": [
     {
-      "id": "line_item_1",
-      "item": {
-        "id": "item_123",
-        "quantity": 2
+      "id": "li_01hynk3k5vd5a4",
+      "title": "Wireless Mouse",
+      "quantity": 2,
+      "unit_price": {
+        "amount": 7999,
+        "currency": "usd"
       },
-      "base_amount": 2000,
-      "discount": 0,
-      "subtotal": 2000,
-      "tax": 175,
-      "total": 2175
+      "variant_id": "item_123",
+      "image_url": "https://example.com/mouse.jpg"
     }
   ],
-  "fulfillment_address": {
-    "name": "John Doe",
-    "line_one": "123 Main St",
-    "line_two": "Apt 4B",
-    "city": "San Francisco",
-    "state": "CA",
-    "country": "US",
-    "postal_code": "94105"
+  "totals": {
+    "subtotal": { "amount": 15998, "currency": "usd" },
+    "tax": { "amount": 1400, "currency": "usd" },
+    "shipping": { "amount": 1000, "currency": "usd" },
+    "discount": null,
+    "grand_total": { "amount": 18398, "currency": "usd" }
   },
-  "fulfillment_options": [
-    {
-      "type": "shipping",
-      "id": "standard_shipping",
-      "title": "Standard Shipping",
-      "subtitle": "5-7 business days",
-      "carrier": "USPS",
-      "subtotal": "1000",
-      "tax": "88",
-      "total": "1088"
+  "fulfillment": {
+    "selected_id": "standard_shipping",
+    "options": [
+      {
+        "id": "standard_shipping",
+        "label": "Standard Shipping",
+        "price": { "amount": 1000, "currency": "usd" },
+        "est_delivery": {
+          "earliest": "2025-01-21T00:00:00Z",
+          "latest": "2025-01-23T00:00:00Z"
+        }
+      },
+      {
+        "id": "express_shipping",
+        "label": "Express Shipping",
+        "price": { "amount": 2500, "currency": "usd" },
+        "est_delivery": {
+          "earliest": "2025-01-18T00:00:00Z",
+          "latest": "2025-01-19T00:00:00Z"
+        }
+      }
+    ]
+  },
+  "customer": {
+    "shipping_address": {
+      "name": "John Doe",
+      "line1": "123 Main St",
+      "city": "San Francisco",
+      "region": "CA",
+      "postal_code": "94105",
+      "country": "US",
+      "email": "john.doe@example.com"
     }
-  ],
-  "totals": [
-    {
-      "type": "items_base_amount",
-      "display_text": "Items",
-      "amount": 2000
-    },
-    {
-      "type": "subtotal",
-      "display_text": "Subtotal",
-      "amount": 2000
-    },
-    {
-      "type": "tax",
-      "display_text": "Tax",
-      "amount": 175
-    },
-    {
-      "type": "total",
-      "display_text": "Total",
-      "amount": 2175
-    }
-  ],
+  },
+  "links": {
+    "terms": "https://merchant.example.com/terms",
+    "privacy": "https://merchant.example.com/privacy",
+    "order_permalink": null
+  },
   "messages": [],
-  "links": [
+  "created_at": "2025-01-15T09:45:12.000Z",
+  "updated_at": "2025-01-15T09:47:03.000Z"
+}
+```
+
+---
+
+## Retrieve a Checkout Session
+
+Retrieve an existing Checkout Session using its ID.
+
+### Request
+
+**HTTP Method:** `GET /checkout_sessions/:checkout_session_id`
+
+**Parameters:**
     {
       "type": "terms_of_use",
       "url": "https://merchant.example.com/terms"
@@ -485,155 +485,129 @@ curl -X POST http://localhost:8080/agentic_commerce/delegate_payment \
 
 ## Data Structures
 
-### Buyer
+### RequestItem
 
-Information about the individual making the purchase.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `first_name` | string | Yes | Buyer's first name |
-| `last_name` | string | Yes | Buyer's last name |
-| `email` | string | Yes | Buyer's email address |
-| `phone_number` | string | No | Buyer's phone number (E.164 format) |
-
-### Item
-
-A product or service being purchased with its quantity.
+Represents an item included in the shopper's request.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | Yes | Unique identifier for the item |
+| `id` | string | Yes | Catalog identifier for the product |
 | `quantity` | integer | Yes | Requested quantity (must be > 0) |
 
 ### LineItem
 
-Line item details including pricing breakdown.
+Line items returned from the pricing engine.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | Yes | Unique identifier for the line item |
-| `item` | [Item](#item) | Yes | The item details |
-| `base_amount` | integer | Yes | Base amount in minor units (cents) |
-| `discount` | integer | Yes | Discount amount in minor units |
-| `subtotal` | integer | Yes | Subtotal after discounts |
-| `tax` | integer | Yes | Tax amount in minor units |
-| `total` | integer | Yes | Total amount in minor units |
+| `id` | string | Yes | Line item identifier generated per session |
+| `title` | string | Yes | Product display name |
+| `quantity` | integer | Yes | Quantity reserved |
+| `unit_price` | [Money](#money) | Yes | Per-unit price in minor units |
+| `variant_id` | string | No | Underlying product or SKU identifier |
+| `sku` | string | No | Merchant SKU |
+| `image_url` | string | No | Product image URL |
+
+### Money
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `amount` | integer | Yes | Value in minor units (for USD, cents) |
+| `currency` | string | Yes | ISO 4217 currency code (lowercase) |
+
+### Totals
+
+Aggregated pricing for the session.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `subtotal` | [Money](#money) | Yes | Merchandise subtotal before tax & shipping |
+| `tax` | [Money](#money) | No | Calculated tax amount |
+| `shipping` | [Money](#money) | No | Shipping or fulfillment cost |
+| `discount` | [Money](#money) | No | Total discounts applied |
+| `grand_total` | [Money](#money) | Yes | Final amount due |
+
+### FulfillmentState
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `selected_id` | string | No | Shipping/fulfillment option chosen by the shopper |
+| `options` | array of [FulfillmentChoice](#fulfillmentchoice) | No | Available options based on address |
+
+#### FulfillmentChoice
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Identifier such as `standard_shipping` |
+| `label` | string | Yes | Buyer-friendly label |
+| `price` | [Money](#money) | Yes | Price for the option |
+| `est_delivery` | [EstimatedDelivery](#estimateddelivery) | No | Delivery time window |
+
+#### EstimatedDelivery
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `earliest` | string | No | Earliest ETA (ISO 8601) |
+| `latest` | string | No | Latest ETA (ISO 8601) |
+
+### Customer
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `billing_address` | [Address](#address) | No | Billing address (for invoices/tax) |
+| `shipping_address` | [Address](#address) | No | Shipping address for fulfillment |
 
 ### Address
 
-Shipping or billing address information.
-
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Recipient name |
-| `line_one` | string | Yes | Address line 1 |
-| `line_two` | string | No | Address line 2 (apt, suite, etc.) |
-| `city` | string | Yes | City name |
-| `state` | string | Yes | State/province code |
-| `country` | string | Yes | Two-letter country code (ISO 3166-1) |
-| `postal_code` | string | Yes | ZIP or postal code |
-
-### PaymentData
-
-Payment method details for transaction processing.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `token` | string | Yes | Secure payment credential (vault token or PSP token) |
-| `provider` | string | Yes | Payment provider name (e.g., "stripe") |
-| `billing_address` | [Address](#address) | No | Billing address for payment method |
-
-### Total
-
-Summary of charges and discounts.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | enum | Yes | Type: `items_base_amount`, `items_discount`, `subtotal`, `discount`, `fulfillment`, `tax`, `fee`, `total` |
-| `display_text` | string | Yes | Display text for customer |
-| `amount` | integer | Yes | Amount in minor units (cents) |
-
-### FulfillmentOption
-
-Shipping or digital fulfillment options (see [ShippingFulfillmentOption](#shippingfulfillmentoption) and [DigitalFulfillmentOption](#digitalfulfillmentoption)).
-
-#### ShippingFulfillmentOption
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | Yes | Always "shipping" |
-| `id` | string | Yes | Unique identifier |
-| `title` | string | Yes | Display title (e.g., "Express Shipping") |
-| `subtitle` | string | No | Delivery timeframe (e.g., "2-3 business days") |
-| `carrier` | string | No | Carrier name (e.g., "USPS", "FedEx") |
-| `earliest_delivery_time` | string | No | ISO 8601 datetime |
-| `latest_delivery_time` | string | No | ISO 8601 datetime |
-| `subtotal` | string | Yes | Shipping subtotal (as string) |
-| `tax` | string | Yes | Shipping tax (as string) |
-| `total` | string | Yes | Shipping total (as string) |
-
-#### DigitalFulfillmentOption
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | Yes | Always "digital" |
-| `id` | string | Yes | Unique identifier |
-| `title` | string | Yes | Display title |
-| `subtitle` | string | No | Delivery description |
-| `subtotal` | string | Yes | Subtotal (as string) |
-| `tax` | string | Yes | Tax (as string) |
-| `total` | string | Yes | Total (as string) |
-
-### PaymentProvider
-
-Payment provider configuration.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `provider` | string | Yes | Provider name: `stripe` |
-| `supported_payment_methods` | array | Yes | Supported methods: `["card"]` |
+| `name` | string | No | Recipient name |
+| `line1` | string | Yes | Address line 1 |
+| `line2` | string | No | Address line 2 |
+| `city` | string | Yes | City/locality |
+| `region` | string | No | State or province code |
+| `postal_code` | string | Yes | ZIP/postal code |
+| `country` | string | Yes | ISO 3166-1 alpha-2 country code |
+| `phone` | string | No | E.164 phone number |
+| `email` | string | No | Contact email |
 
 ### Message
 
-Messages are either informational or error messages.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | `info`, `warning`, or `error` |
+| `code` | string | No | Machine-readable message code |
+| `message` | string | Yes | Human-friendly message |
+| `param` | string | No | Related field or component identifier |
 
-#### InfoMessage
+### Links
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | Always "info" |
-| `param` | string | No | JSONPath to related checkout component |
-| `content_type` | string | Yes | Format: `plain` or `markdown` |
-| `content` | string | Yes | Message content |
+| `terms` | string | No | URL to terms of service |
+| `privacy` | string | No | URL to privacy policy |
+| `order_permalink` | string | No | Merchant order URL after completion |
 
-#### ErrorMessage
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | Yes | Always "error" |
-| `code` | string | Yes | Error code: `missing`, `invalid`, `out_of_stock`, `payment_declined`, `requires_sign_in`, `requires_3ds` |
-| `param` | string | No | JSONPath to related component |
-| `content_type` | string | Yes | Format: `plain` or `markdown` |
-| `content` | string | Yes | Error message |
-
-### Link
-
-Links to related policies and information.
+### PaymentRequest
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | Link type: `terms_of_use`, `privacy_policy`, `seller_shop_policies` |
-| `url` | string | Yes | URL to the resource |
+| `delegated_token` | string | No | Token retrieved from delegated payment vault |
+| `method` | string | No | Alternative payment method identifier |
 
 ### Order
 
-Order details returned after checkout completion.
-
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | Yes | Unique order identifier |
-| `checkout_session_id` | string | Yes | Reference to originating checkout session |
-| `permalink_url` | string | Yes | URL where customer can view order |
+| `id` | string | Yes | Merchant order identifier |
+| `checkout_session_id` | string | Yes | Associated checkout session |
+| `status` | string | Yes | `placed`, `failed`, or `refunded` |
+| `permalink_url` | string | No | Buyer-facing order URL |
+
+### Enumerations
+
+- `CheckoutSessionStatus`: `not_ready_for_payment`, `ready_for_payment`, `completed`, `canceled`
+- `OrderStatus`: `placed`, `failed`, `refunded`
 
 ---
 
@@ -713,12 +687,25 @@ This server includes a mock PSP for testing the complete flow:
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8080` | Server port |
 | `LOG_LEVEL` | `info` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
+| `SHOPIFY_DOMAIN` | _unset_ | Enables Shopify backend when set (e.g., `your-shop.myshopify.com`) |
+| `SHOPIFY_ACCESS_TOKEN` | _unset_ | Admin API access token (private app or custom app token) |
+| `SHOPIFY_API_VERSION` | `2024-01` | Shopify Admin API version to target |
 
 Create a `.env` file:
 
 ```bash
 cp .env.example .env
 ```
+
+### Shopify Integration
+
+When both `SHOPIFY_DOMAIN` and `SHOPIFY_ACCESS_TOKEN` are present, the server delegates checkout orchestration to Shopify:
+
+- Checkout sessions are created/updated using Shopify checkouts.
+- Pricing, tax, and totals are derived from Shopify responses.
+- Session completion calls the Shopify checkout completion endpoint and returns the created Shopify order.
+
+Leave these variables unset to continue using the built-in in-memory catalog and pricing engine.
 
 ---
 

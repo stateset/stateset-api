@@ -405,10 +405,29 @@ Environment variables:
 
 ## Documentation
 
-- **[Getting Started](GETTING_STARTED.md)** - Quick setup guide
+### 📚 Complete Documentation Suite
+
+**Start Here:**
+- **[Quick Start Guide](docs/QUICK_START.md)** ⚡ - Get running in 5 minutes
+- **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** 🗂️ - Complete documentation map
+- **[FAQ](docs/FAQ.md)** ❓ - Frequently asked questions
+
+**Core Guides:**
+- **[API Overview](docs/API_OVERVIEW.md)** 📖 - Complete API reference with architecture, capabilities, and data models
+- **[Use Cases](docs/USE_CASES.md)** 💡 - Real-world scenarios (e-commerce, B2B, manufacturing, AI shopping, crypto)
+- **[Integration Guide](docs/INTEGRATION_GUIDE.md)** 🔧 - Production-ready integration patterns
+- **[Best Practices](docs/BEST_PRACTICES.md)** ✨ - Patterns and anti-patterns for production use
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** 🔍 - Common issues, solutions, and error codes
+- **[Performance Tuning](docs/PERFORMANCE_TUNING.md)** 🚀 - Optimization guide for scale
+
+**Deployment & Operations:**
+- **[Getting Started](GETTING_STARTED.md)** - Initial setup guide
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
 - **[Database Guide](docs/DATABASE.md)** - Database management and migrations
 - **[Monitoring Guide](docs/MONITORING.md)** - Observability and alerting
+
+**Additional Resources:**
+- **[API Examples](examples/)** 💻 - Code examples in cURL, JavaScript, and Python
 - **[API Versioning](API_VERSIONING.md)** - API versioning strategy
 - **[Security Policy](SECURITY.md)** - Security guidelines and reporting
 - **[Roadmap](ROADMAP.md)** - Feature roadmap and planning

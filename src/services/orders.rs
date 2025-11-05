@@ -710,6 +710,98 @@ impl OrderService {
         Ok(self.model_to_response(updated_order))
     }
 
+    /// Updates the payment status and optional payment method reference
+    #[instrument(skip(self), fields(order_id = %order_id, new_status = %payment_status))]
+    pub async fn update_payment_status(
+        &self,
+        order_id: Uuid,
+        payment_status: String,
+        payment_method: Option<String>,
+    ) -> Result<OrderResponse, ServiceError> {
+        let db = &*self.db_pool;
+        let order = OrderEntity::find_by_id(order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to load order for payment status update");
+                ServiceError::db_error(e)
+            })?
+            .ok_or_else(|| {
+                warn!(order_id = %order_id, "Order not found for payment status update");
+                ServiceError::NotFound("Order not found".to_string())
+            })?;
+
+        let current_version = order.version;
+        let mut active: OrderActiveModel = order.into();
+        active.payment_status = Set(payment_status);
+        if let Some(method) = payment_method {
+            active.payment_method = Set(Some(method));
+        }
+        active.updated_at = Set(Some(Utc::now()));
+        active.version = Set(current_version + 1);
+
+        let updated = active.update(db).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to update payment status");
+            ServiceError::db_error(e)
+        })?;
+
+        if let Some(sender) = &self.event_sender {
+            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+        }
+
+        Ok(self.model_to_response(updated))
+    }
+
+    /// Updates fulfillment metadata such as status, shipping method, and tracking number
+    #[instrument(skip(self), fields(order_id = %order_id))]
+    pub async fn update_fulfillment_details(
+        &self,
+        order_id: Uuid,
+        fulfillment_status: Option<String>,
+        shipping_method: Option<String>,
+        tracking_number: Option<String>,
+    ) -> Result<OrderResponse, ServiceError> {
+        let db = &*self.db_pool;
+        let order = OrderEntity::find_by_id(order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to load order for fulfillment update");
+                ServiceError::db_error(e)
+            })?
+            .ok_or_else(|| {
+                warn!(order_id = %order_id, "Order not found for fulfillment update");
+                ServiceError::NotFound("Order not found".to_string())
+            })?;
+
+        let current_version = order.version;
+        let mut active: OrderActiveModel = order.into();
+
+        if let Some(status) = fulfillment_status {
+            active.fulfillment_status = Set(status);
+        }
+        if let Some(method) = shipping_method {
+            active.shipping_method = Set(Some(method));
+        }
+        if let Some(tracking) = tracking_number {
+            active.tracking_number = Set(Some(tracking));
+        }
+
+        active.updated_at = Set(Some(Utc::now()));
+        active.version = Set(current_version + 1);
+
+        let updated = active.update(db).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to update fulfillment details");
+            ServiceError::db_error(e)
+        })?;
+
+        if let Some(sender) = &self.event_sender {
+            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+        }
+
+        Ok(self.model_to_response(updated))
+    }
+
     /// Cancels an order
     #[instrument(skip(self), fields(order_id = %order_id))]
     pub async fn cancel_order(

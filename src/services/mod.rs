@@ -37,7 +37,7 @@ pub mod notifications;
 // Financial Services
 // pub mod accounting;
 pub mod cash_sale;
-// pub mod invoicing;
+pub mod invoicing;
 // pub mod item_receipts;
 pub mod payments;
 

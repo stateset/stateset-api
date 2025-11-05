@@ -2,21 +2,34 @@ use crate::{
     cache::InMemoryCache,
     errors::ServiceError,
     events::{Event, EventSender},
-    metrics,
-    models::*,
+    metrics::{
+        self, CHECKOUT_CANCELLATIONS, CHECKOUT_COMPLETIONS, CHECKOUT_SESSIONS_CREATED,
+        CHECKOUT_SESSIONS_UPDATED, ORDERS_CREATED, PAYMENT_PROCESSING_FAILURE,
+        PAYMENT_PROCESSING_SUCCESS, VAULT_TOKENS_CONSUMED,
+    },
+    models::{
+        Address, CheckoutSession, CheckoutSessionCompleteRequest, CheckoutSessionCreateRequest,
+        CheckoutSessionStatus, CheckoutSessionUpdateRequest, CheckoutSessionWithOrder, Customer,
+        EstimatedDelivery, FulfillmentChoice, FulfillmentState, LineItem, Links, Message,
+        MessageType, Money, Order, OrderStatus, PaymentRequest, RequestItem, Totals,
+    },
     product_catalog::ProductCatalogService,
+    shopify_integration::ShopifyClient,
     stripe_integration::StripePaymentProcessor,
     tax_service::TaxService,
-    validation::{
-        validate_country_code, validate_currency, validate_email, validate_phone, validate_quantity,
-    },
+    validation::{validate_country_code, validate_email, validate_phone, validate_quantity},
 };
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{info, instrument, warn};
 use uuid::Uuid;
+
+const SESSION_TTL_SECS: u64 = 3600;
+const DEFAULT_CURRENCY: &str = "usd";
+const FALLBACK_TAX_BPS: i64 = 875; // 8.75%
 
 /// Agentic checkout service for ChatGPT-driven checkout flow
 #[derive(Clone)]
@@ -26,6 +39,7 @@ pub struct AgenticCheckoutService {
     product_catalog: Arc<ProductCatalogService>,
     tax_service: Arc<TaxService>,
     stripe_processor: Option<Arc<StripePaymentProcessor>>,
+    shopify_client: Option<Arc<ShopifyClient>>,
 }
 
 impl AgenticCheckoutService {
@@ -35,6 +49,7 @@ impl AgenticCheckoutService {
         product_catalog: Arc<ProductCatalogService>,
         tax_service: Arc<TaxService>,
         stripe_processor: Option<Arc<StripePaymentProcessor>>,
+        shopify_client: Option<Arc<ShopifyClient>>,
     ) -> Self {
         Self {
             cache,
@@ -42,6 +57,7 @@ impl AgenticCheckoutService {
             product_catalog,
             tax_service,
             stripe_processor,
+            shopify_client,
         }
     }
 
@@ -51,78 +67,92 @@ impl AgenticCheckoutService {
         &self,
         request: CheckoutSessionCreateRequest,
     ) -> Result<CheckoutSession, ServiceError> {
-        // Validate items exist and calculate totals
+        if request.items.is_empty() {
+            return Err(ServiceError::InvalidInput(
+                "At least one line item is required".to_string(),
+            ));
+        }
+
+        if let Some(customer) = request.customer.as_ref() {
+            self.validate_customer(customer)?;
+        }
+
+        if let Some(shopify) = &self.shopify_client {
+            let session = shopify.create_session(&request).await?;
+            CHECKOUT_SESSIONS_CREATED.inc();
+            metrics::ACTIVE_SESSIONS.inc();
+            if let Ok(uuid) = Uuid::parse_str(&session.id) {
+                self.event_sender
+                    .send(Event::CheckoutStarted { session_id: uuid })
+                    .await;
+            } else {
+                warn!(
+                    "Shopify session ID {} is not a valid UUID; skipping checkout started event",
+                    session.id
+                );
+            }
+            info!("Created Shopify-backed checkout session {}", session.id);
+            return Ok(session);
+        }
+
         let line_items = self.build_line_items(&request.items).await?;
 
-        let session_id = Uuid::new_v4();
-        let currency = "usd".to_string();
-        validate_currency(&currency)?;
+        let requested_selection = request
+            .fulfillment
+            .as_ref()
+            .and_then(|f| f.selected_id.as_deref());
+        let fulfillment_state =
+            self.resolve_fulfillment_state(request.customer.as_ref(), requested_selection)?;
 
-        if let Some(ref buyer) = request.buyer {
-            validate_email(&buyer.email)?;
-            if let Some(ref phone) = buyer.phone_number {
-                validate_phone(phone)?;
-            }
-        }
+        let totals = self.calculate_totals(
+            &line_items,
+            request.customer.as_ref(),
+            fulfillment_state.as_ref(),
+        )?;
+        let status = self.determine_status(
+            request.customer.as_ref(),
+            fulfillment_state.as_ref(),
+            &line_items,
+        );
 
-        if let Some(ref address) = request.fulfillment_address {
-            validate_country_code(&address.country)?;
-        }
-
-        // Calculate totals
-        let totals =
-            self.calculate_totals(&line_items, request.fulfillment_address.as_ref(), None)?;
-
-        // Determine fulfillment options
-        let fulfillment_options =
-            self.get_fulfillment_options(request.fulfillment_address.as_ref())?;
-
-        // Determine status
-        let status = self.determine_status(&request, &line_items, None);
+        let session_id = Uuid::new_v4().to_string();
+        self.reserve_line_items(&session_id, &line_items)?;
+        let created_at = Utc::now().to_rfc3339();
 
         let session = CheckoutSession {
-            id: session_id.to_string(),
-            buyer: request.buyer,
-            payment_provider: Some(PaymentProvider {
-                provider: "stripe".to_string(),
-                supported_payment_methods: vec!["card".to_string()],
-            }),
+            id: session_id.clone(),
             status,
-            currency,
-            line_items,
-            fulfillment_address: request.fulfillment_address,
-            fulfillment_options,
-            fulfillment_option_id: None,
+            items: line_items,
             totals,
-            messages: vec![],
-            links: vec![
-                Link {
-                    link_type: "terms_of_use".to_string(),
-                    url: "https://merchant.example.com/terms".to_string(),
-                },
-                Link {
-                    link_type: "privacy_policy".to_string(),
-                    url: "https://merchant.example.com/privacy".to_string(),
-                },
-            ],
+            fulfillment: fulfillment_state,
+            customer: request.customer,
+            links: Some(Links {
+                terms: Some("https://merchant.example.com/terms".to_string()),
+                privacy: Some("https://merchant.example.com/privacy".to_string()),
+                order_permalink: None,
+            }),
+            messages: None,
+            created_at: created_at.clone(),
+            updated_at: created_at,
         };
 
-        if let Err(err) = self.reserve_line_items(&session.id, &session.line_items) {
-            self.product_catalog.release_reservation(&session.id);
-            return Err(err);
-        }
-
-        // Store session in cache with 1 hour TTL
         if let Err(err) = self.save_session(&session).await {
             self.product_catalog.release_reservation(&session.id);
             return Err(err);
         }
+        CHECKOUT_SESSIONS_CREATED.inc();
+        metrics::ACTIVE_SESSIONS.inc();
 
-        self.event_sender
-            .send(Event::CheckoutStarted {
-                session_id: Uuid::parse_str(&session.id).unwrap(),
-            })
-            .await;
+        if let Ok(uuid) = Uuid::parse_str(&session.id) {
+            self.event_sender
+                .send(Event::CheckoutStarted { session_id: uuid })
+                .await;
+        } else {
+            warn!(
+                "Checkout session ID {} is not a valid UUID; skipping checkout started event",
+                session.id
+            );
+        }
 
         info!("Created checkout session: {}", session.id);
         Ok(session)
@@ -131,8 +161,11 @@ impl AgenticCheckoutService {
     /// Get checkout session
     #[instrument(skip(self))]
     pub async fn get_session(&self, session_id: &str) -> Result<CheckoutSession, ServiceError> {
-        let cache_key = format!("checkout_session:{}", session_id);
+        if let Some(shopify) = &self.shopify_client {
+            return shopify.get_session(session_id).await;
+        }
 
+        let cache_key = format!("checkout_session:{}", session_id);
         let cached = self
             .cache
             .get(&cache_key)
@@ -140,10 +173,8 @@ impl AgenticCheckoutService {
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
         match cached {
-            Some(data) => {
-                let session: CheckoutSession = serde_json::from_str(&data)
-                    .map_err(|e| ServiceError::ParseError(e.to_string()))?;
-                Ok(session)
+            Some(raw) => {
+                serde_json::from_str(&raw).map_err(|e| ServiceError::ParseError(e.to_string()))
             }
             None => Err(ServiceError::NotFound(format!(
                 "Checkout session {} not found",
@@ -159,96 +190,80 @@ impl AgenticCheckoutService {
         session_id: &str,
         request: CheckoutSessionUpdateRequest,
     ) -> Result<CheckoutSession, ServiceError> {
-        let mut session = self.get_session(session_id).await?;
-        let mut previous_line_items: Option<Vec<LineItem>> = None;
+        if let Some(customer) = request.customer.as_ref() {
+            self.validate_customer(customer)?;
+        }
 
-        // Check if already completed or canceled
-        if session.status == "completed" || session.status == "canceled" {
+        if let Some(shopify) = &self.shopify_client {
+            let session = shopify.update_session(session_id, &request).await?;
+            CHECKOUT_SESSIONS_UPDATED.inc();
+            info!("Updated Shopify checkout session: {}", session.id);
+            return Ok(session);
+        }
+
+        let mut session = self.get_session(session_id).await?;
+
+        if matches!(
+            session.status,
+            CheckoutSessionStatus::Completed | CheckoutSessionStatus::Canceled
+        ) {
             return Err(ServiceError::InvalidOperation(
                 "Cannot update completed or canceled session".to_string(),
             ));
         }
 
-        let CheckoutSessionUpdateRequest {
-            buyer,
-            items,
-            fulfillment_address,
-            fulfillment_option_id,
-        } = request;
+        let mut previous_items: Option<Vec<LineItem>> = None;
 
-        // Update fields if provided
-        if let Some(buyer) = buyer {
-            validate_email(&buyer.email)?;
-            if let Some(ref phone) = buyer.phone_number {
-                validate_phone(phone)?;
-            }
-            session.buyer = Some(buyer);
-        }
-
-        if let Some(items) = items {
-            previous_line_items = Some(session.line_items.clone());
-            session.line_items = self.build_line_items(&items).await?;
-
+        if let Some(items) = request.items.as_ref() {
+            let new_line_items = self.build_line_items(items).await?;
+            previous_items = Some(session.items.clone());
             self.product_catalog.release_reservation(&session.id);
-            if let Err(err) = self.reserve_line_items(&session.id, &session.line_items) {
-                if let Some(ref prior) = previous_line_items {
-                    if let Err(reapply_err) = self.reserve_line_items(&session.id, prior) {
-                        warn!(
-                            "Failed to restore reservations for session {}: {}",
-                            session.id, reapply_err
-                        );
-                    }
-                }
+            if let Err(err) = self.reserve_line_items(&session.id, &new_line_items) {
+                // best-effort attempt to re-reserve original items
+                let _ = self.reserve_line_items(&session.id, &session.items);
                 return Err(err);
             }
+            session.items = new_line_items;
         }
 
-        if let Some(address) = fulfillment_address {
-            validate_country_code(&address.country)?;
-            session.fulfillment_address = Some(address);
-            // Recalculate fulfillment options
-            session.fulfillment_options =
-                self.get_fulfillment_options(session.fulfillment_address.as_ref())?;
+        if let Some(customer) = request.customer.as_ref() {
+            session.customer = Some(customer.clone());
         }
 
-        if let Some(option_id) = fulfillment_option_id {
-            // Validate option exists
-            if !session.fulfillment_options.iter().any(|opt| match opt {
-                FulfillmentOption::Shipping(s) => s.id == option_id,
-                FulfillmentOption::Digital(d) => d.id == option_id,
-            }) {
-                return Err(ServiceError::InvalidInput(
-                    "Invalid fulfillment option".to_string(),
-                ));
-            }
-            session.fulfillment_option_id = Some(option_id);
-        }
+        let requested_selection = request
+            .fulfillment
+            .as_ref()
+            .and_then(|f| f.selected_id.as_deref());
 
-        // Recalculate totals
+        let selection_to_apply = requested_selection.or_else(|| {
+            session
+                .fulfillment
+                .as_ref()
+                .and_then(|f| f.selected_id.as_deref())
+        });
+
+        session.fulfillment =
+            self.resolve_fulfillment_state(session.customer.as_ref(), selection_to_apply)?;
         session.totals = self.calculate_totals(
-            &session.line_items,
-            session.fulfillment_address.as_ref(),
-            session.fulfillment_option_id.as_deref(),
+            &session.items,
+            session.customer.as_ref(),
+            session.fulfillment.as_ref(),
         )?;
+        session.status = self.determine_status(
+            session.customer.as_ref(),
+            session.fulfillment.as_ref(),
+            &session.items,
+        );
+        session.updated_at = Utc::now().to_rfc3339();
 
-        // Update status
-        session.status = self.determine_status_from_session(&session);
-
-        // Save updated session
         if let Err(err) = self.save_session(&session).await {
             self.product_catalog.release_reservation(&session.id);
-            if let Some(ref prior) = previous_line_items {
-                if let Err(reapply_err) = self.reserve_line_items(&session.id, prior) {
-                    warn!(
-                        "Failed to restore reservations for session {} after save error: {}",
-                        session.id, reapply_err
-                    );
-                }
+            if let Some(original) = previous_items {
+                let _ = self.reserve_line_items(&session.id, &original);
             }
             return Err(err);
         }
-
-        metrics::CHECKOUT_SESSIONS_UPDATED.inc();
+        CHECKOUT_SESSIONS_UPDATED.inc();
         info!("Updated checkout session: {}", session.id);
         Ok(session)
     }
@@ -260,54 +275,87 @@ impl AgenticCheckoutService {
         session_id: &str,
         request: CheckoutSessionCompleteRequest,
     ) -> Result<CheckoutSessionWithOrder, ServiceError> {
-        let mut session = self.get_session(session_id).await?;
-        let CheckoutSessionCompleteRequest {
-            buyer,
-            payment_data,
-        } = request;
+        if let Some(customer) = request.customer.as_ref() {
+            self.validate_customer(customer)?;
+        }
 
-        // Check if already completed or canceled
-        if session.status == "completed" {
+        if let Some(shopify) = &self.shopify_client {
+            let result = shopify.complete_session(session_id, &request).await?;
+            CHECKOUT_COMPLETIONS.inc();
+            ORDERS_CREATED.inc();
+            metrics::ACTIVE_SESSIONS.dec();
+
+            if let (Ok(session_uuid), Ok(order_uuid)) = (
+                Uuid::parse_str(&result.session.id),
+                Uuid::parse_str(&result.order.id),
+            ) {
+                self.event_sender
+                    .send(Event::CheckoutCompleted {
+                        session_id: session_uuid,
+                        order_id: order_uuid,
+                    })
+                    .await;
+            } else {
+                warn!(
+                    "Shopify completion produced non-UUID identifiers (session={}, order={}); skipping event emission",
+                    result.session.id, result.order.id
+                );
+            }
+
+            info!("Completed Shopify checkout session: {}", result.session.id);
+            return Ok(result);
+        }
+
+        let mut session = self.get_session(session_id).await?;
+
+        if matches!(session.status, CheckoutSessionStatus::Completed) {
             return Err(ServiceError::InvalidOperation(
                 "Session already completed".to_string(),
             ));
         }
-        if session.status == "canceled" {
+        if matches!(session.status, CheckoutSessionStatus::Canceled) {
             return Err(ServiceError::InvalidOperation(
                 "Session is canceled".to_string(),
             ));
         }
+        if !matches!(session.status, CheckoutSessionStatus::ReadyForPayment) {
+            return Err(ServiceError::InvalidOperation(
+                "Cannot complete session that is not ready for payment".to_string(),
+            ));
+        }
 
-        // Update buyer if provided
-        if let Some(buyer) = buyer {
-            validate_email(&buyer.email)?;
-            if let Some(ref phone) = buyer.phone_number {
-                validate_phone(phone)?;
+        if let Some(customer) = request.customer.as_ref() {
+            session.customer = Some(customer.clone());
+        }
+
+        if let Some(fulfillment) = request.fulfillment.as_ref() {
+            if let Some(selection) = fulfillment.selected_id.as_ref() {
+                if !session
+                    .fulfillment
+                    .as_ref()
+                    .and_then(|f| f.options.as_ref())
+                    .map(|opts| opts.iter().any(|opt| &opt.id == selection))
+                    .unwrap_or(false)
+                {
+                    return Err(ServiceError::InvalidInput(
+                        "Invalid fulfillment option".to_string(),
+                    ));
+                }
+                if let Some(ref mut existing) = session.fulfillment {
+                    existing.selected_id = Some(selection.clone());
+                }
             }
-            session.buyer = Some(buyer);
         }
 
-        // Validate session is ready
-        if session.buyer.is_none() {
-            return Err(ServiceError::InvalidOperation(
-                "Buyer information required".to_string(),
-            ));
-        }
-        if session.fulfillment_address.is_none() {
-            return Err(ServiceError::InvalidOperation(
-                "Fulfillment address required".to_string(),
-            ));
-        }
-        if session.fulfillment_option_id.is_none() {
-            return Err(ServiceError::InvalidOperation(
-                "Fulfillment option required".to_string(),
-            ));
-        }
+        session.totals = self.calculate_totals(
+            &session.items,
+            session.customer.as_ref(),
+            session.fulfillment.as_ref(),
+        )?;
 
-        // Process payment
-        let payment_result = match self.process_payment(&payment_data, &session).await {
+        let payment_result = match self.process_payment(&request.payment, &session).await {
             Ok(result) => {
-                metrics::PAYMENT_PROCESSING_SUCCESS.inc();
+                PAYMENT_PROCESSING_SUCCESS.inc();
                 info!(
                     "Payment completed for session {} (payment_id={})",
                     session.id, result.payment_id
@@ -315,24 +363,25 @@ impl AgenticCheckoutService {
                 result
             }
             Err(err) => {
-                metrics::PAYMENT_PROCESSING_FAILURE.inc();
+                PAYMENT_PROCESSING_FAILURE.inc();
                 return Err(err);
             }
         };
 
-        session.messages.push(Message::Info(MessageInfo {
-            message_type: "payment".to_string(),
+        let message = Message {
+            message_type: MessageType::Info,
+            code: None,
+            message: format!("Payment {} succeeded", payment_result.payment_id),
             param: None,
-            content_type: "text".to_string(),
-            content: format!(
-                "Payment {} succeeded via {}",
-                payment_result.payment_id,
-                payment_data.provider.as_str()
-            ),
-        }));
+        };
 
-        // Create order
+        session.messages.get_or_insert_with(Vec::new).push(message);
+
         let order = self.create_order_from_session(&session).await?;
+
+        if let Some(ref mut links) = session.links {
+            links.order_permalink = Some(order.permalink_url.clone().unwrap_or_default());
+        }
 
         self.product_catalog
             .commit_inventory(&session.id)
@@ -344,23 +393,30 @@ impl AgenticCheckoutService {
                 err
             })?;
 
-        // Update session status
-        session.status = "completed".to_string();
-        if let Err(err) = self.save_session(&session).await {
+        session.status = CheckoutSessionStatus::Completed;
+        session.updated_at = Utc::now().to_rfc3339();
+
+        self.save_session(&session).await?;
+        CHECKOUT_COMPLETIONS.inc();
+        ORDERS_CREATED.inc();
+
+        if let (Ok(session_uuid), Ok(order_uuid)) =
+            (Uuid::parse_str(&session.id), Uuid::parse_str(&order.id))
+        {
+            self.event_sender
+                .send(Event::CheckoutCompleted {
+                    session_id: session_uuid,
+                    order_id: order_uuid,
+                })
+                .await;
+        } else {
             warn!(
-                "Failed to persist completed session {}, releasing reservations",
-                session.id
+                "Completion produced non-UUID identifiers (session={}, order={}); skipping event emission",
+                session.id, order.id
             );
-            self.product_catalog.release_reservation(&session.id);
-            return Err(err);
         }
 
-        self.event_sender
-            .send(Event::CheckoutCompleted {
-                session_id: Uuid::parse_str(&session.id).unwrap(),
-                order_id: Uuid::parse_str(&order.id).unwrap(),
-            })
-            .await;
+        metrics::ACTIVE_SESSIONS.dec();
 
         info!("Completed checkout session: {}", session.id);
 
@@ -370,49 +426,52 @@ impl AgenticCheckoutService {
     /// Cancel checkout session
     #[instrument(skip(self))]
     pub async fn cancel_session(&self, session_id: &str) -> Result<CheckoutSession, ServiceError> {
+        if self.shopify_client.is_some() {
+            return Err(ServiceError::InvalidOperation(
+                "Canceling Shopify-backed checkouts is not supported".to_string(),
+            ));
+        }
+
         let mut session = self.get_session(session_id).await?;
 
-        if session.status == "completed" {
+        if matches!(session.status, CheckoutSessionStatus::Completed) {
             return Err(ServiceError::InvalidOperation(
                 "Cannot cancel completed session".to_string(),
             ));
         }
-        if session.status == "canceled" {
+        if matches!(session.status, CheckoutSessionStatus::Canceled) {
             return Err(ServiceError::InvalidOperation(
                 "Session already canceled".to_string(),
             ));
         }
 
-        self.product_catalog.release_reservation(&session.id);
-        session.status = "canceled".to_string();
-        if let Err(err) = self.save_session(&session).await {
-            warn!(
-                "Failed to persist canceled session {}; reservations already released",
-                session.id
-            );
-            return Err(err);
-        }
+        session.status = CheckoutSessionStatus::Canceled;
+        session.updated_at = Utc::now().to_rfc3339();
 
-        metrics::CHECKOUT_CANCELLATIONS.inc();
+        self.product_catalog.release_reservation(&session.id);
+        self.save_session(&session).await?;
+
+        CHECKOUT_CANCELLATIONS.inc();
+        metrics::ACTIVE_SESSIONS.dec();
         info!("Canceled checkout session: {}", session.id);
         Ok(session)
     }
 
+    // ---------------------------------------------------------------------
     // Private helper methods
+    // ---------------------------------------------------------------------
 
-    async fn build_line_items(&self, items: &[Item]) -> Result<Vec<LineItem>, ServiceError> {
-        let mut line_items = Vec::new();
+    async fn build_line_items(&self, items: &[RequestItem]) -> Result<Vec<LineItem>, ServiceError> {
+        let mut line_items = Vec::with_capacity(items.len());
 
-        for item in items {
-            validate_quantity(item.quantity)?;
+        for request_item in items {
+            validate_quantity(request_item.quantity)?;
 
-            // Fetch real product details from catalog
-            let product = self.product_catalog.get_product(&item.id)?;
+            let product = self.product_catalog.get_product(&request_item.id)?;
 
-            // Check inventory
             if !self
                 .product_catalog
-                .check_inventory(&item.id, item.quantity)?
+                .check_inventory(&product.id, request_item.quantity)?
             {
                 return Err(ServiceError::InsufficientStock(format!(
                     "Insufficient stock for product: {}",
@@ -420,23 +479,17 @@ impl AgenticCheckoutService {
                 )));
             }
 
-            // Calculate pricing
-            let base_amount = product.price * item.quantity as i64;
-            let discount = 0; // TODO: Apply discounts/promotions
-            let subtotal = base_amount - discount;
-
-            // Tax will be calculated separately at checkout level
-            let tax = 0; // Placeholder, calculated in calculate_totals
-            let total = subtotal + tax;
-
             line_items.push(LineItem {
                 id: Uuid::new_v4().to_string(),
-                item: item.clone(),
-                base_amount,
-                discount,
-                subtotal,
-                tax,
-                total,
+                title: product.name.clone(),
+                quantity: request_item.quantity,
+                unit_price: Money {
+                    amount: product.price,
+                    currency: product.currency.clone(),
+                },
+                variant_id: Some(product.id.clone()),
+                sku: product.metadata.get("sku").cloned(),
+                image_url: product.image_url.clone(),
             });
         }
 
@@ -445,254 +498,327 @@ impl AgenticCheckoutService {
 
     fn calculate_totals(
         &self,
-        line_items: &[LineItem],
-        address: Option<&Address>,
-        fulfillment_option_id: Option<&str>,
-    ) -> Result<Vec<Total>, ServiceError> {
-        let mut totals = Vec::new();
+        items: &[LineItem],
+        customer: Option<&Customer>,
+        fulfillment: Option<&FulfillmentState>,
+    ) -> Result<Totals, ServiceError> {
+        let subtotal_amount = items
+            .iter()
+            .map(|item| item.unit_price.amount * item.quantity as i64)
+            .sum::<i64>();
 
-        // Items base amount
-        let items_base: i64 = line_items.iter().map(|item| item.base_amount).sum();
-        totals.push(Total {
-            total_type: "items_base_amount".to_string(),
-            display_text: "Items".to_string(),
-            amount: items_base,
+        let currency = items
+            .first()
+            .map(|item| item.unit_price.currency.clone())
+            .unwrap_or_else(|| DEFAULT_CURRENCY.to_string());
+
+        let shipping_choice = fulfillment.and_then(|state| {
+            let selected = state.selected_id.as_ref()?;
+            state
+                .options
+                .as_ref()
+                .and_then(|opts| opts.iter().find(|opt| &opt.id == selected).cloned())
         });
 
-        // Items discount
-        let items_discount: i64 = line_items.iter().map(|item| item.discount).sum();
-        if items_discount > 0 {
-            totals.push(Total {
-                total_type: "items_discount".to_string(),
-                display_text: "Discount".to_string(),
-                amount: -items_discount,
-            });
-        }
-
-        // Subtotal
-        let subtotal: i64 = line_items.iter().map(|item| item.subtotal).sum();
-        totals.push(Total {
-            total_type: "subtotal".to_string(),
-            display_text: "Subtotal".to_string(),
-            amount: subtotal,
+        let shipping_amount = shipping_choice
+            .as_ref()
+            .map(|choice| choice.price.amount)
+            .unwrap_or(0);
+        let shipping_money = shipping_choice.map(|choice| Money {
+            amount: choice.price.amount,
+            currency: currency.clone(),
         });
 
-        // Fulfillment
-        let fulfillment_cost = if fulfillment_option_id.is_some() {
-            1000 // $10.00 shipping (TODO: Real-time rates)
+        let tax_amount = if let Some(address) = customer.and_then(|c| c.shipping_address.as_ref()) {
+            let include_shipping = shipping_amount > 0;
+            self.tax_service
+                .calculate_tax(subtotal_amount, address, include_shipping, shipping_amount)?
+                .tax_amount
         } else {
-            0
-        };
-        if fulfillment_cost > 0 {
-            totals.push(Total {
-                total_type: "fulfillment".to_string(),
-                display_text: "Shipping".to_string(),
-                amount: fulfillment_cost,
-            });
-        }
-
-        // Tax - Calculate using tax service if address available
-        let tax = if let Some(addr) = address {
-            let tax_calc = self.tax_service.calculate_tax(
-                subtotal,
-                addr,
-                true, // Include shipping in taxable amount
-                fulfillment_cost,
-            )?;
-            tax_calc.tax_amount
-        } else {
-            // No address, use simple calculation
-            subtotal * 875 / 10000 // 8.75% default
+            (subtotal_amount * FALLBACK_TAX_BPS) / 10_000
         };
 
-        totals.push(Total {
-            total_type: "tax".to_string(),
-            display_text: "Tax".to_string(),
-            amount: tax,
-        });
+        let grand_total_amount = subtotal_amount + shipping_amount + tax_amount;
 
-        // Total
-        let total = subtotal + fulfillment_cost + tax;
-        totals.push(Total {
-            total_type: "total".to_string(),
-            display_text: "Total".to_string(),
-            amount: total,
-        });
-
-        Ok(totals)
-    }
-
-    fn get_fulfillment_options(
-        &self,
-        address: Option<&Address>,
-    ) -> Result<Vec<FulfillmentOption>, ServiceError> {
-        let mut options = Vec::new();
-
-        if address.is_some() {
-            // Shipping options
-            options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
-                id: "standard_shipping".to_string(),
-                title: "Standard Shipping".to_string(),
-                subtitle: Some("5-7 business days".to_string()),
-                carrier: Some("USPS".to_string()),
-                earliest_delivery_time: None,
-                latest_delivery_time: None,
-                subtotal: "1000".to_string(), // $10.00
-                tax: "88".to_string(),        // $0.88
-                total: "1088".to_string(),    // $10.88
-            }));
-
-            options.push(FulfillmentOption::Shipping(FulfillmentOptionShipping {
-                id: "express_shipping".to_string(),
-                title: "Express Shipping".to_string(),
-                subtitle: Some("2-3 business days".to_string()),
-                carrier: Some("FedEx".to_string()),
-                earliest_delivery_time: None,
-                latest_delivery_time: None,
-                subtotal: "2500".to_string(), // $25.00
-                tax: "219".to_string(),       // $2.19
-                total: "2719".to_string(),    // $27.19
-            }));
-        }
-
-        Ok(options)
+        Ok(Totals {
+            subtotal: Money {
+                amount: subtotal_amount,
+                currency: currency.clone(),
+            },
+            tax: if tax_amount > 0 {
+                Some(Money {
+                    amount: tax_amount,
+                    currency: currency.clone(),
+                })
+            } else {
+                None
+            },
+            shipping: shipping_money.map(|money| Money {
+                amount: money.amount,
+                currency: currency.clone(),
+            }),
+            discount: None,
+            grand_total: Money {
+                amount: grand_total_amount,
+                currency,
+            },
+        })
     }
 
     fn determine_status(
         &self,
-        request: &CheckoutSessionCreateRequest,
-        _line_items: &[LineItem],
-        fulfillment_option_id: Option<&str>,
-    ) -> String {
-        // Check if ready for payment
-        if request.buyer.is_some()
-            && request.fulfillment_address.is_some()
-            && !_line_items.is_empty()
-            && fulfillment_option_id.is_some()
-        {
-            "ready_for_payment".to_string()
+        customer: Option<&Customer>,
+        fulfillment: Option<&FulfillmentState>,
+        items: &[LineItem],
+    ) -> CheckoutSessionStatus {
+        if items.is_empty() {
+            return CheckoutSessionStatus::NotReadyForPayment;
+        }
+
+        let shipping_ready = customer.and_then(|c| c.shipping_address.as_ref()).is_some();
+        let selection_ready = fulfillment.and_then(|f| f.selected_id.as_ref()).is_some();
+
+        if shipping_ready && selection_ready {
+            CheckoutSessionStatus::ReadyForPayment
         } else {
-            "not_ready_for_payment".to_string()
+            CheckoutSessionStatus::NotReadyForPayment
         }
     }
 
-    fn determine_status_from_session(&self, session: &CheckoutSession) -> String {
-        if session.buyer.is_some()
-            && session.fulfillment_address.is_some()
-            && session.fulfillment_option_id.is_some()
-            && !session.line_items.is_empty()
-        {
-            "ready_for_payment".to_string()
-        } else {
-            "not_ready_for_payment".to_string()
+    fn resolve_fulfillment_state(
+        &self,
+        customer: Option<&Customer>,
+        selected_id: Option<&str>,
+    ) -> Result<Option<FulfillmentState>, ServiceError> {
+        let options = self.get_fulfillment_options(customer)?;
+
+        if options.is_empty() {
+            return Ok(None);
         }
+
+        let validated_selected = if let Some(id) = selected_id {
+            if options.iter().any(|opt| opt.id == id) {
+                Some(id.to_string())
+            } else {
+                return Err(ServiceError::InvalidInput(
+                    "Invalid fulfillment option".to_string(),
+                ));
+            }
+        } else {
+            None
+        };
+
+        Ok(Some(FulfillmentState {
+            selected_id: validated_selected,
+            options: Some(options),
+        }))
+    }
+
+    fn get_fulfillment_options(
+        &self,
+        customer: Option<&Customer>,
+    ) -> Result<Vec<FulfillmentChoice>, ServiceError> {
+        let shipping_address = customer.and_then(|c| c.shipping_address.as_ref());
+        if shipping_address.is_none() {
+            return Ok(vec![]);
+        }
+
+        Ok(vec![
+            FulfillmentChoice {
+                id: "standard_shipping".to_string(),
+                label: "Standard Shipping".to_string(),
+                price: Money {
+                    amount: 1000,
+                    currency: DEFAULT_CURRENCY.to_string(),
+                },
+                est_delivery: Some(EstimatedDelivery {
+                    earliest: Some((Utc::now() + ChronoDuration::days(5)).to_rfc3339()),
+                    latest: Some((Utc::now() + ChronoDuration::days(7)).to_rfc3339()),
+                }),
+            },
+            FulfillmentChoice {
+                id: "express_shipping".to_string(),
+                label: "Express Shipping".to_string(),
+                price: Money {
+                    amount: 2500,
+                    currency: DEFAULT_CURRENCY.to_string(),
+                },
+                est_delivery: Some(EstimatedDelivery {
+                    earliest: Some((Utc::now() + ChronoDuration::days(2)).to_rfc3339()),
+                    latest: Some((Utc::now() + ChronoDuration::days(3)).to_rfc3339()),
+                }),
+            },
+        ])
+    }
+
+    fn validate_customer(&self, customer: &Customer) -> Result<(), ServiceError> {
+        if let Some(address) = customer.billing_address.as_ref() {
+            self.validate_address(address)?;
+        }
+        if let Some(address) = customer.shipping_address.as_ref() {
+            self.validate_address(address)?;
+        }
+        Ok(())
+    }
+
+    fn validate_address(&self, address: &Address) -> Result<(), ServiceError> {
+        if address.line1.trim().is_empty() {
+            return Err(ServiceError::InvalidInput(
+                "Address line1 is required".to_string(),
+            ));
+        }
+        if address.city.trim().is_empty() {
+            return Err(ServiceError::InvalidInput("City is required".to_string()));
+        }
+        if address.postal_code.trim().is_empty() {
+            return Err(ServiceError::InvalidInput(
+                "Postal code is required".to_string(),
+            ));
+        }
+
+        validate_country_code(&address.country)?;
+        if let Some(phone) = address.phone.as_ref() {
+            validate_phone(phone)?;
+        }
+        if let Some(email) = address.email.as_ref() {
+            validate_email(email)?;
+        }
+
+        Ok(())
     }
 
     async fn process_payment(
         &self,
-        payment_data: &PaymentData,
+        payment: &PaymentRequest,
         session: &CheckoutSession,
     ) -> Result<PaymentResult, ServiceError> {
-        let token_preview = Self::mask_payment_token(&payment_data.token);
-        info!(
-            "Processing payment with provider: {} (token_preview={})",
-            payment_data.provider, token_preview
-        );
+        let total_amount = session.totals.grand_total.amount;
 
-        // Determine payment method type
-        if payment_data.token.starts_with("vt_") {
-            // Our delegated payment vault token (mock PSP)
-            self.process_vault_token(payment_data, session).await
-        } else if payment_data.token.starts_with("spt_") {
-            // Stripe SharedPaymentToken
-            self.process_stripe_shared_token(payment_data, session)
-                .await
-        } else {
-            // Regular Stripe payment token or PaymentMethod ID
-            self.process_stripe_regular(payment_data, session).await
+        if let Some(token) = payment.delegated_token.as_deref() {
+            if token.starts_with("vt_") {
+                return self.process_vault_token(token, session, total_amount).await;
+            }
+            if token.starts_with("spt_") {
+                return self
+                    .process_stripe_shared_token(token, session, total_amount)
+                    .await;
+            }
+            return self
+                .process_stripe_regular(token, session, total_amount)
+                .await;
         }
+
+        if let Some(method) = payment.method.as_deref() {
+            return self
+                .process_stripe_regular(method, session, total_amount)
+                .await;
+        }
+
+        Err(ServiceError::InvalidInput(
+            "payment method or delegated_token required".to_string(),
+        ))
     }
 
     async fn process_vault_token(
         &self,
-        payment_data: &PaymentData,
+        token: &str,
         session: &CheckoutSession,
+        total_amount: i64,
     ) -> Result<PaymentResult, ServiceError> {
-        info!("Processing vault token (mock PSP)");
-
-        // Validate vault token with allowances
-        let cache_key = format!("vault_token:{}", payment_data.token);
+        info!("Processing vault token");
+        let cache_key = format!("vault_token:{}", token);
         let cached = self
             .cache
             .get(&cache_key)
             .await
             .map_err(|e| ServiceError::CacheError(e.to_string()))?;
 
-        match cached {
-            Some(data) => {
-                let token_data: serde_json::Value = serde_json::from_str(&data)
-                    .map_err(|e| ServiceError::ParseError(e.to_string()))?;
+        let data = cached.ok_or_else(|| {
+            ServiceError::InvalidOperation("Vault token not found or expired".to_string())
+        })?;
 
-                // Validate checkout session ID
-                if let Some(allowance) = token_data.get("allowance") {
-                    if allowance
-                        .get("checkout_session_id")
-                        .and_then(|v| v.as_str())
-                        != Some(&session.id)
-                    {
-                        return Err(ServiceError::InvalidOperation(
-                            "Vault token is not valid for this checkout session".to_string(),
-                        ));
-                    }
-                }
+        let token_data: serde_json::Value =
+            serde_json::from_str(&data).map_err(|e| ServiceError::ParseError(e.to_string()))?;
 
-                // Consume the token (single-use enforcement)
-                self.cache
-                    .delete(&cache_key)
-                    .await
-                    .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+        let allowance = token_data.get("allowance").ok_or_else(|| {
+            ServiceError::InvalidInput("Vault token missing allowance".to_string())
+        })?;
 
-                info!("Vault token consumed (single-use enforcement)");
-                metrics::VAULT_TOKENS_CONSUMED.inc();
+        let allowed_session = allowance
+            .get("checkout_session_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                ServiceError::InvalidInput("Vault token missing checkout_session_id".to_string())
+            })?;
 
-                Ok(PaymentResult {
-                    payment_id: format!("pay_mock_{}", uuid::Uuid::new_v4()),
-                    status: "succeeded".to_string(),
-                    amount: session
-                        .totals
-                        .iter()
-                        .find(|t| t.total_type == "total")
-                        .map(|t| t.amount)
-                        .unwrap_or(0),
-                })
-            }
-            None => {
-                metrics::VAULT_TOKEN_REUSE_BLOCKED.inc();
-                Err(ServiceError::InvalidOperation(
-                    "Vault token not found or already used".to_string(),
-                ))
+        if allowed_session != session.id {
+            return Err(ServiceError::InvalidOperation(
+                "Vault token does not match checkout session".to_string(),
+            ));
+        }
+
+        let max_amount = allowance
+            .get("max_amount")
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| {
+                ServiceError::InvalidInput("Vault token missing max_amount".to_string())
+            })?;
+
+        let currency = allowance
+            .get("currency")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                ServiceError::InvalidInput("Vault token missing currency".to_string())
+            })?;
+
+        if total_amount > max_amount {
+            return Err(ServiceError::InvalidOperation(
+                "Vault token allowance exceeded".to_string(),
+            ));
+        }
+
+        if currency.to_lowercase() != session.totals.grand_total.currency {
+            return Err(ServiceError::InvalidOperation(
+                "Vault token currency mismatch".to_string(),
+            ));
+        }
+
+        let expires_at = allowance
+            .get("expires_at")
+            .and_then(|v| v.as_str())
+            .and_then(|v| DateTime::parse_from_rfc3339(v).ok());
+
+        if let Some(expiration) = expires_at {
+            if expiration < Utc::now() {
+                return Err(ServiceError::InvalidOperation(
+                    "Vault token allowance expired".to_string(),
+                ));
             }
         }
+
+        self.cache
+            .delete(&cache_key)
+            .await
+            .map_err(|e| ServiceError::CacheError(e.to_string()))?;
+        VAULT_TOKENS_CONSUMED.inc();
+
+        Ok(PaymentResult {
+            payment_id: format!("pay_vt_{}", &token[token.len().saturating_sub(6)..]),
+            status: "authorized".to_string(),
+            amount: total_amount,
+        })
     }
 
     async fn process_stripe_shared_token(
         &self,
-        payment_data: &PaymentData,
+        token: &str,
         session: &CheckoutSession,
+        total_amount: i64,
     ) -> Result<PaymentResult, ServiceError> {
-        let total_amount = session
-            .totals
-            .iter()
-            .find(|t| t.total_type == "total")
-            .map(|t| t.amount)
-            .unwrap_or(0);
+        info!("Processing Stripe SharedPaymentToken");
 
         if let Some(processor) = &self.stripe_processor {
-            info!("Processing Stripe SharedPaymentToken via Stripe API");
-
-            let granted_token = processor
-                .get_granted_token(payment_data.token.as_str())
-                .await?;
+            let granted_token = processor.get_granted_token(token).await?;
             let risk = processor.assess_risk(&granted_token);
 
             if !risk.warnings.is_empty() {
@@ -711,19 +837,12 @@ impl AgenticCheckoutService {
 
             let mut metadata = HashMap::new();
             metadata.insert("checkout_session_id".to_string(), session.id.clone());
-            metadata.insert(
-                "payment_provider".to_string(),
-                payment_data.provider.clone(),
-            );
-            if let Some(buyer) = &session.buyer {
-                metadata.insert("buyer_email".to_string(), buyer.email.clone());
-            }
 
             let intent = processor
                 .process_shared_payment_token(
-                    payment_data.token.as_str(),
+                    token,
                     total_amount,
-                    session.currency.as_str(),
+                    session.totals.grand_total.currency.as_str(),
                     metadata,
                 )
                 .await?;
@@ -741,14 +860,8 @@ impl AgenticCheckoutService {
             });
         }
 
-        info!(
-            "Creating PaymentIntent with SharedPaymentToken preview {} for amount: {} (mock)",
-            Self::mask_payment_token(&payment_data.token),
-            total_amount
-        );
-
         Ok(PaymentResult {
-            payment_id: format!("pi_spt_{}", uuid::Uuid::new_v4()),
+            payment_id: format!("pi_spt_{}", Uuid::new_v4()),
             status: "succeeded".to_string(),
             amount: total_amount,
         })
@@ -756,24 +869,13 @@ impl AgenticCheckoutService {
 
     async fn process_stripe_regular(
         &self,
-        payment_data: &PaymentData,
-        session: &CheckoutSession,
+        token: &str,
+        _session: &CheckoutSession,
+        total_amount: i64,
     ) -> Result<PaymentResult, ServiceError> {
-        info!(
-            "Processing regular Stripe payment method (token_preview={})",
-            Self::mask_payment_token(&payment_data.token)
-        );
-
-        let total_amount = session
-            .totals
-            .iter()
-            .find(|t| t.total_type == "total")
-            .map(|t| t.amount)
-            .unwrap_or(0);
-
-        // Mock regular Stripe payment
+        info!("Processing payment method {}", mask_payment_token(token));
         Ok(PaymentResult {
-            payment_id: format!("pi_{}", uuid::Uuid::new_v4()),
+            payment_id: format!("pi_{}", Uuid::new_v4()),
             status: "succeeded".to_string(),
             amount: total_amount,
         })
@@ -784,11 +886,11 @@ impl AgenticCheckoutService {
         session: &CheckoutSession,
     ) -> Result<Order, ServiceError> {
         let order_id = Uuid::new_v4();
-
         Ok(Order {
             id: order_id.to_string(),
             checkout_session_id: session.id.clone(),
-            permalink_url: format!("https://merchant.example.com/orders/{}", order_id),
+            status: OrderStatus::Placed,
+            permalink_url: Some(format!("https://merchant.example.com/orders/{}", order_id)),
         })
     }
 
@@ -798,11 +900,13 @@ impl AgenticCheckoutService {
             .map_err(|e| ServiceError::SerializationError(e.to_string()))?;
 
         self.cache
-            .set(&cache_key, &data, Some(Duration::from_secs(3600)))
+            .set(
+                &cache_key,
+                &data,
+                Some(Duration::from_secs(SESSION_TTL_SECS)),
+            )
             .await
-            .map_err(|e| ServiceError::CacheError(e.to_string()))?;
-
-        Ok(())
+            .map_err(|e| ServiceError::CacheError(e.to_string()))
     }
 
     fn reserve_line_items(
@@ -810,41 +914,32 @@ impl AgenticCheckoutService {
         session_id: &str,
         line_items: &[LineItem],
     ) -> Result<(), ServiceError> {
-        for line_item in line_items {
-            self.product_catalog.reserve_inventory(
-                &line_item.item.id,
-                line_item.item.quantity,
-                session_id,
-            )?;
+        for item in line_items {
+            let product_id = item
+                .variant_id
+                .as_ref()
+                .ok_or_else(|| ServiceError::InternalError("Missing variant id".to_string()))?;
+            self.product_catalog
+                .reserve_inventory(product_id, item.quantity, session_id)?;
         }
-
         Ok(())
     }
+}
 
-    fn mask_payment_token(token: &str) -> String {
-        if token.is_empty() {
-            return "<empty>".to_string();
-        }
-
-        let chars: Vec<char> = token.chars().collect();
-
-        if chars.len() <= 4 {
-            return "***".to_string();
-        }
-
-        let prefix: String = chars.iter().take(4).collect();
-        let suffix: String = chars
-            .iter()
-            .rev()
-            .take(2)
-            .cloned()
-            .collect::<Vec<char>>()
-            .into_iter()
-            .rev()
-            .collect();
-
-        format!("{}***{}", prefix, suffix)
+fn mask_payment_token(token: &str) -> String {
+    if token.len() <= 4 {
+        return "***".to_string();
     }
+    let prefix: String = token.chars().take(4).collect();
+    let suffix: String = token
+        .chars()
+        .rev()
+        .take(2)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("{}***{}", prefix, suffix)
 }
 
 #[derive(Debug, Serialize)]

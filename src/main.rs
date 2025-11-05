@@ -34,7 +34,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Init events
     let (event_tx, event_rx) = mpsc::channel(1024);
     let event_sender = api::events::EventSender::new(event_tx);
-    tokio::spawn(api::events::process_events(event_rx));
+
+    // Initialize Agentic Commerce webhook service
+    let webhook_service = cfg.agentic_commerce_webhook_secret.clone().map(|secret| {
+        info!("Agentic Commerce webhook delivery enabled");
+        Arc::new(api::webhooks::AgenticCommerceWebhookService::new(Some(
+            secret,
+        )))
+    });
+    let webhook_url = cfg.agentic_commerce_webhook_url.clone();
+
+    if webhook_url.is_some() {
+        info!("Agentic Commerce webhook URL configured: {:?}", webhook_url);
+    } else {
+        info!("Agentic Commerce webhook URL not configured; outbound webhooks disabled");
+    }
+
+    // Spawn event processor with webhook support
+    tokio::spawn(api::events::process_events(
+        event_rx,
+        webhook_service,
+        webhook_url,
+    ));
+
     // Start outbox worker (best-effort, no-op if table missing)
     api::events::outbox::start_worker(db_arc.clone(), event_sender.clone()).await;
     let inventory_service =

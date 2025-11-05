@@ -19,9 +19,9 @@ pub mod errors;
 pub mod events;
 pub mod handlers;
 pub mod health;
+pub mod logging;
 pub mod message_queue;
 pub mod metrics;
-pub mod logging;
 pub mod middleware_helpers;
 pub mod migrator;
 pub mod models;
@@ -31,6 +31,7 @@ pub mod rate_limiter;
 pub mod services;
 pub mod tracing;
 pub mod versioning;
+pub mod webhooks;
 
 use axum::{extract::State, response::Json, routing::get, Router};
 use chrono::Utc;

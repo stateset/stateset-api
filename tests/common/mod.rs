@@ -83,7 +83,7 @@ impl TestApp {
         let db_arc = Arc::new(pool);
         let (event_tx, event_rx) = mpsc::channel(256);
         let event_sender = EventSender::new(event_tx);
-        let event_task = tokio::spawn(events::process_events(event_rx));
+        let event_task = tokio::spawn(events::process_events(event_rx, None, None));
 
         let inventory_service = stateset_api::services::inventory::InventoryService::new(
             db_arc.clone(),

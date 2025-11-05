@@ -16,8 +16,8 @@ pub enum CacheError {
     Serialization(#[from] serde_json::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    // #[error("Redis error: {0}")]
-    // RedisError(#[from] redis::RedisError),
+    #[error("Redis error: {0}")]
+    RedisError(String),
     #[error("Cache miss")]
     Miss,
     #[error("Cache operation failed: {0}")]
@@ -180,74 +180,124 @@ impl CacheFactory {
             return Ok(Arc::new(InMemoryCache::new())); // Disabled cache
         }
 
-        // For now, always use in-memory cache since Redis is disabled
-        // TODO: Re-enable Redis when the dependency is available
-        /*
+        // Try Redis first if configured
         if let Some(redis_url) = &config.redis_url {
-            match RedisCache::new(redis_url) {
-                Ok(redis_cache) => return Ok(Arc::new(redis_cache)),
-                Err(_) => {
-                    tracing::warn!("Failed to connect to Redis, falling back to in-memory cache");
+            match RedisCache::new(redis_url).await {
+                Ok(redis_cache) => {
+                    tracing::info!("Using Redis cache backend");
+                    return Ok(Arc::new(redis_cache));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to connect to Redis: {}, falling back to in-memory cache",
+                        e
+                    );
                 }
             }
         }
-        */
 
+        tracing::info!("Using in-memory cache backend");
         Ok(Arc::new(InMemoryCache::new()))
     }
 }
 
-// Redis cache implementation (disabled for now)
-/*
+// Redis cache implementation
 #[derive(Clone)]
 pub struct RedisCache {
     client: redis::Client,
 }
 
 impl RedisCache {
-    pub fn new(redis_url: &str) -> Result<Self, redis::RedisError> {
-        let client = redis::Client::open(redis_url)?;
+    pub async fn new(redis_url: &str) -> Result<Self, CacheError> {
+        let client =
+            redis::Client::open(redis_url).map_err(|e| CacheError::RedisError(e.to_string()))?;
+
+        // Test the connection
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| CacheError::RedisError(format!("Failed to connect: {}", e)))?;
+
+        // Ping to verify connection
+        redis::cmd("PING")
+            .query_async::<_, String>(&mut conn)
+            .await
+            .map_err(|e| CacheError::RedisError(format!("Connection test failed: {}", e)))?;
+
         Ok(Self { client })
+    }
+
+    async fn get_connection(&self) -> Result<redis::aio::MultiplexedConnection, CacheError> {
+        self.client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| CacheError::RedisError(e.to_string()))
     }
 }
 
 #[async_trait::async_trait]
-impl Cache for RedisCache {
+impl CacheBackend for RedisCache {
     async fn get(&self, key: &str) -> Result<Option<String>, CacheError> {
-        let mut conn = self.client.get_async_connection().await?;
-        let result: Option<String> = redis::cmd("GET").arg(key).query_async(&mut conn).await?;
+        let mut conn = self.get_connection().await?;
+        let result: Option<String> = redis::cmd("GET")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| CacheError::RedisError(e.to_string()))?;
         Ok(result)
     }
 
     async fn set(&self, key: &str, value: &str, ttl: Option<Duration>) -> Result<(), CacheError> {
-        let mut conn = self.client.get_async_connection().await?;
+        let mut conn = self.get_connection().await?;
         if let Some(ttl) = ttl {
+            let ttl_secs = ttl.as_secs();
+            if ttl_secs == 0 {
+                return Err(CacheError::InvalidTTL);
+            }
             redis::cmd("SETEX")
                 .arg(key)
-                .arg(ttl.as_secs())
+                .arg(ttl_secs)
                 .arg(value)
                 .query_async(&mut conn)
-                .await?;
+                .await
+                .map_err(|e| CacheError::RedisError(e.to_string()))?;
         } else {
             redis::cmd("SET")
                 .arg(key)
                 .arg(value)
                 .query_async(&mut conn)
-                .await?;
+                .await
+                .map_err(|e| CacheError::RedisError(e.to_string()))?;
         }
         Ok(())
     }
 
     async fn delete(&self, key: &str) -> Result<(), CacheError> {
-        let mut conn = self.client.get_async_connection().await?;
-        redis::cmd("DEL").arg(key).query_async(&mut conn).await?;
+        let mut conn = self.get_connection().await?;
+        redis::cmd("DEL")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| CacheError::RedisError(e.to_string()))?;
         Ok(())
     }
 
+    async fn exists(&self, key: &str) -> Result<bool, CacheError> {
+        let mut conn = self.get_connection().await?;
+        let result: i32 = redis::cmd("EXISTS")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| CacheError::RedisError(e.to_string()))?;
+        Ok(result > 0)
+    }
+
     async fn clear(&self) -> Result<(), CacheError> {
-        let mut conn = self.client.get_async_connection().await?;
-        redis::cmd("FLUSHDB").query_async(&mut conn).await?;
+        let mut conn = self.get_connection().await?;
+        redis::cmd("FLUSHDB")
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| CacheError::RedisError(e.to_string()))?;
         Ok(())
     }
 }
-*/

@@ -7,12 +7,12 @@ mod m20230101_000012_create_inventory_transactions_table;
 mod m20240101_000014_create_outbox_table;
 mod m20240901_000013_create_auth_tables;
 mod m20241005_000015_update_order_timestamps;
+mod m20241103_000021_add_critical_indexes;
 mod m20241105_000016_create_manufacturing_tables;
 mod m20250105_000017_create_products_table;
 mod m20250105_000018_create_product_variants_table;
 mod m20250105_000019_create_customers_table;
 mod m20250105_000020_update_orders_table;
-mod m20241103_000021_add_critical_indexes;
 
 pub struct Migrator;
 

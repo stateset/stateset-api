@@ -27,6 +27,115 @@ pub struct ErrorResponse {
     pub timestamp: String,
 }
 
+/// ACP-compliant error response format
+/// Matches the Agentic Commerce Protocol error specification
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ACPErrorResponse {
+    pub error: ACPErrorDetails,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ACPErrorDetails {
+    #[serde(rename = "type")]
+    pub error_type: ACPErrorType,
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub param: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ACPErrorType {
+    InvalidRequestError,
+    AuthenticationError,
+    RateLimitError,
+    ApiError,
+}
+
+impl ACPErrorResponse {
+    pub fn invalid_request(code: &str, message: String, param: Option<String>) -> Self {
+        Self {
+            error: ACPErrorDetails {
+                error_type: ACPErrorType::InvalidRequestError,
+                code: code.to_string(),
+                message,
+                param,
+            },
+        }
+    }
+
+    pub fn authentication_error(message: String) -> Self {
+        Self {
+            error: ACPErrorDetails {
+                error_type: ACPErrorType::AuthenticationError,
+                code: "authentication_failed".to_string(),
+                message,
+                param: None,
+            },
+        }
+    }
+
+    pub fn rate_limit_error() -> Self {
+        Self {
+            error: ACPErrorDetails {
+                error_type: ACPErrorType::RateLimitError,
+                code: "rate_limit_exceeded".to_string(),
+                message: "Too many requests".to_string(),
+                param: None,
+            },
+        }
+    }
+
+    pub fn api_error(code: &str, message: String) -> Self {
+        Self {
+            error: ACPErrorDetails {
+                error_type: ACPErrorType::ApiError,
+                code: code.to_string(),
+                message,
+                param: None,
+            },
+        }
+    }
+}
+
+/// Convert ServiceError to ACP error response
+impl From<&ServiceError> for ACPErrorResponse {
+    fn from(error: &ServiceError) -> Self {
+        match error {
+            ServiceError::ValidationError(msg) => {
+                ACPErrorResponse::invalid_request("validation_error", msg.clone(), None)
+            }
+            ServiceError::InvalidInput(msg) => {
+                ACPErrorResponse::invalid_request("invalid_input", msg.clone(), None)
+            }
+            ServiceError::InvalidOperation(msg) => {
+                ACPErrorResponse::invalid_request("invalid_operation", msg.clone(), None)
+            }
+            ServiceError::NotFound(msg) | ServiceError::NotFoundError(msg) => {
+                ACPErrorResponse::invalid_request("resource_not_found", msg.clone(), None)
+            }
+            ServiceError::AuthError(msg) | ServiceError::Unauthorized(msg) => {
+                ACPErrorResponse::authentication_error(msg.clone())
+            }
+            ServiceError::Forbidden(msg) => {
+                ACPErrorResponse::authentication_error(format!("Forbidden: {}", msg))
+            }
+            ServiceError::RateLimitExceeded => ACPErrorResponse::rate_limit_error(),
+            ServiceError::PaymentFailed(msg) => {
+                ACPErrorResponse::api_error("payment_failed", msg.clone())
+            }
+            ServiceError::InsufficientStock(msg) => {
+                ACPErrorResponse::invalid_request("insufficient_stock", msg.clone(), None)
+            }
+            ServiceError::Conflict(msg) => {
+                ACPErrorResponse::invalid_request("conflict", msg.clone(), None)
+            }
+            _ => ACPErrorResponse::api_error("internal_error", error.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum ServiceError {
     #[error("Database error: {0}")]
@@ -205,7 +314,10 @@ impl IntoResponse for ServiceError {
             ServiceError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             ServiceError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             ServiceError::JwtError(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
-            ServiceError::HashError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            ServiceError::HashError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ),
             ServiceError::RateLimitExceeded => (
                 StatusCode::TOO_MANY_REQUESTS,
                 "Rate limit exceeded".to_string(),
@@ -214,21 +326,28 @@ impl IntoResponse for ServiceError {
             ServiceError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             ServiceError::InsufficientStock(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
             ServiceError::PaymentFailed(msg) => (StatusCode::PAYMENT_REQUIRED, msg.clone()),
-            ServiceError::CacheError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
-            ServiceError::QueueError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
-            ServiceError::SerializationError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, msg.clone())
-            }
+            ServiceError::CacheError(_)
+            | ServiceError::QueueError(_)
+            | ServiceError::SerializationError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ),
             ServiceError::CircuitBreakerOpen => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Service temporarily unavailable".to_string(),
             ),
-            ServiceError::MigrationError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            ServiceError::MigrationError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ),
             ServiceError::ConcurrentModification(id) => (
                 StatusCode::CONFLICT,
                 format!("Concurrent modification for ID {}", id),
             ),
-            ServiceError::Other(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            ServiceError::Other(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ),
         };
 
         let request_id = current_request_id();
@@ -290,9 +409,11 @@ impl IntoResponse for ApiError {
                 | ServiceError::BadRequest(e)
                 | ServiceError::InvalidInput(e) => (StatusCode::BAD_REQUEST, e.clone()),
                 ServiceError::EventError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
-                ServiceError::InternalError(e) | ServiceError::HashError(e) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, e.clone())
-                }
+                ServiceError::InternalError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
+                ServiceError::HashError(_) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                ),
                 ServiceError::OrderError(e) | ServiceError::InventoryError(e) => {
                     (StatusCode::BAD_REQUEST, e.clone())
                 }
@@ -315,10 +436,13 @@ impl IntoResponse for ApiError {
                 ServiceError::Conflict(e) => (StatusCode::CONFLICT, e.clone()),
                 ServiceError::InsufficientStock(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.clone()),
                 ServiceError::PaymentFailed(e) => (StatusCode::PAYMENT_REQUIRED, e.clone()),
-                ServiceError::CacheError(e)
-                | ServiceError::QueueError(e)
-                | ServiceError::SerializationError(e)
-                | ServiceError::MigrationError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
+                ServiceError::CacheError(_)
+                | ServiceError::QueueError(_)
+                | ServiceError::SerializationError(_)
+                | ServiceError::MigrationError(_) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                ),
                 ServiceError::CircuitBreakerOpen => (
                     StatusCode::SERVICE_UNAVAILABLE,
                     "Service temporarily unavailable".to_string(),
@@ -327,7 +451,10 @@ impl IntoResponse for ApiError {
                     StatusCode::CONFLICT,
                     format!("Concurrent modification for ID {}", id),
                 ),
-                ServiceError::Other(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                ServiceError::Other(_) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                ),
             },
             ApiError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),

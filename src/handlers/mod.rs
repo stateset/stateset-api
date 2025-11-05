@@ -45,6 +45,8 @@ pub struct AppServices {
     pub agentic_checkout: Arc<crate::services::commerce::AgenticCheckoutService>,
     pub customer: Arc<crate::services::commerce::CustomerService>,
     pub order: Arc<crate::services::orders::OrderService>,
+    pub payments: Arc<crate::services::payments::PaymentService>,
+    pub invoicing: Arc<crate::services::invoicing::InvoicingService>,
     pub cash_sales: Arc<crate::services::cash_sale::CashSaleService>,
     pub returns: Arc<crate::services::returns::ReturnService>,
     pub shipments: Arc<crate::services::shipments::ShipmentService>,
@@ -98,13 +100,35 @@ impl AppServices {
         ));
 
         let cache = Arc::new(crate::cache::InMemoryCache::new());
-        let agentic_checkout = Arc::new(crate::services::commerce::AgenticCheckoutService::new(
+        let payments = Arc::new(crate::services::payments::PaymentService::new(
             db_pool.clone(),
-            cache,
             event_sender.clone(),
+        ));
+        let invoicing = Arc::new(crate::services::invoicing::InvoicingService::new(
+            db_pool.clone(),
         ));
         let cash_sales = Arc::new(crate::services::cash_sale::CashSaleService::new(
             db_pool.clone(),
+        ));
+        let shipments = Arc::new(crate::services::shipments::ShipmentService::new(
+            db_pool.clone(),
+            event_sender.clone(),
+            redis_client.clone(),
+            message_queue.clone(),
+            circuit_breaker.clone(),
+            circuit_breaker_registry.clone(),
+            shipments_logger,
+        ));
+        let agentic_checkout = Arc::new(crate::services::commerce::AgenticCheckoutService::new(
+            db_pool.clone(),
+            cache.clone(),
+            event_sender.clone(),
+            product_catalog.clone(),
+            order_service.clone(),
+            payments.clone(),
+            shipments.clone(),
+            invoicing.clone(),
+            cash_sales.clone(),
         ));
         let bill_of_materials = Arc::new(
             crate::services::billofmaterials::BillOfMaterialsService::new(
@@ -119,15 +143,6 @@ impl AppServices {
             message_queue.clone(),
             circuit_breaker.clone(),
             returns_logger,
-        ));
-        let shipments = Arc::new(crate::services::shipments::ShipmentService::new(
-            db_pool.clone(),
-            event_sender.clone(),
-            redis_client.clone(),
-            message_queue.clone(),
-            circuit_breaker.clone(),
-            circuit_breaker_registry.clone(),
-            shipments_logger,
         ));
         let warranties = Arc::new(crate::services::warranties::WarrantyService::new(
             db_pool.clone(),
@@ -170,6 +185,8 @@ impl AppServices {
             agentic_checkout,
             customer,
             order: order_service,
+            payments,
+            invoicing,
             cash_sales,
             returns,
             shipments,

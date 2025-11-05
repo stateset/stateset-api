@@ -188,6 +188,14 @@ pub struct AppConfig {
     /// Webhook timestamp tolerance (seconds)
     #[serde(default)]
     pub payment_webhook_tolerance_secs: Option<u64>,
+
+    /// Agentic Commerce: OpenAI webhook URL for order events
+    #[serde(default)]
+    pub agentic_commerce_webhook_url: Option<String>,
+
+    /// Agentic Commerce: Webhook secret for HMAC signatures
+    #[serde(default)]
+    pub agentic_commerce_webhook_secret: Option<String>,
 }
 
 impl AppConfig {
@@ -246,6 +254,8 @@ impl AppConfig {
             payment_provider: None,
             payment_webhook_secret: None,
             payment_webhook_tolerance_secs: None,
+            agentic_commerce_webhook_url: None,
+            agentic_commerce_webhook_secret: None,
         };
         config.db_url = config.database_url.clone();
         config

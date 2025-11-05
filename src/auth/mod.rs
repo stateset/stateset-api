@@ -177,7 +177,8 @@ impl AuthConfig {
         if self.jwt_secret == "your-secret-key"
             || self.jwt_secret == "INSECURE_DEFAULT_DO_NOT_USE_IN_PRODUCTION"
             || self.jwt_secret.contains("default")
-            || self.jwt_secret.contains("secret-key") {
+            || self.jwt_secret.contains("secret-key")
+        {
             return Err(AuthError::ConfigurationError(
                 "JWT secret cannot use default value. Set APP__JWT_SECRET environment variable with a secure random string.".to_string()
             ));
@@ -186,13 +187,11 @@ impl AuthConfig {
         // Ensure JWT secret meets minimum security requirements
         const MIN_SECRET_LENGTH: usize = 32;
         if self.jwt_secret.len() < MIN_SECRET_LENGTH {
-            return Err(AuthError::ConfigurationError(
-                format!(
-                    "JWT secret must be at least {} characters long for security. Current length: {}",
-                    MIN_SECRET_LENGTH,
-                    self.jwt_secret.len()
-                )
-            ));
+            return Err(AuthError::ConfigurationError(format!(
+                "JWT secret must be at least {} characters long for security. Current length: {}",
+                MIN_SECRET_LENGTH,
+                self.jwt_secret.len()
+            )));
         }
 
         // Warn if secret appears to be weak (all same character, sequential, etc.)
@@ -208,29 +207,25 @@ impl AuthConfig {
         const MAX_REFRESH_TOKEN_DURATION: u64 = 90 * 24 * 60 * 60; // 90 days
 
         if self.access_token_expiration.as_secs() > MAX_ACCESS_TOKEN_DURATION {
-            return Err(AuthError::ConfigurationError(
-                format!(
-                    "Access token expiration too long: {} seconds (max: {})",
-                    self.access_token_expiration.as_secs(),
-                    MAX_ACCESS_TOKEN_DURATION
-                )
-            ));
+            return Err(AuthError::ConfigurationError(format!(
+                "Access token expiration too long: {} seconds (max: {})",
+                self.access_token_expiration.as_secs(),
+                MAX_ACCESS_TOKEN_DURATION
+            )));
         }
 
         if self.refresh_token_expiration.as_secs() > MAX_REFRESH_TOKEN_DURATION {
-            return Err(AuthError::ConfigurationError(
-                format!(
-                    "Refresh token expiration too long: {} seconds (max: {})",
-                    self.refresh_token_expiration.as_secs(),
-                    MAX_REFRESH_TOKEN_DURATION
-                )
-            ));
+            return Err(AuthError::ConfigurationError(format!(
+                "Refresh token expiration too long: {} seconds (max: {})",
+                self.refresh_token_expiration.as_secs(),
+                MAX_REFRESH_TOKEN_DURATION
+            )));
         }
 
         // Access token should be shorter than refresh token
         if self.access_token_expiration >= self.refresh_token_expiration {
             return Err(AuthError::ConfigurationError(
-                "Access token expiration must be shorter than refresh token expiration".to_string()
+                "Access token expiration must be shorter than refresh token expiration".to_string(),
             ));
         }
 
@@ -248,8 +243,7 @@ impl AuthConfig {
 
         // Check if it's a common pattern
         let weak_patterns = [
-            "12345", "password", "test", "demo", "example",
-            "changeme", "secret", "key", "token"
+            "12345", "password", "test", "demo", "example", "changeme", "secret", "key", "token",
         ];
 
         for pattern in &weak_patterns {

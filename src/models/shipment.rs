@@ -77,7 +77,18 @@ impl fmt::Display for ShippingMethod {
 }
 
 /// Shipment status enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum, strum::EnumString)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    EnumIter,
+    DeriveActiveEnum,
+    strum::EnumString,
+)]
 #[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ShipmentStatus {
     #[sea_orm(string_value = "Pending")]

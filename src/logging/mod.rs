@@ -1,6 +1,3 @@
-use slog::{Drain, Logger, o};
-use slog_async::Async;
-use slog_term::{FullFormat, TermDecorator};
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -8,6 +5,9 @@ use axum::{
     response::Response,
     Router,
 };
+use slog::{o, Drain, Logger};
+use slog_async::Async;
+use slog_term::{FullFormat, TermDecorator};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -39,9 +39,7 @@ pub fn setup_logger(config: LoggerConfig) -> Logger {
         builder.build()
     };
 
-    let drain = FullFormat::new(decorator)
-        .build()
-        .fuse();
+    let drain = FullFormat::new(decorator).build().fuse();
 
     let drain = Async::new(drain)
         .chan_size(config.async_buffer_size)
@@ -97,12 +95,10 @@ pub fn create_app(logger: Logger) -> Router<Arc<LoggingState>> {
     Router::new()
         .route("/health", axum::routing::get(|| async { "OK" }))
         // Add more routes here
-        .layer(
-            axum::middleware::from_fn_with_state(
-                logging_state.clone(),
-                logging_middleware
-            )
-        )
+        .layer(axum::middleware::from_fn_with_state(
+            logging_state.clone(),
+            logging_middleware,
+        ))
         .with_state(logging_state)
 }
 
@@ -127,7 +123,7 @@ mod tests {
             async_buffer_size: 128, // Smaller buffer for tests
             use_color: false,       // No color in test output
         };
-        
+
         let logger = setup_logger(config);
         let app = create_app(logger);
 
@@ -137,24 +133,19 @@ mod tests {
             .unwrap();
 
         let response = app.oneshot(request).await.unwrap();
-        
+
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         // Test with the actual handler
         let app = Router::new()
             .route("/", get(test_handler))
             .merge(create_app(setup_logger(config)));
-            
-        let request = Request::builder()
-            .uri("/")
-            .body(Body::empty())
-            .unwrap();
+
+        let request = Request::builder().uri("/").body(Body::empty()).unwrap();
 
         let response = app.oneshot(request).await.unwrap();
-        let body = to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(body, "Hello, World!");
     }

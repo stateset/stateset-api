@@ -100,8 +100,14 @@ impl TaxService {
         let tax_rates = self.tax_rates.read().unwrap();
 
         // Get tax rate for state
+        let state = address
+            .region
+            .as_deref()
+            .unwrap_or("DEFAULT")
+            .to_uppercase();
+
         let tax_rate = tax_rates
-            .get(&address.state)
+            .get(&state)
             .or_else(|| tax_rates.get("DEFAULT"))
             .ok_or_else(|| ServiceError::InternalError("No tax rate configured".to_string()))?;
 
@@ -135,7 +141,7 @@ impl TaxService {
             subtotal,
             tax_amount,
             tax_rate: total_rate,
-            jurisdiction: format!("{}, US", address.state),
+            jurisdiction: format!("{}, US", state),
         })
     }
 
@@ -168,13 +174,15 @@ mod tests {
 
     fn test_address() -> Address {
         Address {
-            name: "Test User".to_string(),
-            line_one: "123 Main St".to_string(),
-            line_two: None,
+            name: Some("Test User".to_string()),
+            line1: "123 Main St".to_string(),
+            line2: None,
             city: "San Francisco".to_string(),
-            state: "CA".to_string(),
-            country: "US".to_string(),
+            region: Some("CA".to_string()),
             postal_code: "94102".to_string(),
+            country: "US".to_string(),
+            phone: None,
+            email: None,
         }
     }
 
@@ -207,23 +215,27 @@ mod tests {
         let service = TaxService::new();
 
         let ca_addr = Address {
-            name: "Test".to_string(),
-            line_one: "123 St".to_string(),
-            line_two: None,
+            name: Some("Test".to_string()),
+            line1: "123 St".to_string(),
+            line2: None,
             city: "San Francisco".to_string(),
-            state: "CA".to_string(),
-            country: "US".to_string(),
+            region: Some("CA".to_string()),
             postal_code: "94102".to_string(),
+            country: "US".to_string(),
+            phone: None,
+            email: None,
         };
 
         let tx_addr = Address {
-            name: "Test".to_string(),
-            line_one: "456 St".to_string(),
-            line_two: None,
+            name: Some("Test".to_string()),
+            line1: "456 St".to_string(),
+            line2: None,
             city: "Austin".to_string(),
-            state: "TX".to_string(),
-            country: "US".to_string(),
+            region: Some("TX".to_string()),
             postal_code: "78701".to_string(),
+            country: "US".to_string(),
+            phone: None,
+            email: None,
         };
 
         let ca_tax = service.calculate_tax(10000, &ca_addr, false, 0).unwrap();

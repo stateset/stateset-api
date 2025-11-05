@@ -32,6 +32,7 @@ mod rate_limit;
 mod redis_store;
 mod security;
 mod service;
+mod shopify_integration;
 mod stripe_integration;
 mod tax_service;
 mod validation;
@@ -54,6 +55,7 @@ use rate_limit::{rate_limit_middleware, RateLimiter};
 use redis_store::RedisStore;
 use security::{signature_verification_middleware, SignatureVerifier};
 use service::AgenticCheckoutService;
+use shopify_integration::{ShopifyClient, ShopifyConfig};
 use stripe_integration::{StripeConfig, StripePaymentProcessor};
 use tax_service::TaxService;
 use webhook_service::WebhookService;
@@ -184,6 +186,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Initialize Shopify integration (optional)
+    let shopify_client = match ShopifyConfig::from_env() {
+        Ok(Some(config)) => match ShopifyClient::new(config) {
+            Ok(client) => {
+                info!("Shopify integration enabled");
+                Some(Arc::new(client))
+            }
+            Err(err) => {
+                warn!("Failed to initialize Shopify client: {}", err);
+                None
+            }
+        },
+        Ok(None) => {
+            info!("Shopify integration disabled");
+            None
+        }
+        Err(err) => {
+            warn!(
+                "Shopify integration disabled due to configuration error: {}",
+                err
+            );
+            None
+        }
+    };
+
     // Initialize checkout service
     let checkout_service = Arc::new(AgenticCheckoutService::new(
         cache.clone(),
@@ -191,6 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         product_catalog,
         tax_service,
         stripe_processor.clone(),
+        shopify_client.clone(),
     ));
     info!("Checkout service initialized");
 
@@ -273,6 +301,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Delegated Payment endpoint (PSP mock)
         .route("/agentic_commerce/delegate_payment", post(delegate_payment))
         // Middleware layers (applied in reverse order: bottom to top)
+        // Order: metrics -> rate_limit -> idempotency -> auth -> signature -> trace -> CORS -> compression -> body_limit
         .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
         .layer(CompressionLayer::new())
         .layer(
@@ -294,6 +323,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             idempotency_service.clone(),
             idempotency_middleware,
         ))
+        // Rate limiting before auth to prevent brute force attempts
         .layer(axum::middleware::from_fn_with_state(
             rate_limiter.clone(),
             rate_limit_middleware,

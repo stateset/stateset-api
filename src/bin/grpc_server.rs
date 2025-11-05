@@ -1,5 +1,5 @@
-use std::{sync::Arc, time::Duration};
 use anyhow::Context;
+use std::{sync::Arc, time::Duration};
 use tokio::signal;
 use tonic::transport::Server;
 
@@ -317,8 +317,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tx, rx) = tokio::sync::mpsc::channel(1000);
     let event_sender = EventSender::new(tx);
 
-    // Start event processing in background
-    let event_processor_handle = tokio::spawn(process_events(rx));
+    // Start event processing in background (no webhooks for gRPC server)
+    let event_processor_handle = tokio::spawn(process_events(rx, None, None));
 
     // Shared Redis client
     let redis_client = Arc::new(redis::Client::open(config.redis_url.clone())?);

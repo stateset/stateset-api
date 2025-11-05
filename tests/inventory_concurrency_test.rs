@@ -30,7 +30,7 @@ async fn inventory_concurrency() {
     let db_arc = Arc::new(pool);
     let (tx, rx) = mpsc::channel(100);
     let sender = EventSender::new(tx);
-    tokio::spawn(process_events(rx));
+    tokio::spawn(process_events(rx, None, None));
 
     let svc = InventoryService::new(db_arc.clone(), sender.clone());
 

@@ -103,7 +103,7 @@ echo -n "Test 7: Create Checkout Session... "
 SESSION_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer api_key_demo_123" \
-  -d '{"items":[{"id":"laptop_pro_16_inch","quantity":1}],"fulfillment_address":{"name":"Test User","line_one":"123 Main St","city":"San Francisco","state":"CA","country":"US","postal_code":"94102"}}')
+  -d '{"items":[{"id":"laptop_pro_16_inch","quantity":1}],"customer":{"shipping_address":{"name":"Test User","line1":"123 Main St","city":"San Francisco","region":"CA","country":"US","postal_code":"94102"}}}')
 
 SESSION_ID=$(echo "$SESSION_RESPONSE" | jq -r '.id')
 echo "$SESSION_RESPONSE" | jq -e '.id' > /dev/null
@@ -120,7 +120,7 @@ echo -n "Test 9: Update Checkout Session... "
 UPDATE_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions/$SESSION_ID \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer api_key_demo_123" \
-  -d '{"buyer":{"first_name":"John","last_name":"Doe","email":"john@example.com"},"fulfillment_option_id":"standard_shipping"}')
+  -d '{"customer":{"shipping_address":{"name":"John Doe","line1":"123 Main St","city":"San Francisco","region":"CA","country":"US","postal_code":"94102","email":"john@example.com"}},"fulfillment":{"selected_id":"standard_shipping"}}')
 echo "$UPDATE_RESPONSE" | jq -e '.status == "ready_for_payment"' > /dev/null
 test_result $?
 
@@ -146,7 +146,7 @@ echo -n "Test 11: Complete Checkout... "
 COMPLETE_RESPONSE=$(curl -s -X POST http://localhost:8080/checkout_sessions/$SESSION_ID/complete \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer api_key_demo_123" \
-  -d "{\"payment_data\":{\"token\":\"$VAULT_TOKEN\",\"provider\":\"stripe\"}}")
+  -d "{\"payment\":{\"delegated_token\":\"$VAULT_TOKEN\"}}")
 
 echo "$COMPLETE_RESPONSE" | jq -e '.status == "completed" and .order.id' > /dev/null
 test_result $?
@@ -157,7 +157,7 @@ echo -n "Test 12: Single-Use Token Enforcement... "
 NEW_SESSION=$(curl -s -X POST http://localhost:8080/checkout_sessions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer api_key_demo_123" \
-  -d '{"items":[{"id":"test","quantity":1}],"fulfillment_address":{"name":"T","line_one":"1 St","city":"SF","state":"CA","country":"US","postal_code":"94102"}}' | jq -r '.id')
+  -d '{"items":[{"id":"test","quantity":1}],"customer":{"shipping_address":{"name":"Test","line1":"1 St","city":"San Francisco","region":"CA","postal_code":"94102","country":"US"}}}' | jq -r '.id')
 
 curl -s -X POST http://localhost:8080/checkout_sessions/$NEW_SESSION \
   -H "Content-Type: application/json" \
