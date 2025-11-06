@@ -196,6 +196,14 @@ pub struct AppConfig {
     /// Agentic Commerce: Webhook secret for HMAC signatures
     #[serde(default)]
     pub agentic_commerce_webhook_secret: Option<String>,
+
+    /// Agentic Commerce: Shared secret for verifying inbound ACP signatures
+    #[serde(default)]
+    pub agentic_commerce_signing_secret: Option<String>,
+
+    /// Agentic Commerce: Signature timestamp tolerance in seconds (default 300s)
+    #[serde(default)]
+    pub agentic_commerce_signature_tolerance_secs: Option<u64>,
 }
 
 impl AppConfig {
@@ -256,6 +264,8 @@ impl AppConfig {
             payment_webhook_tolerance_secs: None,
             agentic_commerce_webhook_url: None,
             agentic_commerce_webhook_secret: None,
+            agentic_commerce_signing_secret: None,
+            agentic_commerce_signature_tolerance_secs: None,
         };
         config.db_url = config.database_url.clone();
         config

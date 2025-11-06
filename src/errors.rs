@@ -390,6 +390,12 @@ pub enum ApiError {
 
     #[error("Method not allowed: {message}")]
     MethodNotAllowed { message: String },
+
+    #[error("ACP error response")]
+    Acp {
+        status: StatusCode,
+        error: ACPErrorResponse,
+    },
 }
 
 impl IntoResponse for ApiError {
@@ -467,6 +473,9 @@ impl IntoResponse for ApiError {
             ApiError::MethodNotAllowed { message } => {
                 (StatusCode::METHOD_NOT_ALLOWED, message.clone())
             }
+            ApiError::Acp { status, error } => {
+                return (*status, Json(error)).into_response();
+            }
         };
 
         let request_id = current_request_id();
@@ -482,6 +491,12 @@ impl IntoResponse for ApiError {
         };
 
         (status, Json(error_response)).into_response()
+    }
+}
+
+impl ApiError {
+    pub fn acp(status: StatusCode, error: ACPErrorResponse) -> Self {
+        Self::Acp { status, error }
     }
 }
 

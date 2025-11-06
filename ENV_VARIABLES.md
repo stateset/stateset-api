@@ -131,6 +131,19 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=stateset-uploads
 
+### Agentic Commerce
+```bash
+# Shared secret for verifying incoming ACP signatures
+APP__AGENTIC_COMMERCE_SIGNING_SECRET=acp_shared_secret
+
+# Optional: signature timestamp tolerance in seconds (default 300)
+APP__AGENTIC_COMMERCE_SIGNATURE_TOLERANCE_SECS=300
+
+# Optional: outbound webhook configuration
+APP__AGENTIC_COMMERCE_WEBHOOK_URL=https://api.openai.com/v1/merchants/webhooks
+APP__AGENTIC_COMMERCE_WEBHOOK_SECRET=merchant_webhook_secret
+```
+
 # Monitoring
 SENTRY_DSN=https://...@sentry.io/...
 DATADOG_API_KEY=...

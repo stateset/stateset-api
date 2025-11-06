@@ -16,12 +16,13 @@ COPY src/bin/only_standalone/Cargo.toml ./src/bin/only_standalone/
 COPY simple_api/Cargo.toml ./simple_api/
 
 # Create dummy files to build dependencies
-RUN mkdir -p src migrations/src proto src/bin/only_standalone simple_api/src
+RUN mkdir -p src migrations/src proto benches src/bin/only_standalone simple_api/src
 RUN echo "fn main() {}" > src/main.rs
 RUN echo "pub fn run() {}" > migrations/src/lib.rs
 RUN echo "fn main() {}" > src/bin/only_standalone/main.rs
 RUN echo "fn main() {}" > simple_api/src/main.rs
 RUN echo "fn main() {}" > src/bin/migration.rs
+RUN echo "fn main() {}" > benches/api_benchmarks.rs
 
 # Copy build.rs for the build script
 COPY build.rs ./
@@ -72,7 +73,7 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Expose the port your app runs on
-EXPOSE 3000
+EXPOSE 8080
 
 # Set environment variables
 ENV RUST_LOG=info

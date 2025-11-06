@@ -6,14 +6,14 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
       - RUST_LOG=${RUST_LOG:-info}
       - DOCKER=1
       - JWT_SECRET=${JWT_SECRET:-your_secure_jwt_secret_key_please_change_in_production}
       - JWT_EXPIRATION=${JWT_EXPIRATION:-60}
       - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION:-7}
-      - PORT=${PORT:-3000}
+      - PORT=${PORT:-8080}
       - APP_ENV=${APP_ENV:-development}
     volumes:
       - ./data:/app/data

@@ -323,6 +323,11 @@ async fn ensure_core_tables(pool: &DbPool) -> Result<(), AppError> {
     let backend = pool.get_database_backend();
     debug!(backend = ?backend, "Ensuring core tables via entity schema");
 
+    if matches!(backend, DbBackend::Sqlite) {
+        debug!("Skipping core table auto-creation for SQLite backend; relying on migrations");
+        return Ok(());
+    }
+
     let schema = Schema::new(backend);
     let mut tables = core_table_definitions(&schema, backend);
 
