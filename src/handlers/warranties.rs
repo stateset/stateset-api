@@ -15,11 +15,12 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct WarrantyListQuery {
     pub page: Option<u64>,
     pub limit: Option<u64>,
@@ -97,6 +98,17 @@ pub struct ExtendWarrantyRequest {
     pub additional_months: i32,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/warranties",
+    params(WarrantyListQuery),
+    responses(
+        (status = 200, description = "Warranties listed", body = ApiResponse<PaginatedResponse<WarrantySummary>>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "warranties"
+)]
 pub async fn list_warranties(
     State(state): State<AppState>,
     Query(query): Query<WarrantyListQuery>,
@@ -127,6 +139,18 @@ pub async fn list_warranties(
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/warranties/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Warranty ID")
+    ),
+    responses(
+        (status = 200, description = "Warranty fetched", body = ApiResponse<WarrantySummary>),
+        (status = 404, description = "Warranty not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "warranties"
+)]
 pub async fn get_warranty(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -137,6 +161,16 @@ pub async fn get_warranty(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/warranties",
+    request_body = CreateWarrantyRequest,
+    responses(
+        (status = 201, description = "Warranty created", body = ApiResponse<WarrantySummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse)
+    ),
+    tag = "warranties"
+)]
 pub async fn create_warranty(
     State(state): State<AppState>,
     Json(payload): Json<CreateWarrantyRequest>,
@@ -164,6 +198,17 @@ pub async fn create_warranty(
     Ok(Json(ApiResponse::success(WarrantySummary::from(created))))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/warranties/claims",
+    request_body = CreateWarrantyClaimRequest,
+    responses(
+        (status = 201, description = "Warranty claim created", body = ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Warranty not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "warranties"
+)]
 pub async fn create_warranty_claim(
     State(state): State<AppState>,
     Json(payload): Json<CreateWarrantyClaimRequest>,
@@ -187,6 +232,20 @@ pub async fn create_warranty_claim(
     }))))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/warranties/claims/{id}/approve",
+    request_body = ApproveWarrantyClaimRequest,
+    params(
+        ("id" = Uuid, Path, description = "Warranty claim ID")
+    ),
+    responses(
+        (status = 200, description = "Warranty claim approved", body = ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Warranty claim not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "warranties"
+)]
 pub async fn approve_warranty_claim(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -213,6 +272,20 @@ pub async fn approve_warranty_claim(
     }))))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/warranties/{id}/extend",
+    request_body = ExtendWarrantyRequest,
+    params(
+        ("id" = Uuid, Path, description = "Warranty ID")
+    ),
+    responses(
+        (status = 200, description = "Warranty extended", body = ApiResponse<WarrantySummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Warranty not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "warranties"
+)]
 pub async fn extend_warranty(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

@@ -12,11 +12,12 @@ use axum::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ReturnListQuery {
     /// Page number (1-indexed)
     pub page: Option<u64>,
@@ -70,6 +71,17 @@ pub struct CreateReturnRequest {
     pub reason: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/returns",
+    params(ReturnListQuery),
+    responses(
+        (status = 200, description = "Returns listed", body = ApiResponse<PaginatedResponse<ReturnSummary>>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "returns"
+)]
 pub async fn list_returns(
     State(state): State<AppState>,
     Query(query): Query<ReturnListQuery>,
@@ -101,6 +113,18 @@ pub async fn list_returns(
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/returns/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Return ID")
+    ),
+    responses(
+        (status = 200, description = "Return fetched", body = ApiResponse<ReturnSummary>),
+        (status = 404, description = "Return not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "returns"
+)]
 pub async fn get_return(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -111,6 +135,16 @@ pub async fn get_return(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns",
+    request_body = CreateReturnRequest,
+    responses(
+        (status = 201, description = "Return created", body = ApiResponse<ReturnSummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse)
+    ),
+    tag = "returns"
+)]
 pub async fn create_return(
     State(state): State<AppState>,
     Json(payload): Json<CreateReturnRequest>,
@@ -128,6 +162,18 @@ pub async fn create_return(
     Ok(Json(ApiResponse::success(ReturnSummary::from(created))))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/approve",
+    params(
+        ("id" = Uuid, Path, description = "Return ID")
+    ),
+    responses(
+        (status = 200, description = "Return approved", body = ApiResponse<ReturnSummary>),
+        (status = 404, description = "Return not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "returns"
+)]
 pub async fn approve_return(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -136,6 +182,18 @@ pub async fn approve_return(
     Ok(Json(ApiResponse::success(ReturnSummary::from(updated))))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/returns/{id}/restock",
+    params(
+        ("id" = Uuid, Path, description = "Return ID")
+    ),
+    responses(
+        (status = 200, description = "Return restocked", body = ApiResponse<serde_json::Value>),
+        (status = 404, description = "Return not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "returns"
+)]
 pub async fn restock_return(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

@@ -10,11 +10,12 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ShipmentListQuery {
     pub page: Option<u64>,
     pub limit: Option<u64>,
@@ -69,6 +70,17 @@ pub struct CreateShipmentRequest {
     pub recipient_name: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments",
+    params(ShipmentListQuery),
+    responses(
+        (status = 200, description = "Shipments listed", body = ApiResponse<PaginatedResponse<ShipmentSummary>>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn list_shipments(
     State(state): State<AppState>,
     Query(query): Query<ShipmentListQuery>,
@@ -96,6 +108,18 @@ pub async fn list_shipments(
     })))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Shipment ID")
+    ),
+    responses(
+        (status = 200, description = "Shipment fetched", body = ApiResponse<ShipmentSummary>),
+        (status = 404, description = "Shipment not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn get_shipment(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -106,6 +130,16 @@ pub async fn get_shipment(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments",
+    request_body = CreateShipmentRequest,
+    responses(
+        (status = 201, description = "Shipment created", body = ApiResponse<ShipmentSummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn create_shipment(
     State(state): State<AppState>,
     Json(payload): Json<CreateShipmentRequest>,
@@ -152,6 +186,18 @@ fn parse_shipping_method(value: &str) -> Result<shipment::ShippingMethod, Servic
     Ok(method)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments/{id}/ship",
+    params(
+        ("id" = Uuid, Path, description = "Shipment ID")
+    ),
+    responses(
+        (status = 200, description = "Shipment marked as shipped", body = ApiResponse<ShipmentSummary>),
+        (status = 404, description = "Shipment not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn mark_shipped(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -160,6 +206,18 @@ pub async fn mark_shipped(
     Ok(Json(ApiResponse::success(ShipmentSummary::from(updated))))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/shipments/{id}/deliver",
+    params(
+        ("id" = Uuid, Path, description = "Shipment ID")
+    ),
+    responses(
+        (status = 200, description = "Shipment marked as delivered", body = ApiResponse<ShipmentSummary>),
+        (status = 404, description = "Shipment not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn mark_delivered(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -168,6 +226,18 @@ pub async fn mark_delivered(
     Ok(Json(ApiResponse::success(ShipmentSummary::from(updated))))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments/{id}/track",
+    params(
+        ("id" = Uuid, Path, description = "Shipment ID")
+    ),
+    responses(
+        (status = 200, description = "Shipment tracking status", body = ApiResponse<serde_json::Value>),
+        (status = 404, description = "Shipment not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn track_shipment(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -183,6 +253,18 @@ pub async fn track_shipment(
     }))))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/shipments/track/{tracking_number}",
+    params(
+        ("tracking_number" = String, Path, description = "Tracking number")
+    ),
+    responses(
+        (status = 200, description = "Shipment fetched by tracking number", body = ApiResponse<ShipmentSummary>),
+        (status = 404, description = "Shipment not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "shipments"
+)]
 pub async fn track_by_number(
     State(state): State<AppState>,
     Path(tracking_number): Path<String>,

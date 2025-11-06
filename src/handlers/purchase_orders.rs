@@ -23,12 +23,13 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
 // Request and response DTOs
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreatePurchaseOrderRequest {
     pub supplier_id: Uuid,
     #[validate(length(min = 1))]
@@ -42,7 +43,7 @@ pub struct CreatePurchaseOrderRequest {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct PurchaseOrderItemRequest {
     pub product_id: Uuid,
     #[validate(range(min = 1))]
@@ -55,7 +56,7 @@ pub struct PurchaseOrderItemRequest {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ShippingAddressRequest {
     #[validate(length(min = 1))]
     pub street: String,
@@ -69,7 +70,7 @@ pub struct ShippingAddressRequest {
     pub country: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct UpdatePurchaseOrderRequest {
     pub expected_delivery_date: Option<String>,
     pub shipping_address: Option<String>,
@@ -77,25 +78,25 @@ pub struct UpdatePurchaseOrderRequest {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ApprovePurchaseOrderRequest {
     pub approver_id: Uuid,
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CancelPurchaseOrderRequest {
     pub reason: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ReceivePurchaseOrderRequest {
     pub received_by: Uuid,
     pub notes: Option<String>,
     pub items_received: Vec<ItemReceivedRequest>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct ItemReceivedRequest {
     pub line_item_id: Uuid,
 
@@ -103,7 +104,8 @@ pub struct ItemReceivedRequest {
     pub condition: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct DateRangeParams {
     pub start_date: String,
 
@@ -129,7 +131,17 @@ impl DateRangeParams {
 // Handler functions
 
 /// Create a new purchase order
-async fn create_purchase_order(
+#[utoipa::path(
+    post,
+    path = "/api/v1/purchase-orders",
+    request_body = CreatePurchaseOrderRequest,
+    responses(
+        (status = 201, description = "Purchase order created", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn create_purchase_order(
     State(state): State<AppState>,
     _user: AuthenticatedUser,
     Json(payload): Json<CreatePurchaseOrderRequest>,
@@ -201,7 +213,19 @@ async fn create_purchase_order(
 }
 
 /// Get a purchase order by ID
-async fn get_purchase_order(
+#[utoipa::path(
+    get,
+    path = "/api/v1/purchase-orders/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order fetched", body = crate::ApiResponse<serde_json::Value>),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn get_purchase_order(
     State(state): State<AppState>,
     Path(po_id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -217,7 +241,21 @@ async fn get_purchase_order(
 }
 
 /// Update a purchase order
-async fn update_purchase_order(
+#[utoipa::path(
+    put,
+    path = "/api/v1/purchase-orders/{id}",
+    request_body = UpdatePurchaseOrderRequest,
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order updated", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn update_purchase_order(
     State(state): State<AppState>,
     Path(po_id): Path<Uuid>,
     Json(payload): Json<UpdatePurchaseOrderRequest>,
@@ -259,7 +297,21 @@ async fn update_purchase_order(
 }
 
 /// Approve a purchase order
-async fn approve_purchase_order(
+#[utoipa::path(
+    post,
+    path = "/api/v1/purchase-orders/{id}/approve",
+    request_body = ApprovePurchaseOrderRequest,
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order approved", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn approve_purchase_order(
     State(state): State<AppState>,
     Path(po_id): Path<Uuid>,
     Json(payload): Json<ApprovePurchaseOrderRequest>,
@@ -287,7 +339,21 @@ async fn approve_purchase_order(
 }
 
 /// Cancel a purchase order
-async fn cancel_purchase_order(
+#[utoipa::path(
+    post,
+    path = "/api/v1/purchase-orders/{id}/cancel",
+    request_body = CancelPurchaseOrderRequest,
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order cancelled", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn cancel_purchase_order(
     State(state): State<AppState>,
     Path(po_id): Path<Uuid>,
     Json(payload): Json<CancelPurchaseOrderRequest>,
@@ -314,7 +380,21 @@ async fn cancel_purchase_order(
 }
 
 /// Mark a purchase order as received
-async fn receive_purchase_order(
+#[utoipa::path(
+    post,
+    path = "/api/v1/purchase-orders/{id}/receive",
+    request_body = ReceivePurchaseOrderRequest,
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order received", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn receive_purchase_order(
     State(state): State<AppState>,
     Path(po_id): Path<Uuid>,
     Json(payload): Json<ReceivePurchaseOrderRequest>,
@@ -350,7 +430,18 @@ async fn receive_purchase_order(
 }
 
 /// Get purchase orders for a supplier
-async fn get_purchase_orders_by_supplier(
+#[utoipa::path(
+    get,
+    path = "/api/v1/purchase-orders/supplier/{supplier_id}",
+    params(
+        ("supplier_id" = Uuid, Path, description = "Supplier ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase orders by supplier", body = crate::ApiResponse<serde_json::Value>)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn get_purchase_orders_by_supplier(
     State(state): State<AppState>,
     Path(supplier_id): Path<Uuid>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -365,7 +456,18 @@ async fn get_purchase_orders_by_supplier(
 }
 
 /// Get purchase orders by status
-async fn get_purchase_orders_by_status(
+#[utoipa::path(
+    get,
+    path = "/api/v1/purchase-orders/status/{status}",
+    params(
+        ("status" = String, Path, description = "Purchase order status")
+    ),
+    responses(
+        (status = 200, description = "Purchase orders by status", body = crate::ApiResponse<serde_json::Value>)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn get_purchase_orders_by_status(
     State(state): State<AppState>,
     Path(status): Path<String>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -380,7 +482,17 @@ async fn get_purchase_orders_by_status(
 }
 
 /// Get purchase orders by delivery date range
-async fn get_purchase_orders_by_delivery_date(
+#[utoipa::path(
+    get,
+    path = "/api/v1/purchase-orders/delivery-date",
+    params(DateRangeParams),
+    responses(
+        (status = 200, description = "Purchase orders by delivery date", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid date range", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn get_purchase_orders_by_delivery_date(
     State(state): State<AppState>,
     Query(params): Query<DateRangeParams>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
@@ -399,7 +511,17 @@ async fn get_purchase_orders_by_delivery_date(
 }
 
 /// Get total purchase value for a date range
-async fn get_total_purchase_value(
+#[utoipa::path(
+    get,
+    path = "/api/v1/purchase-orders/value",
+    params(DateRangeParams),
+    responses(
+        (status = 200, description = "Total purchase value", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid date range", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn get_total_purchase_value(
     State(state): State<AppState>,
     Query(params): Query<DateRangeParams>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {

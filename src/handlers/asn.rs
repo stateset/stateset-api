@@ -26,6 +26,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -39,7 +40,7 @@ pub fn asn_routes() -> Router<AppState> {
         .route("/{id}/delivered", post(mark_delivered))
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateAsnRequest {
     pub purchase_order_id: Uuid,
     pub supplier_id: Uuid,
@@ -58,7 +59,7 @@ pub struct CreateAsnRequest {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema)]
 pub struct ShippingAddressRequest {
     #[validate(length(min = 1))]
     pub street: String,
@@ -72,7 +73,7 @@ pub struct ShippingAddressRequest {
     pub country: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema)]
 pub struct CarrierDetailsRequest {
     #[validate(length(min = 1))]
     pub carrier_name: String,
@@ -80,7 +81,7 @@ pub struct CarrierDetailsRequest {
     pub service_level: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema)]
 pub struct AsnItemRequest {
     pub product_id: Uuid,
     #[validate(length(min = 1))]
@@ -93,7 +94,7 @@ pub struct AsnItemRequest {
     pub unit_price: Option<f64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema)]
 pub struct PackageRequest {
     #[validate(length(min = 1))]
     pub package_number: String,
@@ -105,7 +106,7 @@ pub struct PackageRequest {
     pub dimensions: Option<PackageDimensionsRequest>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, Clone)]
+#[derive(Debug, Serialize, Deserialize, Validate, Clone, ToSchema)]
 pub struct PackageDimensionsRequest {
     #[validate(range(min = 0.0))]
     pub length: f64,
@@ -117,7 +118,8 @@ pub struct PackageDimensionsRequest {
     pub unit: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct AsnListQuery {
     pub page: Option<u64>,
     pub per_page: Option<u64>,
@@ -125,7 +127,7 @@ pub struct AsnListQuery {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AsnSummary {
     pub id: Uuid,
     pub asn_number: String,
@@ -155,7 +157,17 @@ impl From<asn_entity::Model> for AsnSummary {
 }
 
 /// Create a new ASN
-async fn create_asn(
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns",
+    request_body = CreateAsnRequest,
+    responses(
+        (status = 201, description = "ASN created", body = crate::ApiResponse<AsnSummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn create_asn(
     State(state): State<AppState>,
     _user: AuthenticatedUser,
     Json(payload): Json<CreateAsnRequest>,
@@ -182,7 +194,19 @@ async fn create_asn(
 }
 
 /// Retrieve an ASN by id
-async fn get_asn(
+#[utoipa::path(
+    get,
+    path = "/api/v1/asns/{id}",
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN fetched", body = crate::ApiResponse<AsnSummary>),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn get_asn(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -198,7 +222,18 @@ async fn get_asn(
 }
 
 /// List ASNs with optional filters
-async fn list_asns(
+#[utoipa::path(
+    get,
+    path = "/api/v1/asns",
+    params(AsnListQuery),
+    responses(
+        (status = 200, description = "ASNs listed", body = crate::ApiResponse<PaginatedResponse<AsnSummary>>),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn list_asns(
     State(state): State<AppState>,
     Query(query): Query<AsnListQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -230,7 +265,21 @@ async fn list_asns(
 }
 
 /// Mark an ASN as in transit
-async fn mark_in_transit(
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns/{id}/in-transit",
+    request_body = MarkAsnInTransitRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN marked as in transit", body = crate::ApiResponse<AsnSummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn mark_in_transit(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<MarkAsnInTransitRequest>,
@@ -279,7 +328,21 @@ async fn mark_in_transit(
 }
 
 /// Mark an ASN as delivered
-async fn mark_delivered(
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns/{id}/delivered",
+    request_body = MarkAsnDeliveredRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN marked as delivered", body = crate::ApiResponse<AsnSummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn mark_delivered(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<MarkAsnDeliveredRequest>,
@@ -313,7 +376,7 @@ async fn mark_delivered(
     Ok(success_response(AsnSummary::from(asn)))
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct MarkAsnInTransitRequest {
     pub version: i32,
     pub departure_time: DateTime<Utc>,
@@ -322,7 +385,7 @@ pub struct MarkAsnInTransitRequest {
     pub carrier: CarrierDetailsRequest,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct MarkAsnDeliveredRequest {
     pub version: i32,
     pub delivery_date: DateTime<Utc>,

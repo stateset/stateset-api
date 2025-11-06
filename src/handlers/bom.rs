@@ -21,6 +21,7 @@ use axum::{
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tracing::info;
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -42,7 +43,7 @@ pub fn bom_routes() -> Router<AppState> {
 
 // Request and response DTOs
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateBOMRequest {
     pub name: String,
     pub description: String,
@@ -51,7 +52,7 @@ pub struct CreateBOMRequest {
     pub components: Vec<BOMComponentRequest>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct BOMComponentRequest {
     pub component_id: Uuid,
 
@@ -61,7 +62,7 @@ pub struct BOMComponentRequest {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateBOMRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -69,13 +70,13 @@ pub struct UpdateBOMRequest {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct AuditBOMRequest {
     pub auditor: String,
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct AddComponentRequest {
     pub component_id: Uuid,
 
@@ -88,7 +89,17 @@ pub struct AddComponentRequest {
 // Handler functions
 
 /// Create a new BOM
-async fn create_bom(
+#[utoipa::path(
+    post,
+    path = "/api/v1/manufacturing/boms",
+    request_body = CreateBOMRequest,
+    responses(
+        (status = 201, description = "BOM created", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn create_bom(
     State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(payload): Json<CreateBOMRequest>,
@@ -139,7 +150,19 @@ async fn create_bom(
 }
 
 /// Get a BOM by ID
-async fn get_bom(
+#[utoipa::path(
+    get,
+    path = "/api/v1/manufacturing/boms/{id}",
+    params(
+        ("id" = Uuid, Path, description = "BOM ID")
+    ),
+    responses(
+        (status = 200, description = "BOM fetched", body = crate::ApiResponse<serde_json::Value>),
+        (status = 404, description = "BOM not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn get_bom(
     State(state): State<AppState>,
     Path(bom_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -161,7 +184,21 @@ async fn get_bom(
 }
 
 /// Update a BOM
-async fn update_bom(
+#[utoipa::path(
+    put,
+    path = "/api/v1/manufacturing/boms/{id}",
+    request_body = UpdateBOMRequest,
+    params(
+        ("id" = Uuid, Path, description = "BOM ID")
+    ),
+    responses(
+        (status = 200, description = "BOM updated", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "BOM not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn update_bom(
     State(state): State<AppState>,
     Path(bom_id): Path<Uuid>,
     user: AuthenticatedUser,
@@ -195,7 +232,21 @@ async fn update_bom(
 }
 
 /// Audit a BOM
-async fn audit_bom(
+#[utoipa::path(
+    post,
+    path = "/api/v1/manufacturing/boms/{id}/audit",
+    request_body = AuditBOMRequest,
+    params(
+        ("id" = Uuid, Path, description = "BOM ID")
+    ),
+    responses(
+        (status = 200, description = "BOM audit recorded", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "BOM not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn audit_bom(
     State(state): State<AppState>,
     Path(bom_id): Path<Uuid>,
     Json(payload): Json<AuditBOMRequest>,
@@ -232,7 +283,16 @@ async fn audit_bom(
 }
 
 /// List all BOMs with pagination
-async fn list_boms(
+#[utoipa::path(
+    get,
+    path = "/api/v1/manufacturing/boms",
+    params(crate::handlers::common::PaginationParams),
+    responses(
+        (status = 200, description = "BOMs listed", body = crate::ApiResponse<serde_json::Value>)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn list_boms(
     State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -255,7 +315,19 @@ async fn list_boms(
 }
 
 /// Get components for a BOM
-async fn get_bom_components(
+#[utoipa::path(
+    get,
+    path = "/api/v1/manufacturing/boms/{id}/components",
+    params(
+        ("id" = Uuid, Path, description = "BOM ID")
+    ),
+    responses(
+        (status = 200, description = "BOM components retrieved", body = crate::ApiResponse<serde_json::Value>),
+        (status = 404, description = "BOM not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn get_bom_components(
     State(state): State<AppState>,
     Path(bom_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -270,7 +342,21 @@ async fn get_bom_components(
 }
 
 /// Add a component to a BOM
-async fn add_component_to_bom(
+#[utoipa::path(
+    post,
+    path = "/api/v1/manufacturing/boms/{id}/components",
+    request_body = AddComponentRequest,
+    params(
+        ("id" = Uuid, Path, description = "BOM ID")
+    ),
+    responses(
+        (status = 201, description = "Component added to BOM", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "BOM not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn add_component_to_bom(
     State(state): State<AppState>,
     Path(bom_id): Path<Uuid>,
     Json(payload): Json<AddComponentRequest>,
@@ -303,7 +389,20 @@ async fn add_component_to_bom(
 }
 
 /// Remove a component from a BOM
-async fn remove_component_from_bom(
+#[utoipa::path(
+    delete,
+    path = "/api/v1/manufacturing/boms/{id}/components/{component_id}",
+    params(
+        ("id" = Uuid, Path, description = "BOM ID"),
+        ("component_id" = Uuid, Path, description = "Component ID")
+    ),
+    responses(
+        (status = 204, description = "Component removed"),
+        (status = 404, description = "BOM or component not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "manufacturing"
+)]
+pub async fn remove_component_from_bom(
     State(state): State<AppState>,
     Path((bom_id, component_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {

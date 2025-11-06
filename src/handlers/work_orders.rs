@@ -819,6 +819,18 @@ where
 }
 
 /// Assign a work order to a technician
+#[utoipa::path(
+    post,
+    path = "/api/v1/work-orders/{id}/assign",
+    params(("id" = String, Path, description = "Work order ID")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Work order assigned", body = serde_json::Value),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn assign_work_order<S>(
     State(_state): State<S>,
     Path(id): Path<String>,
@@ -838,6 +850,18 @@ where
 }
 
 /// Update work order status
+#[utoipa::path(
+    put,
+    path = "/api/v1/work-orders/{id}/status",
+    params(("id" = String, Path, description = "Work order ID")),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Work order status updated", body = serde_json::Value),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    tag = "work-orders"
+)]
 pub async fn update_work_order_status<S>(
     State(_state): State<S>,
     Path(id): Path<String>,

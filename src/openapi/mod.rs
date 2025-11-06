@@ -90,11 +90,16 @@ List endpoints support pagination with the following query parameters:
     paths(
         // Orders
         crate::handlers::orders::list_orders,
+        crate::handlers::orders::get_order_by_number,
         crate::handlers::orders::get_order,
         crate::handlers::orders::create_order,
         crate::handlers::orders::update_order,
         crate::handlers::orders::update_order_status,
+        crate::handlers::orders::get_order_items,
         crate::handlers::orders::add_order_item,
+        crate::handlers::orders::delete_order,
+        crate::handlers::orders::cancel_order,
+        crate::handlers::orders::archive_order,
 
         // Inventory
         crate::handlers::inventory::list_inventory,
@@ -102,7 +107,33 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::inventory::create_inventory,
         crate::handlers::inventory::update_inventory,
         crate::handlers::inventory::delete_inventory,
+        crate::handlers::inventory::reserve_inventory::<crate::AppState>,
+        crate::handlers::inventory::release_inventory::<crate::AppState>,
         crate::handlers::inventory::get_low_stock_items,
+
+        // Returns
+        crate::handlers::returns::list_returns,
+        crate::handlers::returns::get_return,
+        crate::handlers::returns::create_return,
+        crate::handlers::returns::approve_return,
+        crate::handlers::returns::restock_return,
+
+        // Shipments
+        crate::handlers::shipments::list_shipments,
+        crate::handlers::shipments::get_shipment,
+        crate::handlers::shipments::create_shipment,
+        crate::handlers::shipments::mark_shipped,
+        crate::handlers::shipments::mark_delivered,
+        crate::handlers::shipments::track_shipment,
+        crate::handlers::shipments::track_by_number,
+
+        // Warranties
+        crate::handlers::warranties::list_warranties,
+        crate::handlers::warranties::get_warranty,
+        crate::handlers::warranties::create_warranty,
+        crate::handlers::warranties::create_warranty_claim,
+        crate::handlers::warranties::approve_warranty_claim,
+        crate::handlers::warranties::extend_warranty,
 
         // Payments
         crate::handlers::payments::process_payment,
@@ -111,6 +142,16 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::payments::list_payments,
         crate::handlers::payments::refund_payment,
         crate::handlers::payments::get_order_payment_total,
+
+        // Work Orders
+        crate::handlers::work_orders::list_work_orders::<crate::AppState>,
+        crate::handlers::work_orders::create_work_order::<crate::AppState>,
+        crate::handlers::work_orders::get_work_order::<crate::AppState>,
+        crate::handlers::work_orders::update_work_order::<crate::AppState>,
+        crate::handlers::work_orders::delete_work_order::<crate::AppState>,
+        crate::handlers::work_orders::assign_work_order::<crate::AppState>,
+        crate::handlers::work_orders::complete_work_order::<crate::AppState>,
+        crate::handlers::work_orders::update_work_order_status::<crate::AppState>,
 
         // Admin Outbox
         crate::handlers::outbox_admin::list_outbox,
@@ -125,6 +166,35 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::analytics::get_sales_trends,
         crate::handlers::analytics::get_inventory_metrics,
         crate::handlers::analytics::get_shipment_metrics,
+
+        // Manufacturing BOM
+        crate::handlers::bom::create_bom,
+        crate::handlers::bom::get_bom,
+        crate::handlers::bom::update_bom,
+        crate::handlers::bom::audit_bom,
+        crate::handlers::bom::list_boms,
+        crate::handlers::bom::get_bom_components,
+        crate::handlers::bom::add_component_to_bom,
+        crate::handlers::bom::remove_component_from_bom,
+
+        // Procurement
+        crate::handlers::purchase_orders::create_purchase_order,
+        crate::handlers::purchase_orders::get_purchase_order,
+        crate::handlers::purchase_orders::update_purchase_order,
+        crate::handlers::purchase_orders::approve_purchase_order,
+        crate::handlers::purchase_orders::cancel_purchase_order,
+        crate::handlers::purchase_orders::receive_purchase_order,
+        crate::handlers::purchase_orders::get_purchase_orders_by_supplier,
+        crate::handlers::purchase_orders::get_purchase_orders_by_status,
+        crate::handlers::purchase_orders::get_purchase_orders_by_delivery_date,
+        crate::handlers::purchase_orders::get_total_purchase_value,
+
+        // ASNs
+        crate::handlers::asn::create_asn,
+        crate::handlers::asn::list_asns,
+        crate::handlers::asn::get_asn,
+        crate::handlers::asn::mark_in_transit,
+        crate::handlers::asn::mark_delivered,
 
         // Health intentionally omitted from OpenAPI paths for now
     ),
