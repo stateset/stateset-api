@@ -1,3 +1,12 @@
+## v0.1.7
+
+- launch comprehensive work order management APIs covering creation, scheduling, material consumption, and task updates backed by the new `WorkOrderService`
+- overhaul procurement and logistics handlers (purchase orders, ASNs, returns, shipments, warranties, BOM) with richer validation, status transitions, and consistent API responses
+- expand analytics coverage with dashboard, sales trend, inventory, and shipment metrics endpoints plus generated schemas
+- publish a bundled Postman collection under `docs/postman/` so teams can exercise the refreshed API surface quickly
+
+
+
 ## v0.1.6
 
 - introduce procurement endpoints: wire purchase orders and ASN services into the API with full permission gating, structured payload validation, and response serialization
