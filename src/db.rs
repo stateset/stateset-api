@@ -509,12 +509,7 @@ pub async fn run_migrations(pool: &DbPool) -> Result<(), AppError> {
     let backend = pool.get_database_backend();
 
     // Execute migrations using our embedded migrator
-    let migrate_result = if backend == DbBackend::Sqlite {
-        info!("SQLite backend detected; skipping embedded migrator scripts");
-        Ok(())
-    } else {
-        crate::migrator::Migrator::up(pool, None).await
-    };
+    let migrate_result = crate::migrator::Migrator::up(pool, None).await;
 
     let elapsed = start.elapsed();
     match &migrate_result {

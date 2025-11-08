@@ -580,11 +580,11 @@ pub async fn create_order(
             .field_errors()
             .iter()
             .flat_map(|(field, errors)| {
-                let field = field.clone();
+                let field_name = (*field).to_string();
                 errors.iter().map(move |error| {
                     format!(
                         "{}: {}",
-                        field,
+                        field_name,
                         error.message.as_ref().unwrap_or(&"Invalid value".into())
                     )
                 })
@@ -834,11 +834,11 @@ pub async fn update_order(
             .field_errors()
             .iter()
             .flat_map(|(field, errors)| {
-                let field = field.clone();
+                let field_name = (*field).to_string();
                 errors.iter().map(move |error| {
                     format!(
                         "{}: {}",
-                        field,
+                        field_name,
                         error.message.as_ref().unwrap_or(&"Invalid value".into())
                     )
                 })
@@ -951,11 +951,11 @@ pub async fn update_order_status(
             .field_errors()
             .iter()
             .flat_map(|(field, errors)| {
-                let field = field.clone();
+                let field_name = (*field).to_string();
                 errors.iter().map(move |error| {
                     format!(
                         "{}: {}",
-                        field,
+                        field_name,
                         error.message.as_ref().unwrap_or(&"Invalid value".into())
                     )
                 })
@@ -1066,11 +1066,11 @@ pub async fn add_order_item(
             .field_errors()
             .iter()
             .flat_map(|(field, errors)| {
-                let field = field.clone();
+                let field_name = (*field).to_string();
                 errors.iter().map(move |error| {
                     format!(
                         "{}: {}",
-                        field,
+                        field_name,
                         error.message.as_ref().unwrap_or(&"Invalid value".into())
                     )
                 })

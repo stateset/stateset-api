@@ -88,7 +88,8 @@ fn create_benchmark_app_state() -> AppState {
                         std::time::Duration::from_secs(config.jwt_expiration as u64),
                         std::time::Duration::from_secs(config.refresh_token_expiration as u64),
                         "sk_".to_string(),
-                    ),
+                    )
+                    .expect("valid auth config for load tests"),
                     db_arc.clone(),
                 )),
             )),

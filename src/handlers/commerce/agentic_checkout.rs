@@ -21,20 +21,21 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tracing::error;
+use utoipa::{IntoParams, ToSchema};
 
 const MAX_SIGNED_BODY_SIZE: usize = 1024 * 1024; // 1 MB
 const DEFAULT_SIGNATURE_TOLERANCE_SECS: i64 = 300;
 const SIGNATURE_HEADER: &str = "signature";
 const TIMESTAMP_HEADER: &str = "timestamp";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiMoney {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiMoney {
     amount: i64,
     currency: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiLineItem {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiLineItem {
     id: String,
     title: String,
     quantity: i32,
@@ -47,8 +48,8 @@ struct ApiLineItem {
     image_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiTotals {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiTotals {
     subtotal: ApiMoney,
     #[serde(skip_serializing_if = "Option::is_none")]
     tax: Option<ApiMoney>,
@@ -59,16 +60,16 @@ struct ApiTotals {
     grand_total: ApiMoney,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiDeliveryWindow {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiDeliveryWindow {
     #[serde(skip_serializing_if = "Option::is_none")]
     earliest: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     latest: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiFulfillmentChoice {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiFulfillmentChoice {
     id: String,
     label: String,
     price: ApiMoney,
@@ -76,16 +77,16 @@ struct ApiFulfillmentChoice {
     est_delivery: Option<ApiDeliveryWindow>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiFulfillment {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiFulfillment {
     #[serde(skip_serializing_if = "Option::is_none")]
     selected_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     options: Option<Vec<ApiFulfillmentChoice>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiAddress {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiAddress {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     line1: String,
@@ -102,16 +103,16 @@ struct ApiAddress {
     email: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiCustomer {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiCustomer {
     #[serde(skip_serializing_if = "Option::is_none")]
     billing_address: Option<ApiAddress>,
     #[serde(skip_serializing_if = "Option::is_none")]
     shipping_address: Option<ApiAddress>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiMessage {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiMessage {
     #[serde(rename = "type")]
     message_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,8 +122,8 @@ struct ApiMessage {
     message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiLinks {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiLinks {
     #[serde(skip_serializing_if = "Option::is_none")]
     terms: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,8 +132,8 @@ struct ApiLinks {
     order_permalink: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiCheckoutSession {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiCheckoutSession {
     id: String,
     status: String,
     items: Vec<ApiLineItem>,
@@ -149,8 +150,8 @@ struct ApiCheckoutSession {
     updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiOrder {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiOrder {
     id: String,
     checkout_session_id: String,
     status: String,
@@ -160,34 +161,66 @@ struct ApiOrder {
     refunds: Option<Vec<ApiRefund>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiRefund {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiRefund {
     #[serde(rename = "type")]
     refund_type: String,
     amount: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ApiCheckoutSessionWithOrder {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiCheckoutSessionWithOrder {
     #[serde(flatten)]
     session: ApiCheckoutSession,
     order: ApiOrder,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiItemInput {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Header)]
+pub(crate) struct AgenticCheckoutHeaders {
+    /// Bearer token used to authorize the caller.
+    #[param(value_type = String, rename = "Authorization", required = false)]
+    authorization: Option<String>,
+    /// Version of the Agentic Commerce API (YYYY-MM-DD).
+    #[param(value_type = String, rename = "API-Version")]
+    api_version: String,
+    /// Hex-encoded HMAC signature of the request body.
+    #[param(value_type = String, rename = "Signature")]
+    signature: String,
+    /// Unix timestamp (seconds) used when computing the signature.
+    #[param(value_type = String, rename = "Timestamp")]
+    timestamp: String,
+    /// Optional idempotency key for safely retrying writes.
+    #[param(value_type = String, rename = "Idempotency-Key", required = false)]
+    idempotency_key: Option<String>,
+    /// Optional client-supplied correlation id.
+    #[param(value_type = String, rename = "Request-Id", required = false)]
+    request_id: Option<String>,
+    /// Preferred locale for localized messaging.
+    #[param(value_type = String, rename = "Accept-Language", required = false)]
+    accept_language: Option<String>,
+    /// Calling client identifier.
+    #[param(value_type = String, rename = "User-Agent", required = false)]
+    user_agent: Option<String>,
+    /// Request payload content type (default application/json).
+    #[param(value_type = String, rename = "Content-Type", required = false)]
+    content_type: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiItemInput {
     id: String,
     quantity: i32,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiFulfillmentSelection {
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiFulfillmentSelection {
     #[serde(default)]
     selected_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiCreateCheckoutSessionRequest {
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiCreateCheckoutSessionRequest {
     items: Vec<ApiItemInput>,
     #[serde(default)]
     customer: Option<ApiCustomer>,
@@ -195,8 +228,8 @@ struct ApiCreateCheckoutSessionRequest {
     fulfillment: Option<ApiFulfillmentSelection>,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiUpdateCheckoutSessionRequest {
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiUpdateCheckoutSessionRequest {
     #[serde(default)]
     customer: Option<ApiCustomer>,
     #[serde(default)]
@@ -205,16 +238,16 @@ struct ApiUpdateCheckoutSessionRequest {
     fulfillment: Option<ApiFulfillmentSelection>,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiPaymentRequest {
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiPaymentRequest {
     #[serde(default)]
     delegated_token: Option<String>,
     #[serde(default)]
     method: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiCompleteCheckoutSessionRequest {
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub(crate) struct ApiCompleteCheckoutSessionRequest {
     payment: ApiPaymentRequest,
     #[serde(default)]
     customer: Option<ApiCustomer>,
@@ -758,6 +791,33 @@ pub fn agentic_checkout_routes() -> Router<AppState> {
 }
 
 /// Create a checkout session
+#[utoipa::path(
+    post,
+    path = "/checkout_sessions",
+    tag = "Agentic Checkout",
+    request_body = ApiCreateCheckoutSessionRequest,
+    params(AgenticCheckoutHeaders),
+    responses(
+        (status = 201, description = "Checkout session created", body = ApiCheckoutSession,
+            headers(
+                ("Location" = String, description = "Canonical URL for the new checkout session"),
+                ("Idempotency-Key" = String, description = "Echo of the request idempotency key"),
+                ("Request-Id" = String, description = "Echo of the client correlation id")
+            )
+        ),
+        (status = 200, description = "Checkout session already existed", body = ApiCheckoutSession,
+            headers(
+                ("Idempotency-Key" = String, description = "Echo of the request idempotency key"),
+                ("Request-Id" = String, description = "Echo of the client correlation id")
+            )
+        ),
+        (status = 400, description = "Invalid request payload", body = crate::errors::ACPErrorResponse),
+        (status = 401, description = "Authentication or signature failure", body = crate::errors::ACPErrorResponse),
+        (status = 409, description = "Unable to honor the request because of a conflict", body = crate::errors::ACPErrorResponse),
+        (status = 422, description = "Request failed validation", body = crate::errors::ACPErrorResponse),
+        (status = 500, description = "Unexpected error", body = crate::errors::ACPErrorResponse)
+    )
+)]
 async fn create_checkout_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -808,6 +868,25 @@ async fn create_checkout_session(
 }
 
 /// Get checkout session
+#[utoipa::path(
+    get,
+    path = "/checkout_sessions/{checkout_session_id}",
+    tag = "Agentic Checkout",
+    params(
+        AgenticCheckoutHeaders,
+        ("checkout_session_id" = String, Path, description = "Checkout session identifier")
+    ),
+    responses(
+        (status = 200, description = "Checkout session retrieved", body = ApiCheckoutSession,
+            headers(
+                ("Request-Id" = String, description = "Echo of the client correlation id")
+            )
+        ),
+        (status = 401, description = "Authentication or signature failure", body = crate::errors::ACPErrorResponse),
+        (status = 404, description = "Checkout session not found", body = crate::errors::ACPErrorResponse),
+        (status = 500, description = "Unexpected error", body = crate::errors::ACPErrorResponse)
+    )
+)]
 async fn get_checkout_session(
     State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
@@ -832,6 +911,30 @@ async fn get_checkout_session(
 }
 
 /// Update checkout session
+#[utoipa::path(
+    post,
+    path = "/checkout_sessions/{checkout_session_id}",
+    tag = "Agentic Checkout",
+    request_body = ApiUpdateCheckoutSessionRequest,
+    params(
+        AgenticCheckoutHeaders,
+        ("checkout_session_id" = String, Path, description = "Checkout session identifier")
+    ),
+    responses(
+        (status = 200, description = "Checkout session updated", body = ApiCheckoutSession,
+            headers(
+                ("Idempotency-Key" = String, description = "Echo of the request idempotency key"),
+                ("Request-Id" = String, description = "Echo of the client correlation id")
+            )
+        ),
+        (status = 400, description = "Invalid request payload", body = crate::errors::ACPErrorResponse),
+        (status = 401, description = "Authentication or signature failure", body = crate::errors::ACPErrorResponse),
+        (status = 404, description = "Checkout session not found", body = crate::errors::ACPErrorResponse),
+        (status = 409, description = "Operation conflicts with session state", body = crate::errors::ACPErrorResponse),
+        (status = 422, description = "Provided data failed validation", body = crate::errors::ACPErrorResponse),
+        (status = 500, description = "Unexpected error", body = crate::errors::ACPErrorResponse)
+    )
+)]
 async fn update_checkout_session(
     State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
@@ -885,6 +988,31 @@ async fn update_checkout_session(
 }
 
 /// Complete checkout session
+#[utoipa::path(
+    post,
+    path = "/checkout_sessions/{checkout_session_id}/complete",
+    tag = "Agentic Checkout",
+    request_body = ApiCompleteCheckoutSessionRequest,
+    params(
+        AgenticCheckoutHeaders,
+        ("checkout_session_id" = String, Path, description = "Checkout session identifier")
+    ),
+    responses(
+        (status = 200, description = "Checkout session completed and order created", body = ApiCheckoutSessionWithOrder,
+            headers(
+                ("Idempotency-Key" = String, description = "Echo of the request idempotency key"),
+                ("Request-Id" = String, description = "Echo of the client correlation id")
+            )
+        ),
+        (status = 400, description = "Invalid request payload", body = crate::errors::ACPErrorResponse),
+        (status = 401, description = "Authentication or signature failure", body = crate::errors::ACPErrorResponse),
+        (status = 402, description = "Payment failed", body = crate::errors::ACPErrorResponse),
+        (status = 404, description = "Checkout session not found", body = crate::errors::ACPErrorResponse),
+        (status = 409, description = "Completion not allowed in current state", body = crate::errors::ACPErrorResponse),
+        (status = 422, description = "Provided data failed validation", body = crate::errors::ACPErrorResponse),
+        (status = 500, description = "Unexpected error", body = crate::errors::ACPErrorResponse)
+    )
+)]
 async fn complete_checkout_session(
     State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,
@@ -939,6 +1067,28 @@ async fn complete_checkout_session(
 }
 
 /// Cancel checkout session
+#[utoipa::path(
+    post,
+    path = "/checkout_sessions/{checkout_session_id}/cancel",
+    tag = "Agentic Checkout",
+    params(
+        AgenticCheckoutHeaders,
+        ("checkout_session_id" = String, Path, description = "Checkout session identifier")
+    ),
+    responses(
+        (status = 200, description = "Checkout session cancelled", body = ApiCheckoutSession,
+            headers(
+                ("Idempotency-Key" = String, description = "Echo of the request idempotency key"),
+                ("Request-Id" = String, description = "Echo of the client correlation id")
+            )
+        ),
+        (status = 401, description = "Authentication or signature failure", body = crate::errors::ACPErrorResponse),
+        (status = 404, description = "Checkout session not found", body = crate::errors::ACPErrorResponse),
+        (status = 405, description = "Cancellation not permitted because session is terminal", body = crate::errors::ACPErrorResponse),
+        (status = 409, description = "Operation conflicts with session state", body = crate::errors::ACPErrorResponse),
+        (status = 500, description = "Unexpected error", body = crate::errors::ACPErrorResponse)
+    )
+)]
 async fn cancel_checkout_session(
     State(state): State<AppState>,
     Path(checkout_session_id): Path<String>,

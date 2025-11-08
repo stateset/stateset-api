@@ -439,8 +439,8 @@ pub async fn process_events(
                 warehouse_id,
                 allocations,
                 fully_allocated,
-                item_id,
-                quantity,
+                item_id: _,
+                quantity: _,
             } => {
                 if let Err(e) = handle_inventory_allocated(
                     reference_id,
@@ -486,7 +486,7 @@ pub async fn process_events(
                 warehouse_id,
                 product_id,
                 quantity,
-                partial,
+                partial: _,
             } => {
                 // Handle inventory reservation event
                 if let Err(e) = handle_inventory_reserved(

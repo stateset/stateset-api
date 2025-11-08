@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set,
-    TransactionTrait,
+    query::QueryOrder, ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait,
+    QueryFilter, QuerySelect, Set, TransactionTrait,
 };
 use stateset_api::{
     db::{create_db_pool, run_migrations},

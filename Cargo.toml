@@ -80,6 +80,7 @@ default = []
 demos = []
 returns-commands = []
 full-suite = []
+mock-tests = []
 
 [build-dependencies]
 tonic-build = "0.13"

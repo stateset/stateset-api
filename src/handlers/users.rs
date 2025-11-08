@@ -91,7 +91,7 @@ pub struct User {
     tag = "users"
 )]
 pub async fn create_user(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Json(payload): Json<CreateUserRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -131,7 +131,7 @@ pub async fn create_user(
     tag = "users"
 )]
 pub async fn get_user(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -178,7 +178,7 @@ pub async fn get_user(
     tag = "users"
 )]
 pub async fn update_user(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
     Json(payload): Json<UpdateUserRequest>,
@@ -217,7 +217,7 @@ pub async fn update_user(
     tag = "users"
 )]
 pub async fn delete_user(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -253,7 +253,7 @@ pub async fn delete_user(
     tag = "users"
 )]
 pub async fn list_users(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Query(pagination): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -317,7 +317,7 @@ pub async fn list_users(
     tag = "users"
 )]
 pub async fn change_password(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
     Path(user_id): Path<Uuid>,
     Json(payload): Json<ChangePasswordRequest>,
@@ -353,7 +353,7 @@ pub async fn change_password(
     tag = "users"
 )]
 pub async fn get_current_user(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     current_user: AuthenticatedUser,
 ) -> Result<impl IntoResponse, ApiError> {
     // This is a mock implementation

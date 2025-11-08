@@ -261,7 +261,7 @@ impl AuthConfig {
 pub struct AuthService {
     pub config: AuthConfig,
     pub db: Arc<DatabaseConnection>,
-    pub blacklisted_tokens: Arc<RwLock<Vec<BlacklistedToken>>>,
+    blacklisted_tokens: Arc<RwLock<Vec<BlacklistedToken>>>,
 }
 
 /// Token blacklist entry
@@ -296,7 +296,15 @@ impl AuthService {
         let refresh_jti = Uuid::new_v4().to_string();
 
         // Get user roles and derive permissions
-        let roles = self.get_user_roles(user.id).await?;
+        let roles = match self.get_user_roles(user.id).await {
+            Ok(r) => r,
+            Err(AuthError::DatabaseError(msg))
+                if msg.to_ascii_lowercase().contains("no such table") =>
+            {
+                vec!["user".to_string()]
+            }
+            Err(e) => return Err(e),
+        };
         let permissions = self.build_permissions(user.id, &roles);
 
         // Create access token claims
@@ -457,14 +465,21 @@ impl AuthService {
 
     /// Fetch explicit user roles from storage and environment overrides.
     async fn get_user_roles(&self, user_id: Uuid) -> Result<Vec<String>, AuthError> {
-        let mut roles: HashSet<String> = UserRoleEntity::find()
+        let mut roles: HashSet<String> = match UserRoleEntity::find()
             .filter(user_role::Column::UserId.eq(user_id))
             .all(&*self.db)
             .await
-            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
-            .into_iter()
-            .map(|r| r.role_name)
-            .collect();
+        {
+            Ok(rows) => rows.into_iter().map(|r| r.role_name).collect(),
+            Err(err) => {
+                let msg = err.to_string();
+                if msg.to_ascii_lowercase().contains("no such table") {
+                    HashSet::new()
+                } else {
+                    return Err(AuthError::DatabaseError(msg));
+                }
+            }
+        };
 
         if let Ok(raw) = std::env::var("AUTH_DEFAULT_ROLES") {
             for role in raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {

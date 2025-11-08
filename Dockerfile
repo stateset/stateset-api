@@ -1,5 +1,10 @@
 # Build stage
-FROM rust:1.88 AS builder
+ARG RUST_VERSION=1.88
+FROM rust:${RUST_VERSION} AS builder
+
+ARG API_BIN=stateset-api
+ARG MIGRATION_BIN=migration
+ENV CARGO_TERM_COLOR=always
 
 # Install protobuf compiler for proto files
 RUN apt-get update && apt-get install -y \
@@ -31,22 +36,26 @@ COPY build.rs ./
 COPY include/ ./include/
 
 # Build dependencies (this layer will be cached)
-RUN cargo build --release --bin stateset-api --bin migration
+RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN}
 RUN rm -rf src migrations/src
 
 # Copy the actual source code
 COPY . .
 
 # Build the application
-RUN cargo build --release --bin stateset-api --bin migration
+RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN}
 
 # Runtime stage
 FROM debian:bookworm-slim
+
+ARG API_BIN=stateset-api
+ARG MIGRATION_BIN=migration
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
@@ -55,14 +64,18 @@ RUN useradd -m -u 1001 -s /bin/bash appuser
 WORKDIR /app
 
 # Copy the binary from builder
-COPY --from=builder /usr/src/app/target/release/stateset-api /app/stateset-api
-COPY --from=builder /usr/src/app/target/release/migration /app/migration
+COPY --from=builder /usr/src/app/target/release/${API_BIN} /app/${API_BIN}
+COPY --from=builder /usr/src/app/target/release/${MIGRATION_BIN} /app/${MIGRATION_BIN}
 
 # Copy migrations if needed at runtime
 COPY --from=builder /usr/src/app/migrations /app/migrations
 
 # Copy config files
 COPY --from=builder /usr/src/app/config /app/config
+
+# Copy docker entrypoint
+COPY docker/entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Copy any static files or assets if needed
 # COPY --from=builder /usr/src/app/static /app/static
@@ -76,8 +89,15 @@ USER appuser
 EXPOSE 8080
 
 # Set environment variables
-ENV RUST_LOG=info
-ENV RUST_BACKTRACE=1
+ENV RUST_LOG=info \
+    RUST_BACKTRACE=1 \
+    APP__HOST=0.0.0.0 \
+    APP__PORT=8080 \
+    APP__ENVIRONMENT=production \
+    RUN_ENV=production \
+    APP_ENV=production \
+    RUN_MIGRATIONS_ON_START=false
 
-# Run the binary
-CMD ["./stateset-api"]
+# Run the binary via entrypoint
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
+CMD ["/app/stateset-api"]

@@ -1,4 +1,4 @@
-use utoipa::{OpenApi, ToSchema};
+use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
@@ -83,6 +83,7 @@ List endpoints support pagination with the following query parameters:
         (name = "Warranties", description = "Warranty management endpoints"),
         (name = "Work Orders", description = "Work order management endpoints"),
         (name = "Payments", description = "Payment processing endpoints"),
+        (name = "Agentic Checkout", description = "Agentic commerce checkout endpoints"),
         (name = "Analytics", description = "Business intelligence endpoints"),
         (name = "Health", description = "Health check endpoints"),
         (name = "Admin", description = "Administrative endpoints")
@@ -142,6 +143,13 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::payments::list_payments,
         crate::handlers::payments::refund_payment,
         crate::handlers::payments::get_order_payment_total,
+
+        // Agentic Checkout
+        crate::handlers::commerce::agentic_checkout::create_checkout_session,
+        crate::handlers::commerce::agentic_checkout::get_checkout_session,
+        crate::handlers::commerce::agentic_checkout::update_checkout_session,
+        crate::handlers::commerce::agentic_checkout::complete_checkout_session,
+        crate::handlers::commerce::agentic_checkout::cancel_checkout_session,
 
         // Work Orders
         crate::handlers::work_orders::list_work_orders::<crate::AppState>,
@@ -223,6 +231,29 @@ List endpoints support pagination with the following query parameters:
             crate::handlers::payments::RefundPaymentHandlerRequest,
             crate::services::payments::PaymentResponse,
             crate::handlers::payments::PaymentStatusFilter,
+
+            // Agentic checkout types
+            crate::handlers::commerce::agentic_checkout::AgenticCheckoutHeaders,
+            crate::handlers::commerce::agentic_checkout::ApiMoney,
+            crate::handlers::commerce::agentic_checkout::ApiLineItem,
+            crate::handlers::commerce::agentic_checkout::ApiTotals,
+            crate::handlers::commerce::agentic_checkout::ApiDeliveryWindow,
+            crate::handlers::commerce::agentic_checkout::ApiFulfillmentChoice,
+            crate::handlers::commerce::agentic_checkout::ApiFulfillment,
+            crate::handlers::commerce::agentic_checkout::ApiAddress,
+            crate::handlers::commerce::agentic_checkout::ApiCustomer,
+            crate::handlers::commerce::agentic_checkout::ApiMessage,
+            crate::handlers::commerce::agentic_checkout::ApiLinks,
+            crate::handlers::commerce::agentic_checkout::ApiCheckoutSession,
+            crate::handlers::commerce::agentic_checkout::ApiOrder,
+            crate::handlers::commerce::agentic_checkout::ApiRefund,
+            crate::handlers::commerce::agentic_checkout::ApiCheckoutSessionWithOrder,
+            crate::handlers::commerce::agentic_checkout::ApiItemInput,
+            crate::handlers::commerce::agentic_checkout::ApiFulfillmentSelection,
+            crate::handlers::commerce::agentic_checkout::ApiCreateCheckoutSessionRequest,
+            crate::handlers::commerce::agentic_checkout::ApiUpdateCheckoutSessionRequest,
+            crate::handlers::commerce::agentic_checkout::ApiPaymentRequest,
+            crate::handlers::commerce::agentic_checkout::ApiCompleteCheckoutSessionRequest,
 
             // Analytics types
             crate::services::analytics::DashboardMetrics,

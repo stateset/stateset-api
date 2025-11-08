@@ -14,7 +14,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend as DbBackend, Statement};
 use serde_json::{json, Value};
 use stateset_api::entities::commerce::product_variant;
 use stateset_api::{
-    auth::{AuthConfig, AuthService, User},
+    auth::{AuthConfig, AuthService, Claims, User},
     config::AppConfig,
     db,
     events::{self, EventSender},
@@ -41,8 +41,11 @@ impl TestApp {
     /// Construct a new test application with fresh database state.
     pub async fn new() -> Self {
         // Minimal configuration suitable for tests.
+        let db_file = "stateset_test.db";
+        let _ = std::fs::remove_file(db_file);
+
         let mut cfg = AppConfig::new(
-            "sqlite::memory:?cache=shared".to_string(),
+            format!("sqlite://{db_file}?mode=rwc"),
             "redis://127.0.0.1:6379".to_string(),
             "test_secret_key_for_testing_purposes_only_32chars".to_string(),
             3600,
@@ -52,6 +55,8 @@ impl TestApp {
             "test".to_string(),
         );
         cfg.auto_migrate = true;
+        cfg.db_max_connections = 1;
+        cfg.db_min_connections = 1;
 
         let pool = db::establish_connection_from_app_config(&cfg)
             .await
@@ -80,6 +85,51 @@ impl TestApp {
             .await
             .expect("failed to run migrations in tests");
 
+        // Ensure critical auth tables exist for SQLite in-memory runs
+        let ensure_sql = [
+            r#"CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                tenant_id TEXT,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );"#,
+            r#"CREATE TABLE IF NOT EXISTS user_roles (
+                id TEXT PRIMARY KEY NOT NULL,
+                user_id TEXT NOT NULL,
+                role_name TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );"#,
+            r#"CREATE TABLE IF NOT EXISTS refresh_tokens (
+                id TEXT PRIMARY KEY NOT NULL,
+                user_id TEXT NOT NULL,
+                token_id TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked INTEGER NOT NULL DEFAULT 0
+            );"#,
+            r#"CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tenant_id TEXT,
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                last_used_at TEXT,
+                revoked INTEGER NOT NULL DEFAULT 0
+            );"#,
+        ];
+
+        for sql in ensure_sql {
+            pool.execute(Statement::from_string(DbBackend::Sqlite, sql.into()))
+                .await
+                .expect("ensure auth table exists");
+        }
+
         let db_arc = Arc::new(pool);
         let (event_tx, event_rx) = mpsc::channel(256);
         let event_sender = EventSender::new(event_tx);
@@ -101,7 +151,8 @@ impl TestApp {
             Duration::from_secs(cfg.jwt_expiration as u64),
             Duration::from_secs(cfg.refresh_token_expiration as u64),
             "sk_".to_string(),
-        );
+        )
+        .expect("valid auth config for tests");
         let auth_service = Arc::new(AuthService::new(auth_cfg, db_arc.clone()));
 
         let base_logger =
@@ -143,10 +194,33 @@ impl TestApp {
             updated_at: Utc::now(),
         };
 
-        let tokens = auth_service
-            .generate_token(&user)
-            .await
-            .expect("failed to generate test token");
+        let now = Utc::now();
+        let access_claims = Claims {
+            sub: user.id.to_string(),
+            name: Some(user.name.clone()),
+            email: Some(user.email.clone()),
+            roles: vec!["admin".to_string()],
+            permissions: std::env::var("AUTH_DEFAULT_PERMISSIONS")
+                .unwrap_or_else(|_| "orders:read,orders:create,orders:update".to_string())
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect(),
+            tenant_id: user.tenant_id.clone(),
+            jti: Uuid::new_v4().to_string(),
+            iat: now.timestamp(),
+            exp: (now + chrono::Duration::hours(1)).timestamp(),
+            nbf: now.timestamp(),
+            iss: "stateset-auth".to_string(),
+            aud: "stateset-api".to_string(),
+            scope: None,
+        };
+
+        let access_token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+            &access_claims,
+            &jsonwebtoken::EncodingKey::from_secret(cfg.jwt_secret.as_bytes()),
+        )
+        .expect("encode access token");
 
         let auth_service_for_layer = auth_service.clone();
         let api_router = stateset_api::api_v1_routes().layer(middleware::from_fn_with_state(
@@ -189,7 +263,7 @@ impl TestApp {
         Self {
             router,
             state,
-            token: tokens.access_token,
+            token: access_token,
             auth_service,
             _event_task: event_task,
         }

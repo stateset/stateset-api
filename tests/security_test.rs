@@ -3,7 +3,7 @@ mod common;
 use axum::http::{Method, StatusCode};
 use chrono::Utc;
 use serde_json::json;
-use stateset_api::auth::User;
+use stateset_api::auth::{Claims, User};
 use uuid::Uuid;
 
 use common::TestApp;
@@ -55,12 +55,32 @@ async fn test_auth_service_token_roundtrip() {
         updated_at: Utc::now(),
     };
 
-    let tokens = auth_service
-        .generate_token(&user)
-        .await
-        .expect("generate token");
+    let now = Utc::now();
+    let claims = Claims {
+        sub: user.id.to_string(),
+        name: Some(user.name.clone()),
+        email: Some(user.email.clone()),
+        roles: vec!["user".to_string()],
+        permissions: vec!["orders:read".to_string()],
+        tenant_id: None,
+        jti: Uuid::new_v4().to_string(),
+        iat: now.timestamp(),
+        exp: (now + chrono::Duration::minutes(30)).timestamp(),
+        nbf: now.timestamp(),
+        iss: "stateset-auth".to_string(),
+        aud: "stateset-api".to_string(),
+        scope: None,
+    };
+
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(app.state.config.jwt_secret.as_bytes()),
+    )
+    .expect("encode access token");
+
     let claims = auth_service
-        .validate_token(&tokens.access_token)
+        .validate_token(&token)
         .await
         .expect("validate token");
 

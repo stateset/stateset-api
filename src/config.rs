@@ -77,6 +77,7 @@ pub struct AppConfig {
     pub redis_url: String,
 
     /// JWT secret key (minimum 32 characters)
+    #[validate(length(min = 32), custom = "validate_jwt_secret")]
     pub jwt_secret: String,
 
     /// JWT expiration time in seconds (5min - 24h)
@@ -389,6 +390,47 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
         err.message = Some("Must be one of: trace, debug, info, warn, error".into());
         Err(err)
     }
+}
+
+fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
+    let trimmed = secret.trim();
+
+    // Reject known insecure defaults and obvious placeholders
+    const DISALLOWED: [&str; 4] = [
+        "CHANGE_THIS_SECRET_IN_PRODUCTION",
+        "INSECURE_DEFAULT_DO_NOT_USE_IN_PRODUCTION",
+        "your-secret-key",
+        "default-secret-key",
+    ];
+    if DISALLOWED
+        .iter()
+        .any(|&bad| trimmed.eq_ignore_ascii_case(bad))
+    {
+        let mut err = ValidationError::new("jwt_secret");
+        err.message = Some("JWT secret must be overridden with a secure random value".into());
+        return Err(err);
+    }
+
+    // Reject trivially weak secrets (all identical characters or common patterns)
+    if let Some(first) = trimmed.chars().next() {
+        if trimmed.chars().all(|c| c == first) {
+            let mut err = ValidationError::new("jwt_secret");
+            err.message = Some("JWT secret cannot be a repeated character sequence".into());
+            return Err(err);
+        }
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    let weak_fragments = ["changeme", "password", "default", "12345"];
+    if weak_fragments.iter().any(|pattern| lower.contains(pattern)) {
+        let mut err = ValidationError::new("jwt_secret");
+        err.message = Some(
+            "JWT secret appears to be weak; use a cryptographically strong random string".into(),
+        );
+        return Err(err);
+    }
+
+    Ok(())
 }
 
 /// Initializes tracing using the provided log level as the default filter

@@ -1,6 +1,7 @@
+use sea_orm::sea_query::{Alias, Expr, SelectStatement};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Select,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, QueryTrait, Select,
 };
 
 /// Helper struct for building optimized queries
@@ -58,7 +59,7 @@ impl<E: EntityTrait> QueryBuilder<E> {
         self
     }
 
-    /// Execute the query and return paginated results
+    /// Execute the query and return paginated results with accurate totals
     pub async fn execute(
         self,
         db: &DatabaseConnection,
@@ -66,26 +67,39 @@ impl<E: EntityTrait> QueryBuilder<E> {
     where
         E::Model: Send + Sync,
     {
-        // For now, we'll use a simpler approach without pagination
-        // TODO: Fix paginate method usage
-        let items = self
-            .query
-            .limit(self.limit)
-            .offset((self.page - 1) * self.limit)
-            .all(db)
-            .await?;
+        let query = self.query;
+        let page_index = self.page.saturating_sub(1);
+        let paginator = query
+            .clone()
+            .into_model::<E::Model>()
+            .paginate(db, self.limit);
 
-        // Count total items - this is not optimal but works
-        let total = E::find().count(db).await?;
+        let total = paginator.num_items().await?;
+        let items = paginator.fetch_page(page_index).await?;
 
         Ok((items, total))
     }
 
-    /// Execute and return only the count
-    pub async fn count(self, _db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
-        // For now, return 0 as a placeholder - this needs proper implementation
-        // TODO: Fix count implementation for generic entities
-        Ok(0)
+    /// Execute and return only the total count for the built query
+    pub async fn count(self, db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
+        let mut base_query: SelectStatement = self.query.clone().into_query();
+        base_query.reset_limit().reset_offset().clear_order_by();
+
+        let builder = db.get_database_backend();
+        let count_stmt = SelectStatement::new()
+            .expr(Expr::cust("COUNT(*) AS num_items"))
+            .from_subquery(base_query, Alias::new("sub_query"))
+            .to_owned();
+        let stmt = builder.build(&count_stmt);
+        let row = match db.query_one(stmt).await? {
+            Some(row) => row,
+            None => return Ok(0),
+        };
+        let total = match builder {
+            sea_orm::DbBackend::Postgres => row.try_get::<i64>("", "num_items")? as u64,
+            _ => row.try_get::<i32>("", "num_items")? as u64,
+        };
+        Ok(total)
     }
 }
 

@@ -5,9 +5,8 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
 };
-use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, DatabaseTransaction, EntityTrait, Set, TransactionError, TransactionTrait,
+    ActiveModelTrait, DatabaseTransaction, EntityTrait, TransactionError, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -82,13 +81,15 @@ impl AddNoteToWorkOrderCommand {
                 ServiceError::NotFound(format!("Work order {} not found", work_order_id))
             })?;
 
-        let new_note = work_order_note::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            work_order_id: Set(work_order_id),
-            note: Set(note),
-            created_at: Set(Utc::now()),
-            created_by: Set(None),
-        };
+        let model = work_order_note::Model::new(work_order_id, note, None).map_err(|e| {
+            error!(
+                "Validation failed when creating note for work order {}: {}",
+                work_order_id, e
+            );
+            ServiceError::ValidationError("Invalid work order note input".to_string())
+        })?;
+
+        let new_note: work_order_note::ActiveModel = model.into();
 
         new_note.insert(txn).await.map_err(|e| {
             error!(
