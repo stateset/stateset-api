@@ -6,8 +6,8 @@ use crate::{
 use chrono::{Duration, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -193,6 +193,51 @@ impl CartService {
         let items = cart.find_related(CartItem).all(&*self.db).await?;
 
         Ok(CartWithItems { cart, items })
+    }
+
+    /// Fetch a cart without loading its items.
+    pub async fn get_cart_model(&self, cart_id: Uuid) -> Result<CartModel, ServiceError> {
+        Cart::find_by_id(cart_id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| ServiceError::NotFound(format!("Cart {} not found", cart_id)))
+    }
+
+    /// List carts for a specific customer with pagination
+    pub async fn list_carts_for_customer(
+        &self,
+        customer_id: Uuid,
+        page: u64,
+        per_page: u64,
+    ) -> Result<(Vec<CartModel>, u64), ServiceError> {
+        let paginator = Cart::find()
+            .filter(cart::Column::CustomerId.eq(Some(customer_id)))
+            .order_by_desc(cart::Column::CreatedAt)
+            .paginate(&*self.db, per_page);
+
+        let total = paginator.num_items().await?;
+        let data = paginator.fetch_page(page.saturating_sub(1)).await?;
+
+        Ok((data, total))
+    }
+
+    /// Mark a cart as abandoned (soft delete)
+    pub async fn abandon_cart(&self, cart_id: Uuid) -> Result<CartModel, ServiceError> {
+        let cart = Cart::find_by_id(cart_id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| ServiceError::NotFound(format!("Cart {} not found", cart_id)))?;
+
+        let mut active: cart::ActiveModel = cart.into();
+        active.status = Set(cart::CartStatus::Abandoned);
+        active.updated_at = Set(Utc::now());
+
+        let updated = active.update(&*self.db).await?;
+        self.event_sender
+            .send_or_log(Event::CartUpdated(updated.id))
+            .await;
+
+        Ok(updated)
     }
 
     /// Clear cart

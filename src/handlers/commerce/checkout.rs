@@ -1,3 +1,4 @@
+use crate::auth::{AuthRouterExt, AuthenticatedUser};
 use crate::handlers::common::{
     created_response, map_service_error, success_response, validate_input,
 };
@@ -108,13 +109,18 @@ pub fn checkout_routes() -> Router<AppState> {
         .route("/{session_id}/shipping-address", put(set_shipping_address))
         .route("/{session_id}/shipping-method", put(set_shipping_method))
         .route("/{session_id}/complete", post(complete_checkout))
+        .with_auth()
 }
 
 /// Start checkout from cart
 async fn start_checkout(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Json(payload): Json<StartCheckoutRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let user_id = parse_user_id(&user)?;
+    ensure_cart_belongs_to_user(&state, payload.cart_id, user_id).await?;
+
     let session = state
         .services
         .checkout
@@ -129,16 +135,19 @@ async fn start_checkout(
 
 /// Get checkout session
 async fn get_checkout_session(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
     let session = load_session(&state, &session_id).await?;
+    ensure_session_owner(&session, parse_user_id(&user)?)?;
 
     Ok(success_response(CheckoutSessionResponse::from(session)))
 }
 
 /// Set customer info
 async fn set_customer_info(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
     Json(payload): Json<CustomerInfoRequest>,
@@ -146,6 +155,7 @@ async fn set_customer_info(
     validate_input(&payload)?;
 
     let mut session = load_session(&state, &session_id).await?;
+    ensure_session_owner(&session, parse_user_id(&user)?)?;
 
     let input = CustomerInfoInput {
         email: payload.email.clone(),
@@ -166,6 +176,7 @@ async fn set_customer_info(
 
 /// Set shipping address
 async fn set_shipping_address(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
     Json(payload): Json<AddressRequest>,
@@ -173,6 +184,7 @@ async fn set_shipping_address(
     validate_input(&payload)?;
 
     let mut session = load_session(&state, &session_id).await?;
+    ensure_session_owner(&session, parse_user_id(&user)?)?;
 
     let address = Address {
         first_name: payload.first_name.clone(),
@@ -201,11 +213,13 @@ async fn set_shipping_address(
 
 /// Set shipping method
 async fn set_shipping_method(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
     Json(payload): Json<ShippingMethodRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let mut session = load_session(&state, &session_id).await?;
+    ensure_session_owner(&session, parse_user_id(&user)?)?;
 
     let rate: ShippingRate = state
         .services
@@ -221,6 +235,7 @@ async fn set_shipping_method(
 
 /// Complete checkout
 async fn complete_checkout(
+    user: AuthenticatedUser,
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
     Json(payload): Json<CompleteCheckoutRequest>,
@@ -228,6 +243,7 @@ async fn complete_checkout(
     validate_input(&payload)?;
 
     let session = load_session(&state, &session_id).await?;
+    ensure_session_owner(&session, parse_user_id(&user)?)?;
 
     let payment_info = PaymentInfo {
         method: payload.payment_method.clone(),
@@ -326,4 +342,34 @@ pub struct CompleteCheckoutRequest {
     pub payment_method: crate::services::commerce::checkout_service::PaymentMethod,
     #[validate(length(min = 1))]
     pub payment_token: String,
+}
+
+fn parse_user_id(user: &AuthenticatedUser) -> Result<Uuid, ApiError> {
+    Uuid::parse_str(&user.user_id).map_err(|_| ApiError::Unauthorized)
+}
+
+async fn ensure_cart_belongs_to_user(
+    state: &AppState,
+    cart_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    let cart = state
+        .services
+        .cart
+        .get_cart_model(cart_id)
+        .await
+        .map_err(map_service_error)?;
+
+    ensure_cart_owner(cart.customer_id, user_id)
+}
+
+fn ensure_session_owner(session: &CheckoutSession, user_id: Uuid) -> Result<(), ApiError> {
+    ensure_cart_owner(session.cart.customer_id, user_id)
+}
+
+fn ensure_cart_owner(customer_id: Option<Uuid>, user_id: Uuid) -> Result<(), ApiError> {
+    match customer_id {
+        Some(owner) if owner == user_id => Ok(()),
+        _ => Err(ApiError::Unauthorized),
+    }
 }

@@ -58,6 +58,9 @@ pub struct InventoryListResponse {
     pub per_page: u64,
 }
 
+const DEFAULT_PAGE_SIZE: u32 = 50;
+const MAX_PAGE_SIZE: u32 = 100;
+
 #[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct InventoryFilters {
     pub product_id: Option<String>,
@@ -135,7 +138,10 @@ where
     S: InventoryHandlerState,
 {
     let service = state.inventory_service();
-    let per_page = filters.limit.unwrap_or(50).max(1) as u64;
+    let per_page = filters
+        .limit
+        .map(|limit| limit.max(1).min(MAX_PAGE_SIZE) as u64)
+        .unwrap_or(DEFAULT_PAGE_SIZE as u64);
     let offset = filters.offset.unwrap_or(0) as u64;
     let page = offset / per_page + 1;
 

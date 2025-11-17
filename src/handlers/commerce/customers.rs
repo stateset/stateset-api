@@ -2,7 +2,7 @@ use crate::handlers::common::{
     created_response, map_service_error, success_response, validate_input,
 };
 use crate::{
-    auth::{AuthenticatedUser, LoginCredentials},
+    auth::{AuthRouterExt, AuthenticatedUser, LoginCredentials},
     errors::ApiError,
     services::commerce::customer_service::{
         AddAddressInput, RegisterCustomerInput, UpdateCustomerInput,
@@ -20,13 +20,17 @@ use validator::Validate;
 
 /// Creates the router for customer endpoints
 pub fn customers_routes() -> Router<AppState> {
-    Router::new()
-        .route("/register", post(register_customer))
-        .route("/login", post(login_customer))
+    let authenticated = Router::new()
         .route("/me", get(get_current_customer))
         .route("/me", put(update_current_customer))
         .route("/me/addresses", get(get_customer_addresses))
         .route("/me/addresses", post(add_customer_address))
+        .with_auth();
+
+    Router::new()
+        .route("/register", post(register_customer))
+        .route("/login", post(login_customer))
+        .merge(authenticated)
 }
 
 /// Register new customer

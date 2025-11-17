@@ -10,12 +10,15 @@ use utoipa::ToSchema;
 
 use crate::{
     entities::{
+        commerce::cart::{self, Entity as CartEntity},
         inventory_items::{Column as InventoryColumn, Entity as InventoryEntity},
         order::{Column as OrderColumn, Entity as OrderEntity},
         shipment::{Column as ShipmentColumn, Entity as ShipmentEntity},
     },
     errors::ServiceError,
 };
+
+const DEFAULT_LOW_STOCK_THRESHOLD: i32 = 10;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SalesMetrics {
@@ -37,6 +40,7 @@ pub struct InventoryMetrics {
     pub out_of_stock_items: i64,
     pub total_value: Decimal,
     pub average_stock_level: f64,
+    pub low_stock_threshold: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -53,7 +57,17 @@ pub struct DashboardMetrics {
     pub sales: SalesMetrics,
     pub inventory: InventoryMetrics,
     pub shipments: ShipmentMetrics,
+    pub carts: CartMetrics,
     pub generated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CartMetrics {
+    pub total_carts: i64,
+    pub active_carts: i64,
+    pub abandoned_carts: i64,
+    pub converted_carts: i64,
+    pub average_cart_value: Decimal,
 }
 
 /// Point-in-time revenue data used for sales trend charts.
@@ -81,13 +95,17 @@ impl AnalyticsService {
         info!("Generating dashboard metrics");
 
         let sales = self.get_sales_metrics().await?;
-        let inventory = self.get_inventory_metrics().await?;
+        let inventory = self
+            .get_inventory_metrics(DEFAULT_LOW_STOCK_THRESHOLD)
+            .await?;
         let shipments = self.get_shipment_metrics().await?;
+        let carts = self.get_cart_metrics().await?;
 
         Ok(DashboardMetrics {
             sales,
             inventory,
             shipments,
+            carts,
             generated_at: Utc::now(),
         })
     }
@@ -200,7 +218,10 @@ impl AnalyticsService {
     }
 
     /// Get inventory health metrics
-    pub async fn get_inventory_metrics(&self) -> Result<InventoryMetrics, ServiceError> {
+    pub async fn get_inventory_metrics(
+        &self,
+        low_stock_threshold: i32,
+    ) -> Result<InventoryMetrics, ServiceError> {
         let db = &*self.db;
 
         let total_products = InventoryEntity::find()
@@ -209,7 +230,7 @@ impl AnalyticsService {
             .map_err(|e| ServiceError::db_error(e))?;
 
         let low_stock_items = InventoryEntity::find()
-            .filter(InventoryColumn::Available.lte(10))
+            .filter(InventoryColumn::Available.lte(low_stock_threshold))
             .count(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?;
@@ -243,6 +264,7 @@ impl AnalyticsService {
             out_of_stock_items: out_of_stock_items as i64,
             total_value,
             average_stock_level,
+            low_stock_threshold,
         })
     }
 
@@ -309,17 +331,72 @@ impl AnalyticsService {
         })
     }
 
+    pub async fn get_cart_metrics(&self) -> Result<CartMetrics, ServiceError> {
+        let db = &*self.db;
+
+        let total_carts = CartEntity::find()
+            .count(db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        let active_carts = CartEntity::find()
+            .filter(cart::Column::Status.eq(cart::CartStatus::Active))
+            .count(db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        let abandoned_carts = CartEntity::find()
+            .filter(cart::Column::Status.eq(cart::CartStatus::Abandoned))
+            .count(db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        let converted_carts = CartEntity::find()
+            .filter(cart::Column::Status.eq(cart::CartStatus::Converted))
+            .count(db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        let carts = CartEntity::find()
+            .all(db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        let average_cart_value = if carts.is_empty() {
+            Decimal::ZERO
+        } else {
+            let sum: Decimal = carts.iter().map(|c| c.total).sum();
+            sum / Decimal::from(carts.len() as u64)
+        };
+
+        Ok(CartMetrics {
+            total_carts: total_carts as i64,
+            active_carts: active_carts as i64,
+            abandoned_carts: abandoned_carts as i64,
+            converted_carts: converted_carts as i64,
+            average_cart_value,
+        })
+    }
+
     /// Get sales trends over time
-    pub async fn get_sales_trends(&self, days: i32) -> Result<Vec<SalesTrendPoint>, ServiceError> {
+    pub async fn get_sales_trends(
+        &self,
+        days: i32,
+        status: Option<String>,
+    ) -> Result<Vec<SalesTrendPoint>, ServiceError> {
         let db = &*self.db;
         let start_date = Utc::now() - Duration::days(days as i64);
 
-        let orders = OrderEntity::find()
-            .filter(OrderColumn::CreatedAt.gte(start_date))
+        let mut query = OrderEntity::find().filter(OrderColumn::CreatedAt.gte(start_date));
+        if let Some(status) = status {
+            query = query.filter(OrderColumn::Status.eq(status));
+        }
+
+        let orders = query
             .order_by_asc(OrderColumn::CreatedAt)
             .all(db)
             .await
-            .map_err(|e| ServiceError::db_error(e))?;
+            .map_err(ServiceError::db_error)?;
 
         // Group by date and sum revenue
         let mut daily_revenue: BTreeMap<String, Decimal> = BTreeMap::new();

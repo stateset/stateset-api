@@ -78,6 +78,8 @@ List endpoints support pagination with the following query parameters:
     tags(
         (name = "Orders", description = "Order management endpoints"),
         (name = "Inventory", description = "Inventory management endpoints"),
+        (name = "Products", description = "Product catalog endpoints"),
+        (name = "Carts", description = "Shopping cart endpoints"),
         (name = "Shipments", description = "Shipment tracking endpoints"),
         (name = "Returns", description = "Return processing endpoints"),
         (name = "Warranties", description = "Warranty management endpoints"),
@@ -144,6 +146,27 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::payments::refund_payment,
         crate::handlers::payments::get_order_payment_total,
 
+        // Products
+        crate::handlers::commerce::products::list_products,
+        crate::handlers::commerce::products::create_product,
+        crate::handlers::commerce::products::get_product,
+        crate::handlers::commerce::products::update_product,
+        crate::handlers::commerce::products::get_product_variants,
+        crate::handlers::commerce::products::get_variant,
+        crate::handlers::commerce::products::create_variant,
+        crate::handlers::commerce::products::delete_variant,
+        crate::handlers::commerce::products::update_variant_price,
+        crate::handlers::commerce::products::search_products,
+
+        // Carts
+        crate::handlers::commerce::carts::create_cart,
+        crate::handlers::commerce::carts::get_cart,
+        crate::handlers::commerce::carts::delete_cart,
+        crate::handlers::commerce::carts::add_to_cart,
+        crate::handlers::commerce::carts::update_cart_item,
+        crate::handlers::commerce::carts::remove_cart_item,
+        crate::handlers::commerce::carts::clear_cart,
+
         // Agentic Checkout
         crate::handlers::commerce::agentic_checkout::create_checkout_session,
         crate::handlers::commerce::agentic_checkout::get_checkout_session,
@@ -174,6 +197,7 @@ List endpoints support pagination with the following query parameters:
         crate::handlers::analytics::get_sales_trends,
         crate::handlers::analytics::get_inventory_metrics,
         crate::handlers::analytics::get_shipment_metrics,
+        crate::handlers::analytics::get_cart_metrics,
 
         // Manufacturing BOM
         crate::handlers::bom::create_bom,
@@ -226,6 +250,25 @@ List endpoints support pagination with the following query parameters:
             crate::handlers::inventory::CreateInventoryRequest,
             crate::handlers::inventory::UpdateInventoryRequest,
 
+            // Product types
+            crate::handlers::commerce::products::CreateProductRequest,
+            crate::handlers::commerce::products::UpdateProductRequest,
+            crate::handlers::commerce::products::ProductResponse,
+            crate::handlers::commerce::products::ProductSearchResponse,
+            crate::handlers::commerce::products::CreateVariantRequest,
+            crate::handlers::commerce::products::VariantResponse,
+            crate::handlers::commerce::products::UpdatePriceRequest,
+            crate::handlers::commerce::products::MessageResponse,
+
+            // Cart types
+            crate::handlers::commerce::carts::CreateCartRequest,
+            crate::handlers::commerce::carts::AddItemRequest,
+            crate::handlers::commerce::carts::UpdateQuantityRequest,
+            crate::handlers::commerce::carts::CartResponse,
+            crate::handlers::commerce::carts::CartDetailedResponse,
+            crate::handlers::commerce::carts::CartItemResponse,
+            crate::handlers::commerce::carts::CartMessageResponse,
+
             // Payments types
             crate::handlers::payments::CreatePaymentRequest,
             crate::handlers::payments::RefundPaymentHandlerRequest,
@@ -261,6 +304,7 @@ List endpoints support pagination with the following query parameters:
             crate::services::analytics::InventoryMetrics,
             crate::services::analytics::ShipmentMetrics,
             crate::services::analytics::SalesTrendPoint,
+            crate::services::analytics::CartMetrics,
 
             // Error types
             crate::errors::ErrorResponse

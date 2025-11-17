@@ -10,8 +10,8 @@ use utoipa::IntoParams;
 use crate::{
     errors::ServiceError,
     services::analytics::{
-        AnalyticsService, DashboardMetrics, InventoryMetrics, SalesMetrics, SalesTrendPoint,
-        ShipmentMetrics,
+        AnalyticsService, CartMetrics, DashboardMetrics, InventoryMetrics, SalesMetrics,
+        SalesTrendPoint, ShipmentMetrics,
     },
     ApiResponse, AppState,
 };
@@ -24,6 +24,7 @@ pub fn analytics_routes() -> Router<AppState> {
         .route("/sales/trends", get(get_sales_trends))
         .route("/inventory", get(get_inventory_metrics))
         .route("/shipments", get(get_shipment_metrics))
+        .route("/carts", get(get_cart_metrics))
 }
 
 /// Query parameters for sales trends
@@ -32,6 +33,9 @@ pub struct SalesTrendsQuery {
     /// Number of days to look back (default: 30)
     #[param(minimum = 1, maximum = 365)]
     pub days: Option<i32>,
+    /// Optional status filter (e.g., "completed", "pending")
+    #[param(value_type = Option<String>)]
+    pub status: Option<String>,
 }
 
 /// Analytics handler for business intelligence endpoints
@@ -76,7 +80,13 @@ pub async fn get_sales_trends(
         ));
     }
 
-    let trends = analytics_service.get_sales_trends(days).await?;
+    let status = params
+        .status
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let trends = analytics_service.get_sales_trends(days, status).await?;
     Ok(Json(ApiResponse::success(trends)))
 }
 
@@ -98,10 +108,27 @@ pub async fn get_sales_metrics(
     Ok(Json(ApiResponse::success(metrics)))
 }
 
+/// Query parameters for inventory metrics
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct InventoryMetricsQuery {
+    /// Threshold below which inventory is considered low stock (default: 10)
+    #[param(default = 10, minimum = 1)]
+    pub low_stock_threshold: Option<i32>,
+}
+
+impl Default for InventoryMetricsQuery {
+    fn default() -> Self {
+        Self {
+            low_stock_threshold: Some(10),
+        }
+    }
+}
+
 /// Get inventory metrics only
 #[utoipa::path(
     get,
     path = "/api/v1/analytics/inventory",
+    params(InventoryMetricsQuery),
     responses(
         (status = 200, description = "Inventory metrics retrieved successfully", body = ApiResponse<InventoryMetrics>)
     ),
@@ -109,9 +136,15 @@ pub async fn get_sales_metrics(
 )]
 pub async fn get_inventory_metrics(
     State(state): State<AppState>,
+    Query(params): Query<InventoryMetricsQuery>,
 ) -> Result<Json<ApiResponse<InventoryMetrics>>, ServiceError> {
     let analytics_service = AnalyticsService::new(state.db);
-    let metrics = analytics_service.get_inventory_metrics().await?;
+    let threshold = params
+        .low_stock_threshold
+        .filter(|value| *value > 0)
+        .unwrap_or(10);
+
+    let metrics = analytics_service.get_inventory_metrics(threshold).await?;
 
     Ok(Json(ApiResponse::success(metrics)))
 }
@@ -130,6 +163,24 @@ pub async fn get_shipment_metrics(
 ) -> Result<Json<ApiResponse<ShipmentMetrics>>, ServiceError> {
     let analytics_service = AnalyticsService::new(state.db);
     let metrics = analytics_service.get_shipment_metrics().await?;
+
+    Ok(Json(ApiResponse::success(metrics)))
+}
+
+/// Get cart metrics only
+#[utoipa::path(
+    get,
+    path = "/api/v1/analytics/carts",
+    responses(
+        (status = 200, description = "Cart metrics retrieved successfully", body = ApiResponse<CartMetrics>)
+    ),
+    tag = "Analytics"
+)]
+pub async fn get_cart_metrics(
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<CartMetrics>>, ServiceError> {
+    let analytics_service = AnalyticsService::new(state.db);
+    let metrics = analytics_service.get_cart_metrics().await?;
 
     Ok(Json(ApiResponse::success(metrics)))
 }

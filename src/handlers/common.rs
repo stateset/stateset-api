@@ -10,12 +10,12 @@ use validator::Validate;
 
 /// Standard success response
 pub fn success_response<T: Serialize>(data: T) -> Response {
-    (StatusCode::OK, Json(data)).into_response()
+    (StatusCode::OK, Json(crate::ApiResponse::success(data))).into_response()
 }
 
 /// Standard created response
 pub fn created_response<T: Serialize>(data: T) -> Response {
-    (StatusCode::CREATED, Json(data)).into_response()
+    (StatusCode::CREATED, Json(crate::ApiResponse::success(data))).into_response()
 }
 
 /// Standard no content response

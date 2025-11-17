@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Product variant entity for handling variations
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -59,7 +60,7 @@ impl Related<super::variant_image::Entity> for Entity {
 impl ActiveModelBehavior for ActiveModel {}
 
 /// Dimensions structure for product variants
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Dimensions {
     pub length: f64,
     pub width: f64,
@@ -67,7 +68,7 @@ pub struct Dimensions {
     pub unit: DimensionUnit,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DimensionUnit {
     Cm,

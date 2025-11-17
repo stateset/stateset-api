@@ -11,6 +11,7 @@ use sea_orm::{
     QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
@@ -242,6 +243,33 @@ impl ProductCatalogService {
             .ok_or_else(|| {
                 ServiceError::NotFound(format!("Product variant with SKU {} not found", sku))
             })
+    }
+
+    /// Delete a product variant
+    pub async fn delete_variant(&self, variant_id: Uuid) -> Result<(), ServiceError> {
+        let variant = ProductVariant::find_by_id(variant_id)
+            .one(&*self.db)
+            .await?
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Product variant {} not found", variant_id))
+            })?;
+
+        let mut active: product_variant::ActiveModel = variant.clone().into();
+        active.delete(&*self.db).await?;
+
+        self.event_sender
+            .send_or_log(Event::Generic {
+                message: format!("product_variant_deleted:{}", variant_id),
+                timestamp: Utc::now(),
+                metadata: json!({
+                    "variant_id": variant_id,
+                    "product_id": variant.product_id
+                }),
+            })
+            .await;
+
+        info!("Deleted variant {}", variant_id);
+        Ok(())
     }
 
     /// Search products

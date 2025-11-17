@@ -1,9 +1,11 @@
+use crate::auth::consts as perm;
+use crate::auth::{AuthRouterExt, AuthenticatedUser};
+use crate::entities::commerce::product_variant;
 use crate::handlers::common::{
-    created_response, map_service_error, success_response, validate_input, PaginatedResponse,
-    PaginationParams,
+    created_response, map_service_error, no_content_response, success_response, validate_input,
+    PaginatedResponse, PaginationParams,
 };
 use crate::{
-    auth::AuthenticatedUser,
     errors::ApiError,
     services::commerce::product_catalog_service::{
         CreateProductInput, CreateVariantInput, ProductSearchQuery, UpdateProductInput,
@@ -12,11 +14,14 @@ use crate::{
 };
 use axum::{
     extract::{Json, Path, Query, State},
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use serde_json::Value;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
@@ -63,18 +68,37 @@ fn ensure_i32_non_negative(value: i32, field: &str) -> Result<(), ApiError> {
 
 /// Creates the router for product endpoints
 pub fn products_routes() -> Router<AppState> {
+    let protected = Router::new()
+        .route("/", post(create_product))
+        .route("/{id}", put(update_product))
+        .route("/{id}/variants", post(create_variant))
+        .route("/variants/{variant_id}", delete(delete_variant))
+        .route("/variants/{variant_id}/price", put(update_variant_price))
+        .with_permission(perm::INVENTORY_ADJUST);
+
     Router::new()
         .route("/", get(list_products))
-        .route("/", post(create_product))
         .route("/{id}", get(get_product))
-        .route("/{id}", put(update_product))
         .route("/{id}/variants", get(get_product_variants))
-        .route("/{id}/variants", post(create_variant))
-        .route("/variants/{variant_id}/price", put(update_variant_price))
+        .route("/variants/{variant_id}", get(get_variant))
         .route("/search", get(search_products))
+        .merge(protected)
 }
 
 /// Create a new product
+#[utoipa::path(
+    post,
+    path = "/api/v1/products",
+    request_body = CreateProductRequest,
+    responses(
+        (status = 201, description = "Product created", body = crate::ApiResponse<ProductResponse>),
+        (status = 400, description = "Invalid payload", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn create_product(
     _user: AuthenticatedUser,
     State(state): State<AppState>,
@@ -182,6 +206,19 @@ async fn create_product(
 }
 
 /// Get a product by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/products/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Product ID")
+    ),
+    responses(
+        (status = 200, description = "Product retrieved", body = crate::ApiResponse<ProductResponse>),
+        (status = 404, description = "Product not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn get_product(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -197,6 +234,21 @@ async fn get_product(
 }
 
 /// Update a product
+#[utoipa::path(
+    put,
+    path = "/api/v1/products/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Product ID")
+    ),
+    request_body = UpdateProductRequest,
+    responses(
+        (status = 200, description = "Product updated", body = crate::ApiResponse<ProductResponse>),
+        (status = 400, description = "Invalid payload", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Product not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn update_product(
     _user: AuthenticatedUser,
     State(state): State<AppState>,
@@ -316,6 +368,19 @@ async fn update_product(
 }
 
 /// Get product variants
+#[utoipa::path(
+    get,
+    path = "/api/v1/products/{id}/variants",
+    params(
+        ("id" = Uuid, Path, description = "Product ID")
+    ),
+    responses(
+        (status = 200, description = "Variants retrieved", body = crate::ApiResponse<Vec<VariantResponse>>),
+        (status = 404, description = "Product not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn get_product_variants(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -327,10 +392,27 @@ async fn get_product_variants(
         .await
         .map_err(map_service_error)?;
 
+    let variants = variants.into_iter().map(VariantResponse::from).collect();
+
     Ok(success_response(variants))
 }
 
 /// Create a product variant
+#[utoipa::path(
+    post,
+    path = "/api/v1/products/{id}/variants",
+    params(
+        ("id" = Uuid, Path, description = "Product ID")
+    ),
+    request_body = CreateVariantRequest,
+    responses(
+        (status = 201, description = "Variant created", body = crate::ApiResponse<VariantResponse>),
+        (status = 400, description = "Invalid payload", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Product not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn create_variant(
     _user: AuthenticatedUser,
     State(state): State<AppState>,
@@ -360,10 +442,82 @@ async fn create_variant(
         .await
         .map_err(map_service_error)?;
 
-    Ok(created_response(variant))
+    Ok(created_response(VariantResponse::from(variant)))
+}
+
+/// Get a single variant
+#[utoipa::path(
+    get,
+    path = "/api/v1/products/variants/{variant_id}",
+    params(
+        ("variant_id" = Uuid, Path, description = "Variant ID")
+    ),
+    responses(
+        (status = 200, description = "Variant retrieved", body = crate::ApiResponse<VariantResponse>),
+        (status = 404, description = "Variant not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
+async fn get_variant(
+    State(state): State<AppState>,
+    Path(variant_id): Path<Uuid>,
+) -> Result<impl axum::response::IntoResponse, ApiError> {
+    let variant = state
+        .services
+        .product_catalog
+        .get_variant(variant_id)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(success_response(VariantResponse::from(variant)))
+}
+
+/// Delete a product variant
+#[utoipa::path(
+    delete,
+    path = "/api/v1/products/variants/{variant_id}",
+    params(
+        ("variant_id" = Uuid, Path, description = "Variant ID")
+    ),
+    responses(
+        (status = 204, description = "Variant deleted"),
+        (status = 404, description = "Variant not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
+async fn delete_variant(
+    _user: AuthenticatedUser,
+    State(state): State<AppState>,
+    Path(variant_id): Path<Uuid>,
+) -> Result<impl axum::response::IntoResponse, ApiError> {
+    state
+        .services
+        .product_catalog
+        .delete_variant(variant_id)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(no_content_response())
 }
 
 /// Update variant price
+#[utoipa::path(
+    put,
+    path = "/api/v1/products/variants/{variant_id}/price",
+    params(
+        ("variant_id" = Uuid, Path, description = "Variant ID")
+    ),
+    request_body = UpdatePriceRequest,
+    responses(
+        (status = 200, description = "Variant price updated", body = crate::ApiResponse<MessageResponse>),
+        (status = 400, description = "Invalid payload", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Variant not found", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn update_variant_price(
     _user: AuthenticatedUser,
     State(state): State<AppState>,
@@ -379,16 +533,34 @@ async fn update_variant_price(
         .await
         .map_err(map_service_error)?;
 
-    Ok(success_response(serde_json::json!({
-        "message": "Price updated successfully"
-    })))
+    Ok(success_response(MessageResponse {
+        message: "Price updated successfully".to_string(),
+    }))
 }
 
 /// Search products
+#[utoipa::path(
+    get,
+    path = "/api/v1/products/search",
+    params(ProductSearchParams),
+    responses(
+        (status = 200, description = "Products search results", body = crate::ApiResponse<ProductSearchResponse>),
+        (status = 400, description = "Invalid query parameters", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn search_products(
     State(state): State<AppState>,
-    Query(mut query): Query<ProductSearchQuery>,
+    Query(params): Query<ProductSearchParams>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
+    let mut query = ProductSearchQuery {
+        search: params.search.clone(),
+        is_active: params.is_active,
+        limit: params.limit,
+        offset: params.offset,
+    };
+
     if let Some(limit) = query.limit {
         if limit == 0 {
             return Err(ApiError::ValidationError(
@@ -425,6 +597,18 @@ async fn search_products(
 }
 
 /// List all products with pagination
+#[utoipa::path(
+    get,
+    path = "/api/v1/products",
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Products retrieved", body = crate::ApiResponse<PaginatedResponse<ProductResponse>>),
+        (status = 400, description = "Invalid query parameters", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse)
+    ),
+    security(("Bearer" = []), ("ApiKey" = [])),
+    tag = "Products"
+)]
 async fn list_products(
     State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
@@ -479,7 +663,7 @@ async fn list_products(
 
 // Request/Response DTOs
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateProductRequest {
     #[validate(length(min = 1))]
     pub name: String,
@@ -525,7 +709,7 @@ pub struct CreateProductRequest {
     pub reorder_point: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateProductRequest {
     #[validate(length(min = 1))]
     pub name: Option<String>,
@@ -569,7 +753,7 @@ pub struct UpdateProductRequest {
     pub reorder_point: Option<i32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ProductResponse {
     pub id: Uuid,
     pub name: String,
@@ -638,7 +822,7 @@ impl From<crate::entities::commerce::ProductModel> for ProductResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ProductSearchResponse {
     pub products: Vec<ProductResponse>,
     pub total: u64,
@@ -648,7 +832,73 @@ pub struct ProductSearchResponse {
     pub offset: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ProductSearchParams {
+    #[serde(default)]
+    pub search: Option<String>,
+    #[serde(default)]
+    pub is_active: Option<bool>,
+    #[serde(default)]
+    pub limit: Option<u64>,
+    #[serde(default)]
+    pub offset: Option<u64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VariantResponse {
+    pub id: Uuid,
+    pub product_id: Uuid,
+    pub sku: String,
+    pub name: String,
+    pub price: Decimal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compare_at_price: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<Decimal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<product_variant::Dimensions>,
+    pub options: Value,
+    pub inventory_tracking: bool,
+    pub position: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<product_variant::Model> for VariantResponse {
+    fn from(model: product_variant::Model) -> Self {
+        let dimensions = model
+            .dimensions
+            .as_ref()
+            .and_then(|json| serde_json::from_value(json.clone()).ok());
+
+        Self {
+            id: model.id,
+            product_id: model.product_id,
+            sku: model.sku,
+            name: model.name,
+            price: model.price,
+            compare_at_price: model.compare_at_price,
+            cost: model.cost,
+            weight: model.weight,
+            dimensions,
+            options: model.options.clone(),
+            inventory_tracking: model.inventory_tracking,
+            position: model.position,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessageResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateVariantRequest {
     #[validate(length(min = 1))]
     pub sku: String,
@@ -665,7 +915,7 @@ pub struct CreateVariantRequest {
     pub position: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdatePriceRequest {
     #[validate(custom = "validate_decimal_min_zero")]
     pub price: Decimal,
