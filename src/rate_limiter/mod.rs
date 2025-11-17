@@ -24,18 +24,16 @@
  *
  * ```
  * // Create a rate limiter
- * let limiter = RateLimiter::new(
- *     "redis://localhost:6379",
- *     "api-prefix",
- *     100, // 100 requests
- *     Duration::from_secs(60), // per minute
- *     logger
- * ).await?;
+ * let config = RateLimitConfig {
+ *     requests_per_window: 100,
+ *     window_duration: Duration::from_secs(60),
+ *     ..Default::default()
+ * };
  *
  * // Apply the rate limiter middleware
  * let app = Router::new()
  *     .route("/", get(handler))
- *     .layer(RateLimitLayer::new(Arc::new(limiter), ip_key_extractor));
+ *     .layer(RateLimitLayer::new(config.clone(), RateLimitBackend::InMemory));
  * ```
  */
 use axum::{
@@ -46,6 +44,7 @@ use axum::{
 };
 use dashmap::DashMap;
 use metrics::counter;
+use redis::{aio::ConnectionLike, AsyncCommands};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -137,73 +136,269 @@ impl Default for RateLimitConfig {
 }
 
 #[derive(Clone)]
+pub enum RateLimitBackend {
+    InMemory,
+    Redis {
+        client: Arc<redis::Client>,
+        namespace: String,
+    },
+}
+
+impl Default for RateLimitBackend {
+    fn default() -> Self {
+        Self::InMemory
+    }
+}
+
+#[derive(Clone)]
+enum RateLimitStore {
+    InMemory {
+        entries: Arc<DashMap<String, RateLimitEntry>>,
+    },
+    Redis {
+        client: Arc<redis::Client>,
+        namespace: String,
+        fallback: Arc<DashMap<String, RateLimitEntry>>,
+    },
+}
+
+#[derive(Clone)]
 pub struct RateLimiter {
-    entries: Arc<DashMap<String, RateLimitEntry>>,
+    store: RateLimitStore,
     config: RateLimitConfig,
 }
 
 impl RateLimiter {
-    pub fn new(config: RateLimitConfig) -> Self {
+    pub fn new(config: RateLimitConfig, backend: RateLimitBackend) -> Self {
+        let store = match backend {
+            RateLimitBackend::InMemory => RateLimitStore::InMemory {
+                entries: Arc::new(DashMap::new()),
+            },
+            RateLimitBackend::Redis { client, namespace } => RateLimitStore::Redis {
+                client,
+                namespace,
+                fallback: Arc::new(DashMap::new()),
+            },
+        };
+
+        Self { store, config }
+    }
+
+    pub fn in_memory(config: RateLimitConfig) -> Self {
+        Self::new(config, RateLimitBackend::InMemory)
+    }
+
+    pub fn with_config(&self, config: RateLimitConfig) -> Self {
         Self {
-            entries: Arc::new(DashMap::new()),
+            store: self.store.clone(),
             config,
         }
     }
 
     pub async fn check_rate_limit(&self, key: &str) -> Result<RateLimitResult, RateLimitError> {
-        let mut entry = self
-            .entries
+        self.check_with_config(key, &self.config).await
+    }
+
+    async fn check_with_config(
+        &self,
+        key: &str,
+        config: &RateLimitConfig,
+    ) -> Result<RateLimitResult, RateLimitError> {
+        match &self.store {
+            RateLimitStore::InMemory { entries } => Ok(Self::check_in_memory(entries, key, config)),
+            RateLimitStore::Redis {
+                client,
+                namespace,
+                fallback,
+            } => match client.get_async_connection().await {
+                Ok(mut conn) => {
+                    match Self::check_with_redis(&mut conn, namespace, key, config).await {
+                        Ok(result) => Ok(result),
+                        Err(err) => {
+                            warn!("Redis rate limit error: {}", err);
+                            Ok(Self::check_in_memory(fallback, key, config))
+                        }
+                    }
+                }
+                Err(err) => {
+                    warn!(
+                        "Failed to connect to Redis for rate limiting, using fallback: {}",
+                        err
+                    );
+                    Ok(Self::check_in_memory(fallback, key, config))
+                }
+            },
+        }
+    }
+
+    fn check_in_memory(
+        entries: &DashMap<String, RateLimitEntry>,
+        key: &str,
+        config: &RateLimitConfig,
+    ) -> RateLimitResult {
+        let mut entry = entries
             .entry(key.to_string())
             .or_insert_with(RateLimitEntry::new);
 
-        // Check if request is allowed
-        if !entry.is_allowed(self.config.requests_per_window, self.config.window_duration) {
-            let time_until_reset = entry.time_until_reset(self.config.window_duration);
-            return Ok(RateLimitResult {
+        if !entry.is_allowed(config.requests_per_window, config.window_duration) {
+            let time_until_reset = entry.time_until_reset(config.window_duration);
+            return RateLimitResult {
                 allowed: false,
-                limit: self.config.requests_per_window,
+                limit: config.requests_per_window,
                 remaining: 0,
                 reset_time: time_until_reset,
-            });
+            };
         }
 
-        // Increment counter
-        entry.increment(self.config.window_duration);
-        let remaining = self.config.requests_per_window.saturating_sub(entry.count);
-        let time_until_reset = entry.time_until_reset(self.config.window_duration);
+        entry.increment(config.window_duration);
+        let remaining = config.requests_per_window.saturating_sub(entry.count);
+        let time_until_reset = entry.time_until_reset(config.window_duration);
 
-        Ok(RateLimitResult {
+        RateLimitResult {
             allowed: true,
-            limit: self.config.requests_per_window,
+            limit: config.requests_per_window,
             remaining,
             reset_time: time_until_reset,
+        }
+    }
+
+    async fn check_with_redis<C>(
+        conn: &mut C,
+        namespace: &str,
+        key: &str,
+        config: &RateLimitConfig,
+    ) -> Result<RateLimitResult, redis::RedisError>
+    where
+        C: redis::aio::ConnectionLike + Send,
+    {
+        let redis_key = format!("{}:{}", namespace, key);
+        let limit = config.requests_per_window as i64;
+        let window_secs = config.window_duration.as_secs().max(1);
+
+        let count: i64 = conn.incr(&redis_key, 1).await?;
+        if count == 1 {
+            let _: Result<(), _> = conn.expire(&redis_key, window_secs as usize).await;
+        } else {
+            let ttl: i64 = conn.ttl(&redis_key).await.unwrap_or(-1);
+            if ttl < 0 {
+                let _: Result<(), _> = conn.expire(&redis_key, window_secs as usize).await;
+            }
+        }
+
+        let ttl_secs = match conn.ttl(&redis_key).await {
+            Ok(ttl) if ttl > 0 => ttl as u64,
+            _ => window_secs,
+        };
+        let allowed = count <= limit;
+        let remaining = if allowed {
+            config
+                .requests_per_window
+                .saturating_sub(count.max(0) as u32)
+        } else {
+            0
+        };
+
+        Ok(RateLimitResult {
+            allowed,
+            limit: config.requests_per_window,
+            remaining,
+            reset_time: Duration::from_secs(ttl_secs),
         })
     }
 
     pub async fn get_remaining_quota(&self, key: &str) -> u32 {
-        if let Some(entry) = self.entries.get(key) {
-            let now = Instant::now();
-            // Check if window has expired
-            if now.duration_since(entry.window_start) >= self.config.window_duration {
-                return self.config.requests_per_window;
+        match &self.store {
+            RateLimitStore::InMemory { entries } => {
+                Self::remaining_in_memory(entries, key, &self.config)
             }
-            self.config.requests_per_window.saturating_sub(entry.count)
-        } else {
-            self.config.requests_per_window
+            RateLimitStore::Redis {
+                client,
+                namespace,
+                fallback,
+            } => {
+                let redis_key = format!("{}:{}", namespace, key);
+                match client.get_async_connection().await {
+                    Ok(mut conn) => match conn.get::<_, i64>(&redis_key).await {
+                        Ok(count) if count > 0 => {
+                            self.config.requests_per_window.saturating_sub(count as u32)
+                        }
+                        Ok(_) => self.config.requests_per_window,
+                        Err(err) => {
+                            warn!("Failed to get Redis quota for {}: {}", key, err);
+                            Self::remaining_in_memory(fallback, key, &self.config)
+                        }
+                    },
+                    Err(err) => {
+                        warn!(
+                            "Failed to connect to Redis for quota lookup, using fallback: {}",
+                            err
+                        );
+                        Self::remaining_in_memory(fallback, key, &self.config)
+                    }
+                }
+            }
         }
     }
 
     pub async fn reset(&self, key: &str) -> Result<(), RateLimitError> {
-        self.entries.remove(key);
+        match &self.store {
+            RateLimitStore::InMemory { entries } => {
+                entries.remove(key);
+            }
+            RateLimitStore::Redis {
+                client,
+                namespace,
+                fallback,
+            } => {
+                let redis_key = format!("{}:{}", namespace, key);
+                match client.get_async_connection().await {
+                    Ok(mut conn) => {
+                        let _: Result<(), _> = conn.del(&redis_key).await;
+                    }
+                    Err(err) => {
+                        warn!("Failed to reset Redis quota for {}: {}", key, err);
+                    }
+                }
+                fallback.remove(key);
+            }
+        }
         Ok(())
     }
 
     pub async fn cleanup_expired(&self) {
-        let now = Instant::now();
-        let window_duration = self.config.window_duration;
+        match &self.store {
+            RateLimitStore::InMemory { entries } => {
+                let now = Instant::now();
+                entries.retain(|_, entry| {
+                    now.duration_since(entry.window_start) < self.config.window_duration
+                        || entry.count > 0
+                });
+            }
+            RateLimitStore::Redis { fallback, .. } => {
+                let now = Instant::now();
+                fallback.retain(|_, entry| {
+                    now.duration_since(entry.window_start) < self.config.window_duration
+                        || entry.count > 0
+                });
+            }
+        }
+    }
 
-        self.entries
-            .retain(|_, entry| now.duration_since(entry.window_start) < window_duration * 2);
+    fn remaining_in_memory(
+        entries: &DashMap<String, RateLimitEntry>,
+        key: &str,
+        config: &RateLimitConfig,
+    ) -> u32 {
+        if let Some(entry) = entries.get(key) {
+            let now = Instant::now();
+            if now.duration_since(entry.window_start) >= config.window_duration {
+                config.requests_per_window
+            } else {
+                config.requests_per_window.saturating_sub(entry.count)
+            }
+        } else {
+            config.requests_per_window
+        }
     }
 }
 
@@ -281,7 +476,7 @@ pub async fn rate_limit_middleware(
 ) -> Result<Response<axum::body::Body>, Response<axum::body::Body>> {
     // This is a simplified middleware - in practice you'd inject the rate limiter
     let config = RateLimitConfig::default();
-    let rate_limiter = RateLimiter::new(config.clone());
+    let rate_limiter = RateLimiter::in_memory(config.clone());
 
     // Extract key (prefer API key, then user, then IP)
     let key = if let Some(k) = extract_api_key(&request) {
@@ -357,9 +552,9 @@ pub struct RateLimitLayer {
 }
 
 impl RateLimitLayer {
-    pub fn new(config: RateLimitConfig) -> Self {
+    pub fn new(config: RateLimitConfig, backend: RateLimitBackend) -> Self {
         Self {
-            rate_limiter: RateLimiter::new(config),
+            rate_limiter: RateLimiter::new(config, backend),
             path_policies: Arc::new(Vec::new()),
             api_key_policies: Arc::new(HashMap::new()),
             user_policies: Arc::new(HashMap::new()),
@@ -486,7 +681,7 @@ where
                 != rate_limiter.config.requests_per_window
                 || effective.window_duration != rate_limiter.config.window_duration
             {
-                RateLimiter::new(effective)
+                rate_limiter.with_config(effective)
             } else {
                 rate_limiter.clone()
             };
@@ -685,6 +880,40 @@ impl RateLimitStats {
     }
 }
 
+#[cfg(test)]
+mod rate_limiter_shared_store_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn overrides_share_underlying_store() {
+        let base_config = RateLimitConfig {
+            requests_per_window: 2,
+            window_duration: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let base = RateLimiter::in_memory(base_config.clone());
+
+        let mut override_config = base_config.clone();
+        override_config.requests_per_window = 1;
+        let override_limiter = base.with_config(override_config);
+
+        let first = base
+            .check_rate_limit("user:test-shared")
+            .await
+            .expect("first check");
+        assert!(first.allowed, "first request should be allowed");
+
+        let second = override_limiter
+            .check_rate_limit("user:test-shared")
+            .await
+            .expect("second check");
+        assert!(
+            !second.allowed,
+            "override limiter should see the incremented count"
+        );
+    }
+}
+
 #[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
@@ -698,7 +927,7 @@ mod tests {
             ..Default::default()
         };
 
-        let limiter = RateLimiter::new(config);
+        let limiter = RateLimiter::in_memory(config);
 
         // First request should succeed
         assert!(limiter.check_rate_limit("test_key").await.unwrap().allowed);
@@ -718,7 +947,7 @@ mod tests {
             ..Default::default()
         };
 
-        let limiter = RateLimiter::new(config);
+        let limiter = RateLimiter::in_memory(config);
 
         // Different keys should have separate limits
         assert!(limiter.check_rate_limit("key1").await.unwrap().allowed);
@@ -737,7 +966,7 @@ mod tests {
             ..Default::default()
         };
 
-        let limiter = RateLimiter::new(config);
+        let limiter = RateLimiter::in_memory(config);
 
         // Initially should have full quota
         assert_eq!(limiter.get_remaining_quota("test_key").await, 5);

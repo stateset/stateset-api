@@ -66,6 +66,10 @@ RATE_LIMIT_REQUESTS_PER_MINUTE=60
 
 # Burst capacity for rate limiting
 RATE_LIMIT_BURST=10
+
+# Enable Redis-backed rate limiter and namespace prefix
+APP__RATE_LIMIT_USE_REDIS=true
+APP__RATE_LIMIT_NAMESPACE=stateset:rl
 ```
 
 ### Message Queue
@@ -96,6 +100,9 @@ CACHE_CAPACITY=1000
 ```bash
 # Comma-separated list of allowed origins
 APP__CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+
+# (Development only) opt in to permissive CORS fallback
+APP__CORS_ALLOW_ANY_ORIGIN=false
 ```
 
 ### Security Settings

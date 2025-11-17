@@ -118,27 +118,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Build CORS layer from config
-    let cors_layer = if cfg
+    let configured_origins: Option<Vec<HeaderValue>> = cfg
         .cors_allowed_origins
         .as_ref()
-        .map(|s| !s.is_empty())
-        .unwrap_or(false)
-    {
-        let origins: Vec<HeaderValue> = cfg
-            .cors_allowed_origins
-            .as_ref()
-            .unwrap()
-            .split(',')
-            .filter_map(|o| HeaderValue::from_str(o.trim()).ok())
-            .collect();
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|origin| {
+                    let trimmed = origin.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        HeaderValue::from_str(trimmed).ok()
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|origins| !origins.is_empty());
+
+    let cors_layer = if let Some(origins) = configured_origins {
         CorsLayer::new()
             .allow_origin(origins)
             .allow_methods(Any)
             .allow_headers(Any)
             .allow_credentials(cfg.cors_allow_credentials)
-    } else {
-        // Permissive for local/dev
+    } else if cfg.should_allow_permissive_cors() {
+        info!(
+            "Using permissive CORS because explicit origins were not configured ({})",
+            if cfg.is_development() {
+                "development environment"
+            } else {
+                "explicit override enabled"
+            }
+        );
         CorsLayer::permissive()
+    } else {
+        panic!("Missing CORS configuration detected; set APP__CORS_ALLOWED_ORIGINS or APP__CORS_ALLOW_ANY_ORIGIN=true");
     };
 
     // Build router: status/health + full v1 API + Swagger UI
@@ -206,7 +220,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    let mut layer = api::rate_limiter::RateLimitLayer::new(rl_cfg);
+    let rl_backend = if cfg.rate_limit_use_redis {
+        api::rate_limiter::RateLimitBackend::Redis {
+            client: redis_client.clone(),
+            namespace: cfg.rate_limit_namespace.clone(),
+        }
+    } else {
+        api::rate_limiter::RateLimitBackend::InMemory
+    };
+
+    let mut layer = api::rate_limiter::RateLimitLayer::new(rl_cfg, rl_backend);
 
     // Optional: path policy overrides in config (format: "/api/v1/orders:60:60,/api/v1/inventory:120:60")
     if let Some(policies) = &cfg.rate_limit_path_policies {

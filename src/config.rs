@@ -5,7 +5,7 @@ use std::env as std_env;
 use std::path::Path;
 use thiserror::Error;
 use tracing::{error, info};
-use validator::{Validate, ValidationError};
+use validator::{Validate, ValidationError, ValidationErrors};
 
 /// Default values for configuration
 const DEFAULT_LOG_LEVEL: &str = "info";
@@ -20,6 +20,7 @@ const DEFAULT_RATE_LIMIT_WINDOW_SECS: u64 = 60;
 const DEFAULT_MESSAGE_QUEUE_BACKEND: &str = "in-memory";
 const DEFAULT_MESSAGE_QUEUE_NAMESPACE: &str = "stateset:mq";
 const DEFAULT_MESSAGE_QUEUE_BLOCK_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_RATE_LIMIT_NAMESPACE: &str = "stateset:rl";
 
 /// Cache configuration
 #[derive(Clone, Debug, Deserialize, Validate)]
@@ -119,6 +120,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub cors_allowed_origins: Option<String>,
 
+    /// Allow permissive CORS fallback
+    #[serde(default = "default_false_bool")]
+    pub cors_allow_any_origin: bool,
+
     /// CORS: allow credentials
     #[serde(default)]
     pub cors_allow_credentials: bool,
@@ -164,6 +169,14 @@ pub struct AppConfig {
     /// Example: "/api/v1/orders:60:60,/api/v1/inventory:120:60"
     #[serde(default)]
     pub rate_limit_path_policies: Option<String>,
+
+    /// Enable Redis-backed rate limiter
+    #[serde(default = "default_false_bool")]
+    pub rate_limit_use_redis: bool,
+
+    /// Namespace for rate limiter keys when Redis is enabled
+    #[serde(default = "default_rate_limit_namespace")]
+    pub rate_limit_namespace: String,
 
     /// Message queue backend selection ("in-memory" or "redis")
     #[serde(default = "default_message_queue_backend")]
@@ -243,6 +256,7 @@ impl AppConfig {
             },
             auto_migrate: false,
             cors_allowed_origins: None,
+            cors_allow_any_origin: false,
             cors_allow_credentials: false,
             db_max_connections: default_db_max_connections(),
             db_min_connections: default_db_min_connections(),
@@ -257,6 +271,8 @@ impl AppConfig {
             rate_limit_api_key_policies: None,
             rate_limit_user_policies: None,
             rate_limit_path_policies: None,
+            rate_limit_use_redis: default_false_bool(),
+            rate_limit_namespace: default_rate_limit_namespace(),
             message_queue_backend: default_message_queue_backend(),
             message_queue_namespace: default_message_queue_namespace(),
             message_queue_block_timeout_secs: default_message_queue_block_timeout_secs(),
@@ -280,6 +296,42 @@ impl AppConfig {
     /// Checks if running in production environment
     pub fn is_production(&self) -> bool {
         self.environment.eq_ignore_ascii_case("production")
+    }
+
+    /// Checks if running in development environment
+    pub fn is_development(&self) -> bool {
+        self.environment.eq_ignore_ascii_case("development")
+    }
+
+    /// Returns true if explicit CORS origins are configured
+    pub fn has_cors_allowed_origins(&self) -> bool {
+        self.cors_allowed_origins
+            .as_ref()
+            .map(|raw| raw.split(',').any(|origin| !origin.trim().is_empty()))
+            .unwrap_or(false)
+    }
+
+    /// Whether we should fall back to permissive CORS
+    pub fn should_allow_permissive_cors(&self) -> bool {
+        self.is_development() || self.cors_allow_any_origin
+    }
+
+    fn validate_additional_constraints(&self) -> Result<(), ValidationErrors> {
+        let mut errors = ValidationErrors::new();
+
+        if !self.should_allow_permissive_cors() && !self.has_cors_allowed_origins() {
+            let mut err = ValidationError::new("cors_allowed_origins_required");
+            err.message = Some(
+                "Set APP__CORS_ALLOWED_ORIGINS for non-development environments or explicitly opt-in via APP__CORS_ALLOW_ANY_ORIGIN=true".into(),
+            );
+            errors.add("cors_allowed_origins", err);
+        }
+
+        if errors.errors().is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 
     /// Gets log level reference
@@ -355,6 +407,12 @@ fn default_rate_limit_requests() -> u32 {
 }
 fn default_rate_limit_window_secs() -> u64 {
     DEFAULT_RATE_LIMIT_WINDOW_SECS
+}
+fn default_rate_limit_namespace() -> String {
+    DEFAULT_RATE_LIMIT_NAMESPACE.to_string()
+}
+fn default_false_bool() -> bool {
+    false
 }
 fn default_message_queue_backend() -> String {
     DEFAULT_MESSAGE_QUEUE_BACKEND.to_string()
@@ -542,8 +600,58 @@ pub fn load_config() -> Result<AppConfig, AppConfigError> {
         AppConfigError::Validation(e)
     })?;
 
+    app_config.validate_additional_constraints().map_err(|e| {
+        error!("Configuration security validation failed: {:?}", e);
+        AppConfigError::Validation(e)
+    })?;
+
     info!("Configuration loaded successfully");
     Ok(app_config)
+}
+
+#[cfg(test)]
+mod cors_validation_tests {
+    use super::*;
+
+    fn base_config() -> AppConfig {
+        AppConfig::new(
+            "sqlite://stateset.db?mode=memory".into(),
+            "redis://127.0.0.1:6379".into(),
+            "super_secure_jwt_secret_that_is_long_enough_123".into(),
+            3600,
+            86_400,
+            "127.0.0.1".into(),
+            8080,
+            "production".into(),
+        )
+    }
+
+    #[test]
+    fn non_dev_requires_cors_origins() {
+        let cfg = base_config();
+        assert!(cfg.validate_additional_constraints().is_err());
+    }
+
+    #[test]
+    fn non_dev_allows_override_flag() {
+        let mut cfg = base_config();
+        cfg.cors_allow_any_origin = true;
+        assert!(cfg.validate_additional_constraints().is_ok());
+    }
+
+    #[test]
+    fn non_dev_with_origins_passes() {
+        let mut cfg = base_config();
+        cfg.cors_allowed_origins = Some("https://example.com".into());
+        assert!(cfg.validate_additional_constraints().is_ok());
+    }
+
+    #[test]
+    fn development_allows_permissive_by_default() {
+        let mut cfg = base_config();
+        cfg.environment = "development".into();
+        assert!(cfg.validate_additional_constraints().is_ok());
+    }
 }
 
 #[cfg(all(test, feature = "mock-tests"))]
