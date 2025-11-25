@@ -826,3 +826,261 @@ fn uuid_from_i32(id: i32) -> Uuid {
     bytes[12..16].copy_from_slice(&(id as u32).to_be_bytes());
     Uuid::from_bytes(bytes)
 }
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    /// Test InventorySnapshot structure
+    #[test]
+    fn test_inventory_snapshot_creation() {
+        let snapshot = InventorySnapshot {
+            inventory_item_id: 123,
+            item_number: "ITEM-001".to_string(),
+            description: Some("Test Item".to_string()),
+            primary_uom_code: Some("EA".to_string()),
+            organization_id: 1,
+            total_on_hand: Decimal::from_str("100.00").unwrap(),
+            total_allocated: Decimal::from_str("20.00").unwrap(),
+            total_available: Decimal::from_str("80.00").unwrap(),
+            locations: vec![],
+        };
+
+        assert_eq!(snapshot.inventory_item_id, 123);
+        assert_eq!(snapshot.item_number, "ITEM-001");
+        assert_eq!(snapshot.total_on_hand, Decimal::from_str("100.00").unwrap());
+        assert_eq!(snapshot.total_allocated, Decimal::from_str("20.00").unwrap());
+        assert_eq!(snapshot.total_available, Decimal::from_str("80.00").unwrap());
+    }
+
+    /// Test LocationBalance structure
+    #[test]
+    fn test_location_balance_creation() {
+        let now = Utc::now();
+        let balance = LocationBalance {
+            location_id: 456,
+            location_name: Some("Warehouse A".to_string()),
+            quantity_on_hand: Decimal::from_str("50.00").unwrap(),
+            quantity_allocated: Decimal::from_str("10.00").unwrap(),
+            quantity_available: Decimal::from_str("40.00").unwrap(),
+            updated_at: now,
+        };
+
+        assert_eq!(balance.location_id, 456);
+        assert_eq!(balance.location_name, Some("Warehouse A".to_string()));
+        assert_eq!(balance.quantity_on_hand, Decimal::from_str("50.00").unwrap());
+        assert_eq!(balance.quantity_allocated, Decimal::from_str("10.00").unwrap());
+        assert_eq!(balance.quantity_available, Decimal::from_str("40.00").unwrap());
+    }
+
+    /// Test AdjustInventoryCommand structure
+    #[test]
+    fn test_adjust_inventory_command() {
+        let command = AdjustInventoryCommand {
+            inventory_item_id: Some(100),
+            item_number: Some("SKU-100".to_string()),
+            location_id: 5,
+            quantity_delta: Decimal::from_str("25.00").unwrap(),
+            reason: Some("Receiving".to_string()),
+        };
+
+        assert_eq!(command.inventory_item_id, Some(100));
+        assert_eq!(command.item_number, Some("SKU-100".to_string()));
+        assert_eq!(command.location_id, 5);
+        assert_eq!(command.quantity_delta, Decimal::from_str("25.00").unwrap());
+        assert_eq!(command.reason, Some("Receiving".to_string()));
+    }
+
+    /// Test ReserveInventoryCommand structure
+    #[test]
+    fn test_reserve_inventory_command() {
+        let ref_id = Uuid::new_v4();
+        let command = ReserveInventoryCommand {
+            inventory_item_id: Some(200),
+            item_number: Some("SKU-200".to_string()),
+            location_id: 10,
+            quantity: Decimal::from_str("15.00").unwrap(),
+            reference_id: Some(ref_id),
+            reference_type: Some("ORDER".to_string()),
+        };
+
+        assert_eq!(command.inventory_item_id, Some(200));
+        assert_eq!(command.quantity, Decimal::from_str("15.00").unwrap());
+        assert_eq!(command.reference_id, Some(ref_id));
+        assert_eq!(command.reference_type, Some("ORDER".to_string()));
+    }
+
+    /// Test ReservationOutcome structure and id_str method
+    #[test]
+    fn test_reservation_outcome() {
+        let res_id = Uuid::new_v4();
+        let now = Utc::now();
+        let balance = LocationBalance {
+            location_id: 1,
+            location_name: Some("Main Warehouse".to_string()),
+            quantity_on_hand: Decimal::from_str("100.00").unwrap(),
+            quantity_allocated: Decimal::from_str("30.00").unwrap(),
+            quantity_available: Decimal::from_str("70.00").unwrap(),
+            updated_at: now,
+        };
+
+        let outcome = ReservationOutcome {
+            reservation_id: res_id,
+            balance,
+        };
+
+        assert_eq!(outcome.reservation_id, res_id);
+        assert_eq!(outcome.id_str(), res_id.to_string());
+        assert_eq!(outcome.balance.quantity_on_hand, Decimal::from_str("100.00").unwrap());
+    }
+
+    /// Test ReleaseReservationCommand structure
+    #[test]
+    fn test_release_reservation_command() {
+        let command = ReleaseReservationCommand {
+            inventory_item_id: Some(300),
+            item_number: Some("SKU-300".to_string()),
+            location_id: 15,
+            quantity: Decimal::from_str("5.00").unwrap(),
+        };
+
+        assert_eq!(command.inventory_item_id, Some(300));
+        assert_eq!(command.item_number, Some("SKU-300".to_string()));
+        assert_eq!(command.location_id, 15);
+        assert_eq!(command.quantity, Decimal::from_str("5.00").unwrap());
+    }
+
+    /// Test decimal_to_i32 conversion - positive value
+    #[test]
+    fn test_decimal_to_i32_positive() {
+        let decimal = Decimal::from_str("42.7").unwrap();
+        let result = decimal_to_i32(decimal);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 43); // Rounds to 43
+    }
+
+    /// Test decimal_to_i32 conversion - zero
+    #[test]
+    fn test_decimal_to_i32_zero() {
+        let decimal = Decimal::ZERO;
+        let result = decimal_to_i32(decimal);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    /// Test decimal_to_i32 conversion - negative value
+    #[test]
+    fn test_decimal_to_i32_negative() {
+        let decimal = Decimal::from_str("-10.3").unwrap();
+        let result = decimal_to_i32(decimal);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), -10); // Rounds to -10
+    }
+
+    /// Test uuid_from_i64 conversion
+    #[test]
+    fn test_uuid_from_i64() {
+        let id: i64 = 123456789;
+        let uuid = uuid_from_i64(id);
+
+        // UUID should be deterministic for the same input
+        assert_eq!(uuid, uuid_from_i64(id));
+
+        // Different inputs should produce different UUIDs
+        let uuid2 = uuid_from_i64(987654321);
+        assert_ne!(uuid, uuid2);
+    }
+
+    /// Test uuid_from_i32 conversion
+    #[test]
+    fn test_uuid_from_i32() {
+        let id: i32 = 42;
+        let uuid = uuid_from_i32(id);
+
+        // UUID should be deterministic for the same input
+        assert_eq!(uuid, uuid_from_i32(id));
+
+        // Different inputs should produce different UUIDs
+        let uuid2 = uuid_from_i32(99);
+        assert_ne!(uuid, uuid2);
+    }
+
+    /// Test uuid_from_i64 and uuid_from_i32 work independently
+    #[test]
+    fn test_uuid_conversion_functions_work() {
+        let id_i64: i64 = 100;
+        let id_i32: i32 = 200;
+
+        let uuid_i64 = uuid_from_i64(id_i64);
+        let uuid_i32 = uuid_from_i32(id_i32);
+
+        // Both should produce valid UUIDs
+        assert_ne!(uuid_i64, Uuid::nil());
+        assert_ne!(uuid_i32, Uuid::nil());
+
+        // Different input values produce different UUIDs within same function
+        assert_ne!(uuid_from_i64(100), uuid_from_i64(200));
+        assert_ne!(uuid_from_i32(100), uuid_from_i32(200));
+    }
+
+    /// Test inventory snapshot with multiple locations
+    #[test]
+    fn test_inventory_snapshot_with_locations() {
+        let now = Utc::now();
+        let location1 = LocationBalance {
+            location_id: 1,
+            location_name: Some("Warehouse A".to_string()),
+            quantity_on_hand: Decimal::from_str("60.00").unwrap(),
+            quantity_allocated: Decimal::from_str("10.00").unwrap(),
+            quantity_available: Decimal::from_str("50.00").unwrap(),
+            updated_at: now,
+        };
+
+        let location2 = LocationBalance {
+            location_id: 2,
+            location_name: Some("Warehouse B".to_string()),
+            quantity_on_hand: Decimal::from_str("40.00").unwrap(),
+            quantity_allocated: Decimal::from_str("10.00").unwrap(),
+            quantity_available: Decimal::from_str("30.00").unwrap(),
+            updated_at: now,
+        };
+
+        let snapshot = InventorySnapshot {
+            inventory_item_id: 500,
+            item_number: "MULTI-LOC-001".to_string(),
+            description: Some("Multi-location item".to_string()),
+            primary_uom_code: Some("EA".to_string()),
+            organization_id: 1,
+            total_on_hand: Decimal::from_str("100.00").unwrap(),
+            total_allocated: Decimal::from_str("20.00").unwrap(),
+            total_available: Decimal::from_str("80.00").unwrap(),
+            locations: vec![location1, location2],
+        };
+
+        assert_eq!(snapshot.locations.len(), 2);
+        assert_eq!(snapshot.locations[0].location_id, 1);
+        assert_eq!(snapshot.locations[1].location_id, 2);
+    }
+
+    /// Test clone trait for InventorySnapshot
+    #[test]
+    fn test_inventory_snapshot_clone() {
+        let original = InventorySnapshot {
+            inventory_item_id: 999,
+            item_number: "CLONE-TEST".to_string(),
+            description: Some("Clone test item".to_string()),
+            primary_uom_code: Some("EA".to_string()),
+            organization_id: 1,
+            total_on_hand: Decimal::from_str("50.00").unwrap(),
+            total_allocated: Decimal::from_str("5.00").unwrap(),
+            total_available: Decimal::from_str("45.00").unwrap(),
+            locations: vec![],
+        };
+
+        let cloned = original.clone();
+        assert_eq!(original.inventory_item_id, cloned.inventory_item_id);
+        assert_eq!(original.item_number, cloned.item_number);
+        assert_eq!(original.total_on_hand, cloned.total_on_hand);
+    }
+}

@@ -413,6 +413,7 @@ Environment variables:
 - **[FAQ](docs/FAQ.md)** ❓ - Frequently asked questions
 
 **Core Guides:**
+- **[Architecture Documentation](docs/ARCHITECTURE.md)** 🏗️ - **NEW!** Comprehensive system architecture with 6 detailed diagrams
 - **[API Overview](docs/API_OVERVIEW.md)** 📖 - Complete API reference with architecture, capabilities, and data models
 - **[Use Cases](docs/USE_CASES.md)** 💡 - Real-world scenarios (e-commerce, B2B, manufacturing, AI shopping, crypto)
 - **[Integration Guide](docs/INTEGRATION_GUIDE.md)** 🔧 - Production-ready integration patterns

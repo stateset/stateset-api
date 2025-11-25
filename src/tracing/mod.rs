@@ -606,11 +606,16 @@ where
                                     "message": e.to_string(),
                                     "request_id": request_id
                                 });
-                                return Ok(Response::builder()
+                                // Build error response; if Response::builder fails, return a minimal error
+                                let body_bytes = serde_json::to_vec(&body).unwrap_or_default();
+                                return match Response::builder()
                                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                                     .header("content-type", "application/json")
-                                    .body(Body::from(serde_json::to_vec(&body).unwrap_or_default()))
-                                    .unwrap());
+                                    .body(Body::from(body_bytes))
+                                {
+                                    Ok(resp) => Ok(resp),
+                                    Err(_) => Ok(Response::new(Body::from("Internal Server Error"))),
+                                };
                             }
                         };
 
@@ -667,11 +672,16 @@ where
                                     "message": e.to_string(),
                                     "request_id": request_id
                                 });
-                                return Ok(Response::builder()
+                                // Build error response; if Response::builder fails, return a minimal error
+                                let body_bytes = serde_json::to_vec(&body).unwrap_or_default();
+                                return match Response::builder()
                                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                                     .header("content-type", "application/json")
-                                    .body(Body::from(serde_json::to_vec(&body).unwrap_or_default()))
-                                    .unwrap());
+                                    .body(Body::from(body_bytes))
+                                {
+                                    Ok(resp) => Ok(resp),
+                                    Err(_) => Ok(Response::new(Body::from("Internal Server Error"))),
+                                };
                             }
                         };
                         // Potentially augment JSON error body with request_id
@@ -1027,15 +1037,19 @@ mod tests {
     {
         fn into_response(self) -> Response<Body> {
             match serde_json::to_vec(&self.0) {
-                Ok(bytes) => Response::builder()
-                    .status(StatusCode::OK)
-                    .header("content-type", "application/json")
-                    .body(Body::from(bytes))
-                    .unwrap(),
-                Err(_) => Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::empty())
-                    .unwrap(),
+                Ok(bytes) => {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "application/json")
+                        .body(Body::from(bytes))
+                        .unwrap_or_else(|_| Response::new(Body::from("Serialization Error")))
+                }
+                Err(_) => {
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::empty())
+                        .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error")))
+                }
             }
         }
     }

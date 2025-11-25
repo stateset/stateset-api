@@ -50,8 +50,15 @@ impl Query for GetBOMByProductQuery {
     type Result = BillOfMaterials;
 
     async fn execute(&self, db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement proper BOM query when entity relationships are fixed
-        // For now, return empty result to allow compilation
+        // Note: This is a placeholder implementation pending BOM entity relationship setup.
+        // Full implementation requires:
+        // 1. BillOfMaterials table with product_id foreign key
+        // 2. BOMLineItem table linking components to BOMs
+        // 3. SeaORM relationships configured between entities
+        // When ready, query should:
+        // - JOIN billofmaterials ON product_id
+        // - JOIN bom_line_items to get components
+        // - JOIN inventory_items for component details
         Ok(BillOfMaterials {
             product_id: self.product_id,
             product_name: "Placeholder Product".to_string(),
@@ -87,9 +94,13 @@ impl Query for GetBOMCostAnalysisQuery {
     type Result = BOMCostAnalysis;
 
     async fn execute(&self, db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement proper BOM cost analysis when entity relationships are fixed
+        // Note: Placeholder implementation pending BOM entity relationships and cost data.
+        // Full implementation should:
+        // - Query BOM line items with component costs
+        // - Calculate total cost = sum(component_cost * quantity)
+        // - Include labor and overhead costs if available
         Ok(BOMCostAnalysis {
-            product_id: uuid::Uuid::new_v4(), // TODO: Fix when proper entity relationships exist
+            product_id: uuid::Uuid::new_v4(),
             product_name: "Placeholder Product".to_string(),
             total_cost: 0.0,
             items: vec![],
@@ -121,7 +132,9 @@ impl Query for GetComponentUsageQuery {
     type Result = ComponentUsage;
 
     async fn execute(&self, db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement proper component usage query when entity relationships are fixed
+        // Note: Placeholder for reverse BOM lookup - finding all products using this component.
+        // Implementation should query BOM line items WHERE component_id = ?
+        // and join to products table to get product details.
         Ok(ComponentUsage {
             component_id: self.component_id,
             component_name: "Placeholder Component".to_string(),
@@ -150,7 +163,12 @@ impl Query for GetBOMShortagesQuery {
     type Result = Vec<BOMShortage>;
 
     async fn execute(&self, db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement proper BOM shortages query when entity relationships are fixed
+        // Note: Placeholder for material requirement planning (MRP) shortage calculation.
+        // Implementation should:
+        // - Get BOM components for product
+        // - Calculate required quantity = bom_quantity * production_quantity
+        // - Query current inventory for each component
+        // - Return shortage where available < required
         Ok(vec![])
     }
 }

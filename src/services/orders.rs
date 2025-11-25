@@ -1300,3 +1300,242 @@ mod tests {
         assert_eq!(response.total_amount, Decimal::from_str("99.99").unwrap());
     }
 }
+
+#[cfg(test)]
+mod unit_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    /// Test validation for create_order_with_items - empty items should fail
+    #[tokio::test]
+    async fn test_create_order_with_items_empty_items_fails() {
+        let db_pool = Arc::new(sea_orm::DatabaseConnection::Disconnected);
+        let service = OrderService::new(db_pool, None);
+
+        let input = CreateOrderWithItemsInput {
+            customer_id: Uuid::new_v4(),
+            total_amount: Decimal::from_str("100.00").unwrap(),
+            currency: "USD".to_string(),
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: None,
+            shipping_method: None,
+            shipping_address: None,
+            billing_address: None,
+            notes: None,
+            items: vec![],
+        };
+
+        let result = service.create_order_with_items(input).await;
+        assert!(result.is_err());
+        if let Err(ServiceError::ValidationError(msg)) = result {
+            assert!(msg.contains("at least one item"));
+        } else {
+            panic!("Expected ValidationError for empty items");
+        }
+    }
+
+    /// Test validation for create_order_with_items - negative total amount should fail
+    #[tokio::test]
+    async fn test_create_order_with_items_negative_amount_fails() {
+        let db_pool = Arc::new(sea_orm::DatabaseConnection::Disconnected);
+        let service = OrderService::new(db_pool, None);
+
+        let input = CreateOrderWithItemsInput {
+            customer_id: Uuid::new_v4(),
+            total_amount: Decimal::from_str("-10.00").unwrap(),
+            currency: "USD".to_string(),
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: None,
+            shipping_method: None,
+            shipping_address: None,
+            billing_address: None,
+            notes: None,
+            items: vec![NewOrderItemInput {
+                sku: "TEST-SKU".to_string(),
+                product_id: None,
+                name: Some("Test Product".to_string()),
+                quantity: 1,
+                unit_price: Decimal::from_str("10.00").unwrap(),
+                tax_rate: None,
+            }],
+        };
+
+        let result = service.create_order_with_items(input).await;
+        assert!(result.is_err());
+        if let Err(ServiceError::ValidationError(msg)) = result {
+            assert!(msg.contains("cannot be negative"));
+        } else {
+            panic!("Expected ValidationError for negative amount");
+        }
+    }
+
+    /// Test NewOrderItemInput structure
+    #[test]
+    fn test_new_order_item_input_creation() {
+        let item = NewOrderItemInput {
+            sku: "SKU-123".to_string(),
+            product_id: Some(Uuid::new_v4()),
+            name: Some("Test Product".to_string()),
+            quantity: 5,
+            unit_price: Decimal::from_str("19.99").unwrap(),
+            tax_rate: Some(Decimal::from_str("0.08").unwrap()),
+        };
+
+        assert_eq!(item.sku, "SKU-123");
+        assert!(item.product_id.is_some());
+        assert_eq!(item.quantity, 5);
+        assert_eq!(item.unit_price, Decimal::from_str("19.99").unwrap());
+    }
+
+    /// Test OrderSortField default
+    #[test]
+    fn test_order_sort_field_default() {
+        let default = OrderSortField::default();
+        assert_eq!(default, OrderSortField::CreatedAt);
+    }
+
+    /// Test SortDirection default
+    #[test]
+    fn test_sort_direction_default() {
+        let default = SortDirection::default();
+        assert_eq!(default, SortDirection::Desc);
+    }
+
+    /// Test CreateOrderRequest validation - valid request
+    #[test]
+    fn test_create_order_request_valid() {
+        let request = CreateOrderRequest {
+            customer_id: Uuid::new_v4(),
+            order_number: "ORD-TEST-001".to_string(),
+            total_amount: Decimal::from_str("99.99").unwrap(),
+            currency: "USD".to_string(),
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: Some("credit_card".to_string()),
+            shipping_method: Some("standard".to_string()),
+            notes: Some("Test notes".to_string()),
+            shipping_address: Some("123 Main St".to_string()),
+            billing_address: Some("456 Elm St".to_string()),
+        };
+
+        assert!(request.validate().is_ok());
+    }
+
+    /// Test CreateOrderRequest validation - empty order number fails
+    #[test]
+    fn test_create_order_request_empty_order_number() {
+        let request = CreateOrderRequest {
+            customer_id: Uuid::new_v4(),
+            order_number: "".to_string(),
+            total_amount: Decimal::from_str("99.99").unwrap(),
+            currency: "USD".to_string(),
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: None,
+            shipping_method: None,
+            notes: None,
+            shipping_address: None,
+            billing_address: None,
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    /// Test CreateOrderRequest validation - invalid currency length
+    #[test]
+    fn test_create_order_request_invalid_currency() {
+        let request = CreateOrderRequest {
+            customer_id: Uuid::new_v4(),
+            order_number: "ORD-001".to_string(),
+            total_amount: Decimal::from_str("99.99").unwrap(),
+            currency: "US".to_string(), // Invalid: must be 3 chars
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: None,
+            shipping_method: None,
+            notes: None,
+            shipping_address: None,
+            billing_address: None,
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    /// Test UpdateOrderStatusRequest validation
+    #[test]
+    fn test_update_order_status_request() {
+        let request = UpdateOrderStatusRequest {
+            status: "shipped".to_string(),
+            notes: Some("Package dispatched".to_string()),
+        };
+
+        assert!(request.validate().is_ok());
+        assert_eq!(request.status, "shipped");
+    }
+
+    /// Test OrderResponse serialization
+    #[test]
+    fn test_order_response_serialization() {
+        let now = Utc::now();
+        let response = OrderResponse {
+            id: Uuid::new_v4(),
+            order_number: "ORD-001".to_string(),
+            customer_id: Uuid::new_v4(),
+            status: "pending".to_string(),
+            order_date: now,
+            total_amount: Decimal::from_str("99.99").unwrap(),
+            currency: "USD".to_string(),
+            payment_status: "pending".to_string(),
+            fulfillment_status: "unfulfilled".to_string(),
+            payment_method: Some("credit_card".to_string()),
+            shipping_method: Some("standard".to_string()),
+            tracking_number: None,
+            notes: Some("Test order".to_string()),
+            shipping_address: Some("123 Main St".to_string()),
+            billing_address: Some("123 Main St".to_string()),
+            is_archived: false,
+            created_at: now,
+            updated_at: Some(now),
+            version: 1,
+        };
+
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert!(serialized.contains("ORD-001"));
+        assert!(serialized.contains("pending"));
+    }
+
+    /// Test OrderSearchQuery with default values
+    #[test]
+    fn test_order_search_query_defaults() {
+        let query = OrderSearchQuery {
+            customer_id: None,
+            status: None,
+            from_date: None,
+            to_date: None,
+            search: None,
+            sort_field: OrderSortField::default(),
+            sort_direction: SortDirection::default(),
+            page: 1,
+            per_page: 20,
+        };
+
+        assert_eq!(query.sort_field, OrderSortField::CreatedAt);
+        assert_eq!(query.sort_direction, SortDirection::Desc);
+        assert_eq!(query.page, 1);
+        assert_eq!(query.per_page, 20);
+    }
+
+    /// Test status constants
+    #[test]
+    fn test_status_constants() {
+        assert_eq!(STATUS_PENDING, "pending");
+        assert_eq!(STATUS_CONFIRMED, "confirmed");
+        assert_eq!(STATUS_PROCESSING, "processing");
+        assert_eq!(STATUS_SHIPPED, "shipped");
+        assert_eq!(STATUS_DELIVERED, "delivered");
+        assert_eq!(STATUS_CANCELLED, "cancelled");
+        assert_eq!(STATUS_REFUNDED, "refunded");
+    }
+}
