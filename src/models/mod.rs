@@ -84,6 +84,16 @@ pub mod reconcile_line_item;
 pub mod reconciles;
 pub mod sale_transaction;
 
+// StablePay payment models
+pub mod stablepay_blockchain_network;
+pub mod stablepay_crypto_transaction;
+pub mod stablepay_crypto_wallet;
+pub mod stablepay_payment_method;
+pub mod stablepay_provider;
+pub mod stablepay_reconciliation;
+pub mod stablepay_refund;
+pub mod stablepay_transaction;
+
 // Manufacturing related
 pub mod billofmaterials;
 pub mod machine;

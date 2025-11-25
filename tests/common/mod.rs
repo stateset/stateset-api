@@ -125,7 +125,7 @@ impl TestApp {
         ];
 
         for sql in ensure_sql {
-            pool.execute(Statement::from_string(DbBackend::Sqlite, sql.into()))
+            pool.execute(Statement::from_string(DbBackend::Sqlite, sql))
                 .await
                 .expect("ensure auth table exists");
         }

@@ -141,6 +141,14 @@ pub enum Event {
     PaymentRefunded(Uuid),
     PaymentFailed(Uuid),
     PaymentVoided(Uuid),
+    PaymentProcessed {
+        transaction_id: Uuid,
+        order_id: Option<Uuid>,
+        customer_id: Uuid,
+        amount: Decimal,
+        currency: String,
+        status: String,
+    },
 
     // Shipment events
     ShipmentCreated(Uuid),

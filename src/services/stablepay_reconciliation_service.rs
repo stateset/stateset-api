@@ -6,7 +6,7 @@ use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -235,8 +235,8 @@ impl StablePayReconciliationService {
         let reconciliations = stablepay_reconciliation::Entity::find()
             .filter(stablepay_reconciliation::Column::ProviderId.eq(provider_id))
             .order_by_desc(stablepay_reconciliation::Column::CreatedAt)
-            .limit(limit)
-            .offset(offset)
+            .limit(Some(limit))
+            .offset(Some(offset))
             .all(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;

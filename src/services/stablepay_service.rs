@@ -429,8 +429,8 @@ impl StablePayService {
         let transactions = stablepay_transaction::Entity::find()
             .filter(stablepay_transaction::Column::CustomerId.eq(customer_id))
             .order_by_desc(stablepay_transaction::Column::CreatedAt)
-            .limit(limit)
-            .offset(offset)
+            .limit(Some(limit))
+            .offset(Some(offset))
             .all(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;

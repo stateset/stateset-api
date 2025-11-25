@@ -40,6 +40,9 @@ pub mod cash_sale;
 pub mod invoicing;
 // pub mod item_receipts;
 pub mod payments;
+pub mod stablepay_service;
+pub mod stablepay_crypto_service;
+pub mod stablepay_reconciliation_service;
 
 // Analytics and Reporting
 pub mod business_intelligence;
