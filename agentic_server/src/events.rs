@@ -6,6 +6,8 @@ pub enum Event {
     CheckoutStarted { session_id: Uuid },
     CheckoutCompleted { session_id: Uuid, order_id: Uuid },
     OrderCreated { order_id: Uuid },
+    PurchaseOrderDrafted { product_id: String, quantity: u32, reason: String },
+    QualityAlert { product_id: String, return_id: String, reason: String },
 }
 
 #[derive(Clone)]
@@ -18,9 +20,8 @@ impl EventSender {
         Self { tx }
     }
 
-    pub async fn send(&self, event: Event) {
-        if let Err(e) = self.tx.send(event).await {
-            eprintln!("Failed to send event: {}", e);
-        }
+    pub async fn send(&self, event: Event) -> Result<(), anyhow::Error> {
+        self.tx.send(event).await?;
+        Ok(())
     }
 }

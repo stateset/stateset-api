@@ -27,11 +27,19 @@ mod events;
 mod idempotency;
 mod metrics;
 mod models;
+mod neural;
 mod product_catalog;
 mod rate_limit;
 mod redis_store;
+mod return_service;
+mod fraud_service;
 mod security;
 mod service;
+
+use return_service::ReturnService;
+use fraud_service::FraudService;
+use neural::agents::return_agent::ReturnAgent;
+use neural::agents::fraud_agent::FraudAgent;
 mod shopify_integration;
 mod stripe_integration;
 mod tax_service;
@@ -50,6 +58,12 @@ use metrics::{
     record_http_request, CHECKOUT_SESSIONS_CREATED, ORDERS_CREATED, VAULT_TOKENS_CREATED,
 };
 use models::*;
+use neural::chat::ChatService;
+use neural::cognitive::CognitiveService;
+use neural::openai::OpenAIService;
+use neural::qdrant::QdrantService;
+use neural::semantic_search::SemanticSearchService;
+use neural::agents::inventory_agent::InventoryAgent;
 use product_catalog::ProductCatalogService;
 use rate_limit::{rate_limit_middleware, RateLimiter};
 use redis_store::RedisStore;
@@ -69,6 +83,10 @@ pub struct AppState {
     pub api_key_store: ApiKeyStore,
     pub signature_verifier: Option<Arc<SignatureVerifier>>,
     pub idempotency_service: Option<Arc<IdempotencyService>>,
+    pub semantic_search_service: Option<Arc<SemanticSearchService>>,
+    pub chat_service: Option<Arc<ChatService>>,
+    pub return_service: Arc<ReturnService>,
+    pub fraud_service: Arc<FraudService>,
 }
 
 #[tokio::main]
@@ -211,14 +229,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Initialize Fraud Service
+    let fraud_svc = Arc::new(FraudService::new());
+
     // Initialize checkout service
     let checkout_service = Arc::new(AgenticCheckoutService::new(
         cache.clone(),
-        event_sender,
-        product_catalog,
+        event_sender.clone(),
+        product_catalog.clone(),
         tax_service,
         stripe_processor.clone(),
         shopify_client.clone(),
+        Some(fraud_svc.clone()),
     ));
     info!("Checkout service initialized");
 
@@ -263,15 +285,185 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(IdempotencyService::new(redis))
     });
 
-    // Build application state
-    let app_state = AppState {
-        checkout_service,
-        delegated_payment_service,
-        rate_limiter: rate_limiter.clone(),
-        api_key_store: api_key_store.clone(),
-        signature_verifier: signature_verifier.clone(),
-        idempotency_service: idempotency_service.clone(),
-    };
+            // Initialize Return Service
+
+            let return_service = Arc::new(ReturnService::new());
+
+        
+
+                // Initialize Fraud Service already done
+
+        
+
+            // Initialize Neural Services (Semantic Search & Chat)
+
+        let (semantic_search_service, chat_service) = if let (Some(openai_key), Some(qdrant_url)) = (
+
+            &config.openai_api_key,
+
+            &config.qdrant_url,
+
+        ) {
+
+            info!("Initializing Neural Commerce Services...");
+
+            let openai_service = Arc::new(OpenAIService::new(openai_key));
+
+            
+
+            match QdrantService::new(qdrant_url).await {
+
+                Ok(qdrant_service) => {
+
+                    let qdrant_service = Arc::new(qdrant_service);
+
+                    let semantic_search = Arc::new(SemanticSearchService::new(openai_service.clone(), qdrant_service.clone()));
+
+                    
+
+                    let cognitive_service = Arc::new(CognitiveService::new(openai_key));
+
+                    let chat_service = Arc::new(ChatService::new(cognitive_service.clone(), semantic_search.clone()));
+
+    
+
+                    // Initialize and spawn InventoryAgent
+
+                    let inventory_agent_interval = std::env::var("INVENTORY_AGENT_INTERVAL_SECONDS")
+
+                        .unwrap_or_else(|_| "300".to_string())
+
+                        .parse::<u64>()
+
+                        .unwrap_or(300);
+
+                    info!("InventoryAgent configured to run every {} seconds", inventory_agent_interval);
+
+                    let inventory_agent = InventoryAgent::new(
+
+                        cognitive_service.clone(),
+
+                        semantic_search.clone(),
+
+                        product_catalog.clone(),
+
+                        event_sender.clone(),
+
+                        inventory_agent_interval,
+
+                    );
+
+                    tokio::spawn(async move { inventory_agent.run().await });
+
+    
+
+                    // Initialize and spawn ReturnAgent
+
+                    let return_agent_interval = std::env::var("RETURN_AGENT_INTERVAL_SECONDS")
+
+                        .unwrap_or_else(|_| "60".to_string()) // Check every minute
+
+                        .parse::<u64>()
+
+                        .unwrap_or(60);
+
+                    info!("ReturnAgent configured to run every {} seconds", return_agent_interval);
+
+                    let return_agent = ReturnAgent::new(
+
+                        cognitive_service.clone(),
+
+                        return_service.clone(),
+
+                        event_sender.clone(),
+
+                        return_agent_interval,
+
+                    );
+
+                                    tokio::spawn(async move { return_agent.run().await });
+
+                    
+
+                                    // Initialize and spawn FraudAgent
+
+                                    let fraud_agent_interval = std::env::var("FRAUD_AGENT_INTERVAL_SECONDS")
+
+                                        .unwrap_or_else(|_| "30".to_string())
+
+                                        .parse::<u64>()
+
+                                        .unwrap_or(30);
+
+                                    info!("FraudAgent configured to run every {} seconds", fraud_agent_interval);
+
+                                                                        let fraud_agent = FraudAgent::new(
+
+                                                                            cognitive_service.clone(),
+
+                                                                            fraud_svc.clone(),
+
+                                                                            event_sender.clone(),
+
+                                                                            fraud_agent_interval,
+
+                                                                        );
+
+                                    tokio::spawn(async move { fraud_agent.run().await });
+
+                    
+
+                                    info!("Neural Services initialized successfully");
+
+                    (Some(semantic_search), Some(chat_service))
+
+                }
+
+                Err(e) => {
+
+                    warn!("Failed to connect to Qdrant: {}. Neural features disabled.", e);
+
+                    (None, None)
+
+                }
+
+            }
+
+        } else {
+
+            info!("OPENAI_API_KEY or QDRANT_URL not set. Neural features disabled.");
+
+            (None, None)
+
+        };
+
+    
+
+        // Build application state
+
+        let app_state = AppState {
+
+            checkout_service,
+
+            delegated_payment_service,
+
+            rate_limiter: rate_limiter.clone(),
+
+            api_key_store: api_key_store.clone(),
+
+            signature_verifier: signature_verifier.clone(),
+
+            idempotency_service: idempotency_service.clone(),
+
+            semantic_search_service,
+
+                        chat_service,
+
+                        return_service,
+
+                        fraud_service: fraud_svc,
+
+                    };
 
     // Build router
     let app = Router::new()
@@ -300,6 +492,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         // Delegated Payment endpoint (PSP mock)
         .route("/agentic_commerce/delegate_payment", post(delegate_payment))
+        // Neural Commerce endpoints
+        .route("/neural/search", post(semantic_search_handler))
+        .route("/neural/chat", post(chat_handler))
+        // Return Agent endpoints
+        .route("/returns", post(create_return_handler))
+        .route("/returns/pending", get(list_returns_handler))
         // Middleware layers (applied in reverse order: bottom to top)
         // Order: metrics -> rate_limit -> idempotency -> auth -> signature -> trace -> CORS -> compression -> body_limit
         .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
@@ -594,4 +792,93 @@ async fn shutdown_signal() {
     }
 
     info!("Shutting down gracefully...");
+}
+
+#[derive(serde::Deserialize)]
+struct SemanticSearchRequest {
+    query: String,
+    limit: Option<u64>,
+}
+
+async fn semantic_search_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<SemanticSearchRequest>,
+) -> Result<Json<Vec<neural::semantic_search::SearchResult>>, ApiError> {
+    if let Some(service) = state.semantic_search_service {
+        let limit = payload.limit.unwrap_or(10);
+        let results = service
+            .search(&payload.query, limit)
+            .await
+            .map_err(|e| {
+                tracing::error!("Semantic search failed: {}", e);
+                ApiError::InternalServerError {
+                    message: "Search failed".to_string(),
+                }
+            })?;
+
+        Ok(Json(results))
+    } else {
+        Err(ApiError::BadRequest {
+            message: "Neural services are not enabled".to_string(),
+            error_code: Some("FEATURE_DISABLED".to_string()),
+        })
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ChatRequest {
+    query: String,
+}
+
+async fn chat_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<ChatRequest>,
+) -> Result<Json<neural::chat::ChatResponse>, ApiError> {
+    if let Some(service) = state.chat_service {
+        let response = service
+            .chat_with_inventory(&payload.query)
+            .await
+            .map_err(|e| {
+                tracing::error!("Chat processing failed: {}", e);
+                ApiError::InternalServerError {
+                    message: "Chat failed".to_string(),
+                }
+            })?;
+
+        Ok(Json(response))
+    } else {
+        Err(ApiError::BadRequest {
+            message: "Neural services are not enabled".to_string(),
+            error_code: Some("FEATURE_DISABLED".to_string()),
+        })
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CreateReturnRequest {
+    product_id: String,
+    reason: String,
+    comment: String,
+}
+
+async fn create_return_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateReturnRequest>,
+) -> Result<Json<return_service::ReturnRequest>, ApiError> {
+    let return_req = state.return_service.create_return(payload.product_id, payload.reason, payload.comment);
+    // In a real scenario, we might want to trigger the agent immediately or let the background loop handle it
+    Ok(Json(return_req))
+}
+
+#[derive(serde::Deserialize)]
+struct ListReturnsRequest {
+    // Optional filters could go here
+}
+
+async fn list_returns_handler(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<return_service::ReturnRequest>>, ApiError> {
+    let returns = state.return_service.get_pending_returns(); // This only gets pending, maybe we want all?
+    // For simplicity, let's just expose pending for now or modify service to get all
+    Ok(Json(returns))
 }

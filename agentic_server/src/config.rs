@@ -6,6 +6,8 @@ pub struct Config {
     pub port: u16,
     pub log_level: String,
     pub webhook_url: Option<String>,
+    pub openai_api_key: Option<String>,
+    pub qdrant_url: Option<String>,
 }
 
 impl Config {
@@ -18,6 +20,8 @@ impl Config {
                 .parse()?,
             log_level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
             webhook_url: std::env::var("WEBHOOK_URL").ok(),
+            openai_api_key: std::env::var("OPENAI_API_KEY").ok(),
+            qdrant_url: std::env::var("QDRANT_URL").ok(),
         })
     }
 }

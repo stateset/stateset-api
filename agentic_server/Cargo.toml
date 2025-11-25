@@ -55,5 +55,28 @@ base64 = "0.22"
 # Stripe integration
 stripe-rust = { version = "0.32", package = "async-stripe", features = ["runtime-tokio-hyper"] }
 reqwest = { version = "0.12", features = ["json"] }
+qdrant-client = "1.10"
+async-openai = "0.23"
+anyhow = "1.0"
 
-[dev-dependencies] 
+[dev-dependencies]
+# Testing
+tokio-test = "0.4"
+hyper = { version = "1.0", features = ["full"] }
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+
+# Property-based testing
+proptest = "1.4"
+quickcheck = "1.0"
+
+# Test utilities
+assert_matches = "1.5"
+rstest = "0.18"
+
+[[bench]]
+name = "performance"
+harness = false 

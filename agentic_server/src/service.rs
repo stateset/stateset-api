@@ -18,6 +18,7 @@ use crate::{
     stripe_integration::StripePaymentProcessor,
     tax_service::TaxService,
     validation::{validate_country_code, validate_email, validate_phone, validate_quantity},
+    fraud_service::FraudService,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::Serialize;
@@ -40,6 +41,7 @@ pub struct AgenticCheckoutService {
     tax_service: Arc<TaxService>,
     stripe_processor: Option<Arc<StripePaymentProcessor>>,
     shopify_client: Option<Arc<ShopifyClient>>,
+    fraud_service: Option<Arc<FraudService>>,
 }
 
 impl AgenticCheckoutService {
@@ -50,6 +52,7 @@ impl AgenticCheckoutService {
         tax_service: Arc<TaxService>,
         stripe_processor: Option<Arc<StripePaymentProcessor>>,
         shopify_client: Option<Arc<ShopifyClient>>,
+        fraud_service: Option<Arc<FraudService>>,
     ) -> Self {
         Self {
             cache,
@@ -58,6 +61,7 @@ impl AgenticCheckoutService {
             tax_service,
             stripe_processor,
             shopify_client,
+            fraud_service,
         }
     }
 
@@ -419,6 +423,11 @@ impl AgenticCheckoutService {
         metrics::ACTIVE_SESSIONS.dec();
 
         info!("Completed checkout session: {}", session.id);
+
+        if let Some(fraud) = &self.fraud_service {
+            fraud.queue_for_review(session.clone());
+            info!("Queued session {} for fraud review", session.id);
+        }
 
         Ok(CheckoutSessionWithOrder { session, order })
     }

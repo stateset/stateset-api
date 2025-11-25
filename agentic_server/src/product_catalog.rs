@@ -98,6 +98,16 @@ impl ProductCatalogService {
         }
     }
 
+    /// Get all active products
+    pub async fn get_all_products(&self) -> Result<Vec<Product>, anyhow::Error> {
+        let products = self.products.read().unwrap();
+        Ok(products
+            .values()
+            .filter(|p| p.is_active)
+            .cloned()
+            .collect())
+    }
+
     /// Get product by ID
     pub fn get_product(&self, product_id: &str) -> Result<Product, ServiceError> {
         let products = self.products.read().unwrap();
