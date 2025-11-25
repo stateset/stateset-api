@@ -6,7 +6,6 @@
  */
 
 use async_trait::async_trait;
-use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -238,7 +237,7 @@ impl MessageQueue for RedisMessageQueue {
             .cmd("SADD")
             .arg(self.inflight_key())
             .arg(&message.topic)
-            .query_async(&mut conn)
+            .query_async::<_, ()>(&mut conn)
             .await
             .map_err(|e| MessageQueueError::ConnectionError(e.to_string()))?;
 
@@ -298,7 +297,7 @@ impl MessageQueue for RedisMessageQueue {
                 .arg(self.processing_key(&record.topic))
                 .arg(1)
                 .arg(&record.payload)
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await
                 .map_err(|e| MessageQueueError::ConnectionError(e.to_string()))?;
         }
@@ -328,7 +327,7 @@ impl MessageQueue for RedisMessageQueue {
                 .cmd("RPUSH")
                 .arg(self.queue_key(&record.topic))
                 .arg(&record.payload)
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await
                 .map_err(|e| MessageQueueError::ConnectionError(e.to_string()))?;
         }

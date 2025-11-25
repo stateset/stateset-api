@@ -370,7 +370,7 @@ mod tests {
                 assert_eq!(mapped_claim_id, claim_id);
                 assert_eq!(mapped_warranty_id, warranty_id);
             }
-            other => panic!("unexpected event variant: {:?}", other),
+            other => unreachable!("test expected WarrantyClaimed but got {:?}", other),
         }
     }
 
@@ -401,7 +401,7 @@ mod tests {
                     Some("Technician completed on-site repair")
                 );
             }
-            other => panic!("unexpected event variant: {:?}", other),
+            other => unreachable!("test expected WarrantyClaimApproved but got {:?}", other),
         }
     }
 
@@ -429,7 +429,7 @@ mod tests {
                 assert_eq!(reason, "Damage outside coverage");
                 assert_eq!(notes.as_deref(), Some("Photos indicated misuse"));
             }
-            other => panic!("unexpected event variant: {:?}", other),
+            other => unreachable!("test expected WarrantyClaimRejected but got {:?}", other),
         }
     }
 }

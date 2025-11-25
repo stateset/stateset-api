@@ -19,10 +19,11 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
         .map(RequestId::new)
         .unwrap_or_else(RequestId::default);
 
-    // Add request ID to headers
+    // Add request ID to headers (request IDs are validated ASCII, so this won't fail)
     request.headers_mut().insert(
         HeaderName::from_static(REQUEST_ID_HEADER),
-        HeaderValue::from_str(request_id.as_str()).unwrap(),
+        HeaderValue::from_str(request_id.as_str())
+            .expect("request ID contains only valid header characters"),
     );
 
     // Make request id available to handlers
@@ -47,7 +48,8 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     // Add request ID to response headers
     response.headers_mut().insert(
         HeaderName::from_static(REQUEST_ID_HEADER),
-        HeaderValue::from_str(request_id.as_str()).unwrap(),
+        HeaderValue::from_str(request_id.as_str())
+            .expect("request ID contains only valid header characters"),
     );
 
     response

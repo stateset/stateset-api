@@ -5,7 +5,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 /// Standard success response
@@ -69,7 +69,7 @@ impl PaginationParams {
 }
 
 /// Standard pagination response metadata
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PaginationMeta {
     pub page: u64,
     pub per_page: u64,
@@ -94,13 +94,14 @@ impl PaginationMeta {
 }
 
 /// Standard paginated response wrapper
-#[derive(Debug, Serialize)]
-pub struct PaginatedResponse<T> {
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = PaginatedResponse)]
+pub struct PaginatedResponse<T: ToSchema> {
     pub data: Vec<T>,
     pub pagination: PaginationMeta,
 }
 
-impl<T> PaginatedResponse<T> {
+impl<T: ToSchema> PaginatedResponse<T> {
     pub fn new(data: Vec<T>, page: u64, per_page: u64, total: u64) -> Self {
         Self {
             data,

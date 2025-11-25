@@ -258,14 +258,14 @@ impl CacheBackend for RedisCache {
                 .arg(key)
                 .arg(ttl_secs)
                 .arg(value)
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await
                 .map_err(|e| CacheError::RedisError(e.to_string()))?;
         } else {
             redis::cmd("SET")
                 .arg(key)
                 .arg(value)
-                .query_async(&mut conn)
+                .query_async::<_, ()>(&mut conn)
                 .await
                 .map_err(|e| CacheError::RedisError(e.to_string()))?;
         }
@@ -276,7 +276,7 @@ impl CacheBackend for RedisCache {
         let mut conn = self.get_connection().await?;
         redis::cmd("DEL")
             .arg(key)
-            .query_async(&mut conn)
+            .query_async::<_, ()>(&mut conn)
             .await
             .map_err(|e| CacheError::RedisError(e.to_string()))?;
         Ok(())
@@ -295,7 +295,7 @@ impl CacheBackend for RedisCache {
     async fn clear(&self) -> Result<(), CacheError> {
         let mut conn = self.get_connection().await?;
         redis::cmd("FLUSHDB")
-            .query_async(&mut conn)
+            .query_async::<_, ()>(&mut conn)
             .await
             .map_err(|e| CacheError::RedisError(e.to_string()))?;
         Ok(())

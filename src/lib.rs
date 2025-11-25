@@ -610,7 +610,9 @@ pub mod prelude {
     pub use crate::metrics::*;
     // pub use crate::models::*;
     pub use crate::openapi::*;
-    pub use crate::proto::*;
+    // Note: proto and services both export modules with the same names (inventory, billofmaterials)
+    // Import them under namespaced prefixes to avoid ambiguous glob re-exports
+    pub use crate::proto as grpc_proto;
     // pub use crate::queries::*;
     pub use crate::rate_limiter::*;
     pub use crate::services::*;

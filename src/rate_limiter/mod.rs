@@ -44,13 +44,20 @@ use axum::{
 };
 use dashmap::DashMap;
 use metrics::counter;
-use redis::{aio::ConnectionLike, AsyncCommands};
+use redis::AsyncCommands;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tracing::{debug, warn};
+
+/// Helper function to convert a number to a HeaderValue.
+/// This is safe because numeric strings are always valid ASCII header values.
+fn num_to_header_value<T: ToString>(n: T) -> http::HeaderValue {
+    http::HeaderValue::from_str(&n.to_string())
+        .expect("numeric strings are always valid header values")
+}
 
 // In-memory rate limiter implementation
 #[derive(Debug, Error)]
@@ -285,7 +292,7 @@ impl RateLimiter {
             }
         }
 
-        let ttl_secs = match conn.ttl(&redis_key).await {
+        let ttl_secs = match conn.ttl::<_, i64>(&redis_key).await {
             Ok(ttl) if ttl > 0 => ttl as u64,
             _ => window_secs,
         };
@@ -498,15 +505,9 @@ pub async fn rate_limit_middleware(
 
                 if config.enable_headers {
                     let headers = response.headers_mut();
-                    headers.insert(
-                        "X-RateLimit-Limit",
-                        result.limit.to_string().parse().unwrap(),
-                    );
-                    headers.insert("X-RateLimit-Remaining", "0".parse().unwrap());
-                    headers.insert(
-                        "X-RateLimit-Reset",
-                        result.reset_time.as_secs().to_string().parse().unwrap(),
-                    );
+                    headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
+                    headers.insert("X-RateLimit-Remaining", num_to_header_value(0));
+                    headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
                 }
 
                 return Err(response);
@@ -518,18 +519,9 @@ pub async fn rate_limit_middleware(
             // Add rate limit headers to successful response
             if config.enable_headers {
                 let headers = response.headers_mut();
-                headers.insert(
-                    "X-RateLimit-Limit",
-                    result.limit.to_string().parse().unwrap(),
-                );
-                headers.insert(
-                    "X-RateLimit-Remaining",
-                    result.remaining.to_string().parse().unwrap(),
-                );
-                headers.insert(
-                    "X-RateLimit-Reset",
-                    result.reset_time.as_secs().to_string().parse().unwrap(),
-                );
+                headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
+                headers.insert("X-RateLimit-Remaining", num_to_header_value(result.remaining));
+                headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
             }
 
             Ok(response)
@@ -718,25 +710,13 @@ where
 
                         if rate_limiter.config.enable_headers {
                             let headers = response.headers_mut();
-                            let _ = headers.insert(
-                                "X-RateLimit-Limit",
-                                result.limit.to_string().parse().unwrap(),
-                            );
-                            let _ = headers.insert("X-RateLimit-Remaining", "0".parse().unwrap());
-                            let _ = headers.insert(
-                                "X-RateLimit-Reset",
-                                result.reset_time.as_secs().to_string().parse().unwrap(),
-                            );
+                            let _ = headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
+                            let _ = headers.insert("X-RateLimit-Remaining", num_to_header_value(0));
+                            let _ = headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
                             // RFC 9447 headers
-                            let _ = headers.insert(
-                                "RateLimit-Limit",
-                                result.limit.to_string().parse().unwrap(),
-                            );
-                            let _ = headers.insert("RateLimit-Remaining", "0".parse().unwrap());
-                            let _ = headers.insert(
-                                "RateLimit-Reset",
-                                result.reset_time.as_secs().to_string().parse().unwrap(),
-                            );
+                            let _ = headers.insert("RateLimit-Limit", num_to_header_value(result.limit));
+                            let _ = headers.insert("RateLimit-Remaining", num_to_header_value(0));
+                            let _ = headers.insert("RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
                         }
 
                         return Ok(response);
@@ -767,29 +747,13 @@ where
                     // Add rate limit headers to successful response
                     if rate_limiter.config.enable_headers {
                         let headers = response.headers_mut();
-                        let _ = headers.insert(
-                            "X-RateLimit-Limit",
-                            result.limit.to_string().parse().unwrap(),
-                        );
-                        let _ = headers.insert(
-                            "X-RateLimit-Remaining",
-                            result.remaining.to_string().parse().unwrap(),
-                        );
-                        let _ = headers.insert(
-                            "X-RateLimit-Reset",
-                            result.reset_time.as_secs().to_string().parse().unwrap(),
-                        );
+                        let _ = headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
+                        let _ = headers.insert("X-RateLimit-Remaining", num_to_header_value(result.remaining));
+                        let _ = headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
                         // RFC 9447
-                        let _ = headers
-                            .insert("RateLimit-Limit", result.limit.to_string().parse().unwrap());
-                        let _ = headers.insert(
-                            "RateLimit-Remaining",
-                            result.remaining.to_string().parse().unwrap(),
-                        );
-                        let _ = headers.insert(
-                            "RateLimit-Reset",
-                            result.reset_time.as_secs().to_string().parse().unwrap(),
-                        );
+                        let _ = headers.insert("RateLimit-Limit", num_to_header_value(result.limit));
+                        let _ = headers.insert("RateLimit-Remaining", num_to_header_value(result.remaining));
+                        let _ = headers.insert("RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
                     }
 
                     Ok(response)

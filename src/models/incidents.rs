@@ -75,11 +75,14 @@ impl Model {
         self.status == "Open"
     }
 
-    pub fn close(&mut self) {
+    /// Attempts to close the incident.
+    /// Returns `Ok(())` if successful, or `Err` with an explanation if the incident cannot be closed.
+    pub fn close(&mut self) -> Result<(), &'static str> {
         if self.corrective_actions.is_some() {
             self.status = "Closed".to_string();
+            Ok(())
         } else {
-            panic!("Cannot close incident without corrective actions");
+            Err("Cannot close incident without corrective actions")
         }
     }
 }

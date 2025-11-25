@@ -16,7 +16,7 @@ use crate::{
 };
 use redis::Client as RedisClient;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 use slog::Logger;
 use std::sync::Arc;

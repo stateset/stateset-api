@@ -7,19 +7,18 @@ use crate::{
     errors::ApiError,
     handlers::AppState,
     services::billofmaterials::{
-        AuditBomInput, BillOfMaterialsService, CreateBomComponentInput, CreateBomInput,
+        AuditBomInput, CreateBomComponentInput, CreateBomInput,
         UpdateBomInput,
     },
 };
 use axum::{
     extract::{Json, Path, Query, State},
-    http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
     Router,
 };
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::info;
 use utoipa::ToSchema;
 use uuid::Uuid;

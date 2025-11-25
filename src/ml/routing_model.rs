@@ -166,8 +166,9 @@ impl RoutingModel {
 
         // Sort by score and return the best option
         candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        
-        Ok(candidates.into_iter().next().unwrap())
+
+        // Safe: we checked candidates.is_empty() above
+        Ok(candidates.into_iter().next().expect("candidates is non-empty"))
     }
 
     /// Score a facility for a routing request

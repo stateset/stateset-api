@@ -12,17 +12,17 @@ use crate::{
         receive_purchase_order_command::ReceivePurchaseOrderCommand,
         update_purchase_order_command::UpdatePurchaseOrderCommand,
     },
-    errors::{ApiError, ServiceError},
+    errors::ApiError,
     handlers::AppState,
 };
 use axum::{
     extract::{Json, Path, Query, State},
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
     Router,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::info;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;

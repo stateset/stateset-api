@@ -1,7 +1,6 @@
 use crate::{
     cache::InMemoryCache,
     commands::shipments::create_shipment_command::CreateShipmentCommand,
-    entities::commerce::ProductModel,
     errors::ServiceError,
     events::{Event, EventSender},
     models::shipment,

@@ -297,7 +297,7 @@ impl BillOfMaterialsService {
         }
         model.updated_at = Utc::now();
 
-        let mut active = model.into_active_model();
+        let active = model.into_active_model();
 
         active.update(db).await.map_err(ServiceError::db_error)?;
 
@@ -438,7 +438,7 @@ impl BillOfMaterialsService {
             }
         };
 
-        let mut active = component.into_active_model();
+        let active = component.into_active_model();
 
         active.delete(db).await.map_err(ServiceError::db_error)?;
 

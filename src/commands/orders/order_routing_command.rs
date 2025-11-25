@@ -166,7 +166,7 @@ impl OrderRoutingCommand {
                 .await?;
             facility_scores.push(score);
         }
-        facility_scores.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        facility_scores.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         Ok(facility_scores)
     }
 
@@ -176,12 +176,43 @@ impl OrderRoutingCommand {
         facility: &facility_entity::Model,
         order_items: &[order_item_entity::Model],
         order: &order_entity::Model,
-        geocoding_service: &GeocodingService,
-        routing_model: &RoutingModel,
+        _geocoding_service: &GeocodingService,
+        _routing_model: &RoutingModel,
     ) -> Result<FacilityScore, ServiceError> {
-        // ... (keep the existing logic for scoring facilities)
-        // Remember to update any i32 IDs to Uuid
-        todo!("Implement facility scoring logic")
+        // Basic scoring implementation: score based on available inventory
+        // Future: incorporate distance, capacity, and ML-based routing
+        let mut inventory_allocation = Vec::new();
+        let mut total_available = 0i64;
+
+        for item in order_items {
+            // Check inventory at this facility for each order item
+            let inventory = InventoryItem::find()
+                .filter(inventory_item_entity::Column::LocationId.eq(facility.id))
+                .filter(inventory_item_entity::Column::ProductId.eq(item.product_id))
+                .one(db)
+                .await
+                .map_err(ServiceError::db_error)?;
+
+            if let Some(inv) = inventory {
+                let available = inv.quantity_on_hand.unwrap_or(0);
+                total_available += available;
+                inventory_allocation.push((item.product_id, available as i32));
+            }
+        }
+
+        // Simple score: ratio of available inventory to requested
+        let total_requested: i64 = order_items.iter().map(|i| i.quantity as i64).sum();
+        let score = if total_requested > 0 {
+            (total_available as f64) / (total_requested as f64)
+        } else {
+            0.0
+        };
+
+        Ok(FacilityScore {
+            facility_id: facility.id,
+            score,
+            inventory_allocation,
+        })
     }
 
     async fn allocate_inventory(
@@ -191,9 +222,33 @@ impl OrderRoutingCommand {
         order_items: Vec<order_item_entity::Model>,
         facility_scores: Vec<FacilityScore>,
     ) -> Result<Vec<order_entity::Model>, ServiceError> {
-        // ... (keep the existing logic for allocating inventory)
-        // Remember to update any i32 IDs to Uuid
-        todo!("Implement inventory allocation logic")
+        // Allocate order to the facility with the highest score
+        // Future: support splitting orders across multiple facilities
+        if facility_scores.is_empty() {
+            return Err(ServiceError::InvalidOperation(
+                "No facilities available for order routing".to_string(),
+            ));
+        }
+
+        // Get the best facility (already sorted by score descending)
+        let best_facility = &facility_scores[0];
+
+        if best_facility.score <= 0.0 {
+            return Err(ServiceError::InvalidOperation(
+                "No facility has sufficient inventory to fulfill this order".to_string(),
+            ));
+        }
+
+        // For now, return the original order - facility assignment would be stored
+        // in a separate order_allocation or order_routing table in production
+        info!(
+            order_id = %original_order.id,
+            facility_id = %best_facility.facility_id,
+            score = best_facility.score,
+            "Order allocated to facility"
+        );
+
+        Ok(vec![original_order])
     }
 
     async fn update_orders(

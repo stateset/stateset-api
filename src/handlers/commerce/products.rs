@@ -391,7 +391,7 @@ async fn get_product_variants(
         .await
         .map_err(map_service_error)?;
 
-    let variants = variants.into_iter().map(VariantResponse::from).collect();
+    let variants: Vec<VariantResponse> = variants.into_iter().map(VariantResponse::from).collect();
 
     Ok(success_response(variants))
 }

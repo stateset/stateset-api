@@ -152,7 +152,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         CorsLayer::permissive()
     } else {
-        panic!("Missing CORS configuration detected; set APP__CORS_ALLOWED_ORIGINS or APP__CORS_ALLOW_ANY_ORIGIN=true");
+        error!("Missing CORS configuration detected; set APP__CORS_ALLOWED_ORIGINS or APP__CORS_ALLOW_ANY_ORIGIN=true");
+        return Err("Missing CORS configuration: set APP__CORS_ALLOWED_ORIGINS or APP__CORS_ALLOW_ANY_ORIGIN=true".into());
     };
 
     // Build router: status/health + full v1 API + Swagger UI

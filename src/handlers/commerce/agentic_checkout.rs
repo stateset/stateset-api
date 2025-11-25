@@ -1124,7 +1124,7 @@ async fn cancel_checkout_session(
     )
 }
 
-async fn verify_acp_signature(mut req: Request, next: Next) -> Response {
+async fn verify_acp_signature(req: Request, next: Next) -> Response {
     let state_opt = req.extensions().get::<AppState>().cloned();
     let Some(state) = state_opt else {
         return ApiError::InternalServerError.into_response();

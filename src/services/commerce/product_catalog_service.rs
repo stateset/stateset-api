@@ -254,7 +254,7 @@ impl ProductCatalogService {
                 ServiceError::NotFound(format!("Product variant {} not found", variant_id))
             })?;
 
-        let mut active: product_variant::ActiveModel = variant.clone().into();
+        let active: product_variant::ActiveModel = variant.clone().into();
         active.delete(&*self.db).await?;
 
         self.event_sender
