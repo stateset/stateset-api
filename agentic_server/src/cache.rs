@@ -86,6 +86,15 @@ impl InMemoryCache {
         store.remove(key);
         Ok(())
     }
+
+    pub async fn get_keys_by_prefix(&self, prefix: &str) -> Vec<String> {
+        let store = self.store.read().await;
+        store
+            .keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect()
+    }
 }
 
 impl Default for InMemoryCache {

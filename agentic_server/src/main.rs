@@ -33,13 +33,17 @@ mod rate_limit;
 mod redis_store;
 mod return_service;
 mod fraud_service;
+mod recovery_service;
 mod security;
 mod service;
 
 use return_service::ReturnService;
 use fraud_service::FraudService;
+use recovery_service::RecoveryService;
 use neural::agents::return_agent::ReturnAgent;
 use neural::agents::fraud_agent::FraudAgent;
+use neural::agents::recovery_agent::RecoveryAgent;
+use neural::agents::pricing_agent::PricingAgent;
 mod shopify_integration;
 mod stripe_integration;
 mod tax_service;
@@ -87,6 +91,7 @@ pub struct AppState {
     pub chat_service: Option<Arc<ChatService>>,
     pub return_service: Arc<ReturnService>,
     pub fraud_service: Arc<FraudService>,
+    pub recovery_service: Arc<RecoveryService>,
 }
 
 #[tokio::main]
@@ -245,7 +250,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Checkout service initialized");
 
     // Initialize delegated payment service
-    let delegated_payment_service = Arc::new(DelegatedPaymentService::new(cache));
+    let delegated_payment_service = Arc::new(DelegatedPaymentService::new(cache.clone()));
     info!("Delegated payment service initialized");
 
     // Initialize rate limiter (100 requests per minute)
@@ -292,6 +297,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
 
                 // Initialize Fraud Service already done
+
+                // Initialize Recovery Service
+                let recovery_service = Arc::new(RecoveryService::new(cache.clone()));
 
         
 
@@ -411,6 +419,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                     tokio::spawn(async move { fraud_agent.run().await });
 
+                                    // Initialize and spawn RecoveryAgent
+                                    let recovery_agent_interval = std::env::var("RECOVERY_AGENT_INTERVAL_SECONDS")
+                                        .unwrap_or_else(|_| "300".to_string()) // Check every 5 minutes
+                                        .parse::<u64>()
+                                        .unwrap_or(300);
+                                    info!("RecoveryAgent configured to run every {} seconds", recovery_agent_interval);
+                                    let recovery_agent = RecoveryAgent::new(
+                                        cognitive_service.clone(),
+                                        recovery_service.clone(),
+                                        event_sender.clone(),
+                                        recovery_agent_interval,
+                                    );
+                                    tokio::spawn(async move { recovery_agent.run().await });
+
+                                    // Initialize and spawn PricingAgent
+                                    let pricing_agent_interval = std::env::var("PRICING_AGENT_INTERVAL_SECONDS")
+                                        .unwrap_or_else(|_| "3600".to_string()) // Check hourly
+                                        .parse::<u64>()
+                                        .unwrap_or(3600);
+                                    info!("PricingAgent configured to run every {} seconds", pricing_agent_interval);
+                                    let pricing_agent = PricingAgent::new(
+                                        cognitive_service.clone(),
+                                        product_catalog.clone(),
+                                        pricing_agent_interval,
+                                    );
+                                    tokio::spawn(async move { pricing_agent.run().await });
+
                     
 
                                     info!("Neural Services initialized successfully");
@@ -462,6 +497,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return_service,
 
                         fraud_service: fraud_svc,
+                        recovery_service,
 
                     };
 

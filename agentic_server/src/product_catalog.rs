@@ -253,6 +253,21 @@ impl ProductCatalogService {
 
         Ok(())
     }
+
+    /// Update product price
+    pub fn update_price(&self, product_id: &str, price: i64) -> Result<(), ServiceError> {
+        let mut products = self.products.write().unwrap();
+
+        let product = products
+            .get_mut(product_id)
+            .ok_or_else(|| ServiceError::NotFound(format!("Product {} not found", product_id)))?;
+
+        let old_price = product.price;
+        product.price = price;
+        info!("Updated price for {}: {} -> {}", product_id, old_price, price);
+
+        Ok(())
+    }
 }
 
 impl Default for ProductCatalogService {

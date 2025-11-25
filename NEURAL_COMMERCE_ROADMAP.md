@@ -1,6 +1,6 @@
 # Neural Commerce Grid: The Path to Disruptive Intelligent Commerce
 
-**Status**: Phase 3 Complete (Autonomous Agents Active)
+**Status**: Phase 3+ Complete (5 Active Agents)
 **Goal**: Transform Stateset from a "Headless Commerce API" into the world's first "AI-Native Commerce Grid".
 
 ## 🚀 Execution Roadmap
@@ -20,7 +20,8 @@
     *   [x] **Inventory Agent**: Monitors stock & sales trends -> Drafts Purchase Orders.
     *   [x] **Return Agent**: Monitors return requests -> Analyzes reasons -> Flags Quality Alerts.
     *   [x] **Fraud Agent**: Monitors completed orders -> Analyzes risk patterns -> Flags Fraud.
-    *   [x] **Services**: Implemented `ReturnService` and `FraudService` to manage agent work queues.
+    *   [x] **Recovery Agent**: Monitors abandoned carts -> Sends Recovery Messages.
+    *   [x] **Pricing Agent**: Monitors demand & competitors -> Optimizes Prices.
 
 ## 🛠️ Usage
 
@@ -31,16 +32,13 @@ export QDRANT_URL="http://localhost:6334"
 export INVENTORY_AGENT_INTERVAL_SECONDS=300
 export RETURN_AGENT_INTERVAL_SECONDS=60
 export FRAUD_AGENT_INTERVAL_SECONDS=30
+export RECOVERY_AGENT_INTERVAL_SECONDS=300
+export PRICING_AGENT_INTERVAL_SECONDS=3600
 ```
 
-**Endpoints:**
-
-1.  **Semantic Search**: `POST /neural/search`
-2.  **Chat with Inventory**: `POST /neural/chat`
-3.  **Create Return**: `POST /returns`
-4.  **Check Return Status**: `GET /returns/pending`
-
 **Autonomous Behavior:**
-*   **FraudAgent** wakes up every 30s, checks new orders, asks LLM to assess risk (0-100 score), and approves/rejects.
-*   **ReturnAgent** wakes up every 60s, analyzes returns for quality issues.
-*   **InventoryAgent** wakes up every 5 mins, checks stock velocity.
+*   **PricingAgent** runs hourly, checking demand/stock and adjusting prices to maximize revenue.
+*   **RecoveryAgent** finds abandoned carts and engages users.
+*   **FraudAgent** protects transactions in near real-time.
+*   **ReturnAgent** ensures product quality feedback loops.
+*   **InventoryAgent** keeps the shelves stocked.

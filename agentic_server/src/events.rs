@@ -8,6 +8,7 @@ pub enum Event {
     OrderCreated { order_id: Uuid },
     PurchaseOrderDrafted { product_id: String, quantity: u32, reason: String },
     QualityAlert { product_id: String, return_id: String, reason: String },
+    CartRecoveryMessageSent { session_id: String, email: String, message: String },
 }
 
 #[derive(Clone)]
