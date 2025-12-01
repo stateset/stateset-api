@@ -191,6 +191,33 @@ pub enum Event {
         product_id: Uuid,
         average_cost: rust_decimal::Decimal,
     },
+    WorkOrderScheduled {
+        work_order_id: i64,
+        scheduled_start: chrono::NaiveDate,
+        scheduled_completion: chrono::NaiveDate,
+    },
+    WorkOrderOnHold {
+        work_order_id: i64,
+        reason: Option<String>,
+    },
+    WorkOrderResumed {
+        work_order_id: i64,
+    },
+    WorkOrderMaterialsReserved {
+        work_order_id: i64,
+        item_count: usize,
+    },
+    WorkOrderMaterialsReleased {
+        work_order_id: i64,
+        reason: String,
+    },
+    ComponentShortageDetected {
+        work_order_id: i64,
+        item_id: i64,
+        required_quantity: Decimal,
+        available_quantity: Decimal,
+        shortage_quantity: Decimal,
+    },
 
     // COGS events
     MonthlyCOGSCalculated(String, rust_decimal::Decimal),
