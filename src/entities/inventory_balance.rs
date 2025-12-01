@@ -13,8 +13,22 @@ pub struct Model {
     pub quantity_on_hand: Decimal,
     #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub quantity_allocated: Decimal,
-    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))", select_as = "expr")]
     pub quantity_available: Decimal,
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
+    pub reorder_point: Option<Decimal>,
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
+    pub safety_stock: Option<Decimal>,
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
+    pub reorder_quantity: Option<Decimal>,
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
+    pub max_stock_level: Option<Decimal>,
+    pub lead_time_days: Option<i32>,
+    pub version: i32,
+    pub last_counted_at: Option<DateTimeWithTimeZone>,
+    pub last_counted_by: Option<String>,
+    pub deleted_at: Option<DateTimeWithTimeZone>,
+    pub deleted_by: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

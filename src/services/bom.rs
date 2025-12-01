@@ -1,6 +1,7 @@
 use chrono::Utc;
 use metrics::{counter, histogram};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
@@ -431,6 +432,9 @@ impl BomService {
             .calculate_component_requirements(bom_id, production_quantity)
             .await?;
 
+        // Record metrics before consuming requirements
+        let requirements_count = requirements.len();
+
         // Release each reserved component
         for req in requirements {
             self.inventory_sync
@@ -448,7 +452,7 @@ impl BomService {
         txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Record metrics
-        counter!("manufacturing.bom.reservations_released", requirements.len() as u64);
+        counter!("manufacturing.bom.reservations_released", requirements_count as u64);
 
         info!(
             "Component reservations released: bom_id={}, quantity={}, work_order_id={}",
@@ -474,6 +478,9 @@ impl BomService {
         let requirements = self
             .calculate_component_requirements(bom_id, production_quantity)
             .await?;
+
+        // Record metrics before consuming requirements
+        let requirements_count = requirements.len();
 
         // First, release the reservations
         for req in &requirements {
@@ -506,7 +513,7 @@ impl BomService {
         txn.commit().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Record metrics
-        counter!("manufacturing.bom.components_consumed", requirements.len() as u64);
+        counter!("manufacturing.bom.components_consumed", requirements_count as u64);
         histogram!(
             "manufacturing.bom.consumption_quantity",
             production_quantity.to_f64().unwrap_or(0.0)

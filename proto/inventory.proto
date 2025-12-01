@@ -5,29 +5,77 @@ import "google/protobuf/timestamp.proto";
 import "common.proto";
 
 message InventoryItem {
-  string product_id = 1;
-  int32 quantity = 2;
-  string warehouse_id = 3;
-  string location = 4;
-  google.protobuf.Timestamp last_updated = 5;
+  int64 inventory_item_id = 1;
+  string item_number = 2;
+  string description = 3;
+  string primary_uom_code = 4;
+  int64 organization_id = 5;
+  InventoryQuantities quantities = 6;
+  repeated InventoryLocation locations = 7;
 }
 
-message UpdateInventoryRequest {
-  string product_id = 1;
-  int32 quantity_change = 2;
-  string warehouse_id = 3;
-  string reason = 4;
+message InventoryQuantities {
+  string on_hand = 1;  // Using string for Decimal precision
+  string allocated = 2;
+  string available = 3;
 }
 
-message UpdateInventoryResponse {
-  string product_id = 1;
-  int32 new_quantity = 2;
-  string warehouse_id = 3;
+message InventoryLocation {
+  int32 location_id = 1;
+  string location_name = 2;
+  InventoryQuantities quantities = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message AdjustInventoryRequest {
+  oneof identifier {
+    int64 inventory_item_id = 1;
+    string item_number = 2;
+  }
+  int32 location_id = 3;
+  string quantity_delta = 4;  // Using string for Decimal precision
+  string reason = 5;
+  string idempotency_key = 6;
+}
+
+message AdjustInventoryResponse {
+  InventoryLocation location_balance = 1;
+}
+
+message ReserveInventoryRequest {
+  oneof identifier {
+    int64 inventory_item_id = 1;
+    string item_number = 2;
+  }
+  int32 location_id = 3;
+  string quantity = 4;  // Using string for Decimal precision
+  string reference_id = 5;
+  string reference_type = 6;
+}
+
+message ReserveInventoryResponse {
+  string reservation_id = 1;
+  InventoryLocation location_balance = 2;
+}
+
+message ReleaseReservationRequest {
+  oneof identifier {
+    int64 inventory_item_id = 1;
+    string item_number = 2;
+  }
+  int32 location_id = 3;
+  string quantity = 4;  // Using string for Decimal precision
+}
+
+message ReleaseReservationResponse {
+  InventoryLocation location_balance = 1;
 }
 
 message GetInventoryRequest {
-  string product_id = 1;
-  string warehouse_id = 2;
+  oneof identifier {
+    int64 inventory_item_id = 1;
+    string item_number = 2;
+  }
 }
 
 message GetInventoryResponse {
@@ -35,30 +83,36 @@ message GetInventoryResponse {
 }
 
 message ListInventoryRequest {
-  repeated string product_ids = 1;
-  string warehouse_id = 2;
-  common.PaginationRequest pagination = 3;
+  uint64 page = 1;
+  uint64 limit = 2;
+  string product_filter = 3;
+  int32 location_filter = 4;
+  string low_stock_threshold = 5;  // Using string for Decimal precision
 }
 
 message ListInventoryResponse {
   repeated InventoryItem items = 1;
-  common.PaginationResponse pagination = 2;
+  uint64 total = 2;
+  uint64 page = 3;
+  uint64 per_page = 4;
 }
 
-message ReserveInventoryRequest {
-  string product_id = 1;
-  int32 quantity = 2;
-  string order_id = 3;
+message TransferInventoryRequest {
+  int64 inventory_item_id = 1;
+  int32 from_location_id = 2;
+  int32 to_location_id = 3;
+  string quantity = 4;  // Using string for Decimal precision
 }
 
-message ReserveInventoryResponse {
+message TransferInventoryResponse {
   bool success = 1;
-  string reservation_id = 2;
 }
 
 service InventoryService {
-  rpc UpdateInventory (UpdateInventoryRequest) returns (UpdateInventoryResponse);
+  rpc AdjustInventory (AdjustInventoryRequest) returns (AdjustInventoryResponse);
+  rpc ReserveInventory (ReserveInventoryRequest) returns (ReserveInventoryResponse);
+  rpc ReleaseReservation (ReleaseReservationRequest) returns (ReleaseReservationResponse);
   rpc GetInventory (GetInventoryRequest) returns (GetInventoryResponse);
   rpc ListInventory (ListInventoryRequest) returns (ListInventoryResponse);
-  rpc ReserveInventory (ReserveInventoryRequest) returns (ReserveInventoryResponse);
+  rpc TransferInventory (TransferInventoryRequest) returns (TransferInventoryResponse);
 }

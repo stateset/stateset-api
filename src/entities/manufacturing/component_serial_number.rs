@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ComponentStatus {
     #[sea_orm(string_value = "in_stock")]
     InStock,

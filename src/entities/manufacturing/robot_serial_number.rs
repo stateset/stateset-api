@@ -1,11 +1,11 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, ConnectionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum RobotStatus {
     #[sea_orm(string_value = "in_production")]
     InProduction,
@@ -24,7 +24,7 @@ pub enum RobotStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum RobotType {
     #[sea_orm(string_value = "articulated_arm")]
     ArticulatedArm,
@@ -106,8 +106,8 @@ impl Model {
         format!(
             "{}-{:04}{:02}-{:05}",
             model,
-            now.year(),
-            now.month(),
+            now.date_naive().year(),
+            now.date_naive().month(),
             sequence
         )
     }

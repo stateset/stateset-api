@@ -1,11 +1,11 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, ConnectionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ChangeType {
     #[sea_orm(string_value = "component_change")]
     ComponentChange,
@@ -18,7 +18,7 @@ pub enum ChangeType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum EcoStatus {
     #[sea_orm(string_value = "draft")]
     Draft,
@@ -33,7 +33,7 @@ pub enum EcoStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum Priority {
     #[sea_orm(string_value = "low")]
     Low,
@@ -72,6 +72,7 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
+#[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
     where
@@ -108,7 +109,7 @@ impl Model {
     /// Format: ECO-{YEAR}{MONTH}-{SEQUENCE}
     pub fn generate_eco_number(sequence: u32) -> String {
         let now = Utc::now();
-        format!("ECO-{:04}{:02}-{:05}", now.year(), now.month(), sequence)
+        format!("ECO-{:04}{:02}-{:05}", now.date_naive().year(), now.date_naive().month(), sequence)
     }
 
     /// Check if ECO can be released

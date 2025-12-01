@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, ConnectionTrait};
@@ -7,7 +7,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ServiceType {
     #[sea_orm(string_value = "preventive_maintenance")]
     PreventiveMaintenance,
@@ -22,7 +22,7 @@ pub enum ServiceType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ServiceStatus {
     #[sea_orm(string_value = "scheduled")]
     Scheduled,
@@ -105,7 +105,7 @@ impl Model {
     /// Format: SVC-{YEAR}{MONTH}-{SEQUENCE}
     pub fn generate_ticket_number(sequence: u32) -> String {
         let now = Utc::now();
-        format!("SVC-{:04}{:02}-{:05}", now.year(), now.month(), sequence)
+        format!("SVC-{:04}{:02}-{:05}", now.date_naive().year(), now.date_naive().month(), sequence)
     }
 
     /// Check if service is overdue

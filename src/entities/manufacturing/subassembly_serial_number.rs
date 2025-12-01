@@ -1,11 +1,11 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, ConnectionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum SubassemblyStatus {
     #[sea_orm(string_value = "in_production")]
     InProduction,
@@ -99,7 +99,7 @@ impl Model {
     pub fn generate_serial_number(subassembly_type: &str, sequence: u32) -> String {
         let now = Utc::now();
         let type_code = subassembly_type.to_uppercase().chars().take(4).collect::<String>();
-        format!("{}-{:04}{:02}-{:05}", type_code, now.year(), now.month(), sequence)
+        format!("{}-{:04}{:02}-{:05}", type_code, now.date_naive().year(), now.date_naive().month(), sequence)
     }
 
     /// Check if subassembly is available for installation

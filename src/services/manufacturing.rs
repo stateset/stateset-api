@@ -1,6 +1,7 @@
 use chrono::{NaiveDate, Utc};
 use metrics::{counter, histogram};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,

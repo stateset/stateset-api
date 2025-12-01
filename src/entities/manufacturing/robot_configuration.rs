@@ -7,7 +7,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ConfigurationType {
     #[sea_orm(string_value = "as_ordered")]
     AsOrdered,
@@ -16,7 +16,7 @@ pub enum ConfigurationType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum MountingType {
     #[sea_orm(string_value = "floor")]
     Floor,

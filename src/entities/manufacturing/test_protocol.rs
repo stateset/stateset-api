@@ -6,7 +6,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum TestType {
     #[sea_orm(string_value = "mechanical")]
     Mechanical,
@@ -21,7 +21,7 @@ pub enum TestType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum ProtocolStatus {
     #[sea_orm(string_value = "draft")]
     Draft,

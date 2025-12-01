@@ -132,10 +132,10 @@ struct InventoryGrpcService;
 
 #[tonic::async_trait]
 impl inventory::inventory_service_server::InventoryService for InventoryGrpcService {
-    async fn update_inventory(
+    async fn adjust_inventory(
         &self,
-        _request: tonic::Request<inventory::UpdateInventoryRequest>,
-    ) -> Result<tonic::Response<inventory::UpdateInventoryResponse>, tonic::Status> {
+        _request: tonic::Request<inventory::AdjustInventoryRequest>,
+    ) -> Result<tonic::Response<inventory::AdjustInventoryResponse>, tonic::Status> {
         Err(tonic::Status::unimplemented(
             "Inventory gRPC not yet implemented",
         ))
@@ -163,6 +163,24 @@ impl inventory::inventory_service_server::InventoryService for InventoryGrpcServ
         &self,
         _request: tonic::Request<inventory::ReserveInventoryRequest>,
     ) -> Result<tonic::Response<inventory::ReserveInventoryResponse>, tonic::Status> {
+        Err(tonic::Status::unimplemented(
+            "Inventory gRPC not yet implemented",
+        ))
+    }
+
+    async fn release_reservation(
+        &self,
+        _request: tonic::Request<inventory::ReleaseReservationRequest>,
+    ) -> Result<tonic::Response<inventory::ReleaseReservationResponse>, tonic::Status> {
+        Err(tonic::Status::unimplemented(
+            "Inventory gRPC not yet implemented",
+        ))
+    }
+
+    async fn transfer_inventory(
+        &self,
+        _request: tonic::Request<inventory::TransferInventoryRequest>,
+    ) -> Result<tonic::Response<inventory::TransferInventoryResponse>, tonic::Status> {
         Err(tonic::Status::unimplemented(
             "Inventory gRPC not yet implemented",
         ))

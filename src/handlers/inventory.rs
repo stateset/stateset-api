@@ -519,43 +519,20 @@ async fn inventory_page(
     per_page: u64,
     low_stock_threshold: Option<Decimal>,
 ) -> Result<(Vec<InventoryItem>, u64), ServiceError> {
-    if !has_active_filters(filters, low_stock_threshold.is_some()) {
-        let page = offset / per_page + 1;
-        let (snapshots, total) = service.list_inventory(page, per_page).await?;
-        let items = snapshots.into_iter().map(snapshot_to_api_item).collect();
-        return Ok((items, total));
-    }
+    // Use SQL filtering for better performance
+    let page = offset / per_page + 1;
+    let (snapshots, total) = service
+        .list_inventory_filtered(
+            page,
+            per_page,
+            filters.product_id.as_deref(),
+            filters.location_id.as_deref().and_then(|s| s.parse::<i32>().ok()),
+            low_stock_threshold,
+        )
+        .await?;
 
-    let fetch_page_size = per_page.max(100).min(1000);
-    let mut page_index = 1_u64;
-    let mut filtered_total = 0_u64;
-    let mut collected: Vec<InventorySnapshot> = Vec::new();
-
-    loop {
-        let (snapshots, total) = service.list_inventory(page_index, fetch_page_size).await?;
-
-        if snapshots.is_empty() {
-            break;
-        }
-
-        for snapshot in snapshots {
-            if matches_filters(&snapshot, filters, low_stock_threshold.clone()) {
-                if filtered_total >= offset && collected.len() < per_page as usize {
-                    collected.push(snapshot);
-                }
-                filtered_total += 1;
-            }
-        }
-
-        if page_index * fetch_page_size >= total {
-            break;
-        }
-        page_index += 1;
-    }
-
-    let items = collected.into_iter().map(snapshot_to_api_item).collect();
-
-    Ok((items, filtered_total))
+    let items = snapshots.into_iter().map(snapshot_to_api_item).collect();
+    Ok((items, total))
 }
 
 async fn fetch_snapshot(

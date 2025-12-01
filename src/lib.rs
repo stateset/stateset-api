@@ -14,6 +14,7 @@ pub mod circuit_breaker;
 pub mod commands;
 pub mod config;
 pub mod db;
+pub mod dto;
 pub mod entities;
 pub mod errors;
 pub mod events;

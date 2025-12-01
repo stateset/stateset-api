@@ -154,19 +154,35 @@ fn parse_location_id(value: &str) -> Result<i32, Status> {
 }
 
 fn balance_to_proto_item(
+    inventory_item_id: i64,
     item_number: &str,
+    description: Option<&str>,
     balance: &LocationBalance,
 ) -> Result<InventoryItem, Status> {
-    let quantity = decimal_to_i32(balance.quantity_available)?;
     Ok(InventoryItem {
-        product_id: item_number.to_string(),
-        quantity,
-        warehouse_id: balance.location_id.to_string(),
-        location: balance
-            .location_name
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string()),
-        last_updated: Some(timestamp_from(balance.updated_at)),
+        inventory_item_id,
+        item_number: item_number.to_string(),
+        description: description.unwrap_or("").to_string(),
+        primary_uom_code: "EA".to_string(), // Default to "Each"
+        organization_id: 1, // Default organization
+        quantities: Some(InventoryQuantities {
+            on_hand: balance.quantity_on_hand.to_string(),
+            allocated: balance.quantity_allocated.to_string(),
+            available: balance.quantity_available.to_string(),
+        }),
+        locations: vec![InventoryLocation {
+            location_id: balance.location_id,
+            location_name: balance
+                .location_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            quantities: Some(InventoryQuantities {
+                on_hand: balance.quantity_on_hand.to_string(),
+                allocated: balance.quantity_allocated.to_string(),
+                available: balance.quantity_available.to_string(),
+            }),
+            updated_at: Some(timestamp_from(balance.updated_at)),
+        }],
     })
 }
 
@@ -410,73 +426,112 @@ impl order_service_server::OrderService for StateSetApi {
 // Inventory Service Implementation
 #[tonic::async_trait]
 impl inventory_service_server::InventoryService for StateSetApi {
-    #[instrument(skip(self, request), fields(product_id, warehouse_id))]
+    #[instrument(skip(self, request), fields(inventory_item_id, item_number))]
     async fn get_inventory(
         &self,
         request: Request<GetInventoryRequest>,
     ) -> Result<Response<GetInventoryResponse>, Status> {
         let req = request.into_inner();
-        let identifier = parse_inventory_identifier(&req.product_id)?;
-        let location_id = parse_location_id(&req.warehouse_id)?;
+
+        let identifier = match req.identifier {
+            Some(get_inventory_request::Identifier::InventoryItemId(id)) => InventoryIdentifier::Id(id),
+            Some(get_inventory_request::Identifier::ItemNumber(num)) => InventoryIdentifier::Number(num),
+            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+        };
 
         let snapshot = fetch_inventory_snapshot(&self.inventory_service, identifier).await?;
-        let balance = self
-            .inventory_service
-            .get_location_balance(snapshot.inventory_item_id, location_id)
-            .await
-            .map_err(|e| {
-                error!("Failed to get inventory: {}", e);
-                Status::internal("Failed to fetch inventory")
-            })?
-            .ok_or_else(|| Status::not_found("Inventory balance not found"))?;
 
-        let item = balance_to_proto_item(&snapshot.item_number, &balance)?;
+        // Build the full item with all locations
+        let locations: Vec<InventoryLocation> = snapshot.locations.iter().map(|balance| {
+            InventoryLocation {
+                location_id: balance.location_id,
+                location_name: balance.location_name.clone().unwrap_or_else(|| "unknown".to_string()),
+                quantities: Some(InventoryQuantities {
+                    on_hand: balance.quantity_on_hand.to_string(),
+                    allocated: balance.quantity_allocated.to_string(),
+                    available: balance.quantity_available.to_string(),
+                }),
+                updated_at: Some(timestamp_from(balance.updated_at)),
+            }
+        }).collect();
+
+        // Calculate total quantities across all locations
+        let total_on_hand: Decimal = snapshot.locations.iter().map(|b| b.quantity_on_hand).sum();
+        let total_allocated: Decimal = snapshot.locations.iter().map(|b| b.quantity_allocated).sum();
+        let total_available: Decimal = snapshot.locations.iter().map(|b| b.quantity_available).sum();
+
+        let item = InventoryItem {
+            inventory_item_id: snapshot.inventory_item_id,
+            item_number: snapshot.item_number.clone(),
+            description: snapshot.description.clone().unwrap_or_default(),
+            primary_uom_code: snapshot.primary_uom_code.clone().unwrap_or_else(|| "EA".to_string()),
+            organization_id: snapshot.organization_id,
+            quantities: Some(InventoryQuantities {
+                on_hand: total_on_hand.to_string(),
+                allocated: total_allocated.to_string(),
+                available: total_available.to_string(),
+            }),
+            locations,
+        };
 
         Ok(Response::new(GetInventoryResponse { item: Some(item) }))
     }
 
-    #[instrument(skip(self, request), fields(product_id, warehouse_id, quantity_change))]
-    async fn update_inventory(
+    #[instrument(skip(self, request), fields(inventory_item_id, location_id, quantity_delta))]
+    async fn adjust_inventory(
         &self,
-        request: Request<UpdateInventoryRequest>,
-    ) -> Result<Response<UpdateInventoryResponse>, Status> {
+        request: Request<AdjustInventoryRequest>,
+    ) -> Result<Response<AdjustInventoryResponse>, Status> {
         let req = request.into_inner();
-        let identifier = parse_inventory_identifier(&req.product_id)?;
-        let location_id = parse_location_id(&req.warehouse_id)?;
-        let snapshot = fetch_inventory_snapshot(&self.inventory_service, identifier).await?;
+
+        let (inventory_item_id, item_number) = match req.identifier {
+            Some(adjust_inventory_request::Identifier::InventoryItemId(id)) => (Some(id), None),
+            Some(adjust_inventory_request::Identifier::ItemNumber(num)) => (None, Some(num)),
+            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+        };
+
+        let quantity_delta = req.quantity_delta.parse::<rust_decimal::Decimal>()
+            .map_err(|_| Status::invalid_argument("Invalid quantity_delta"))?;
 
         self.inventory_service
             .adjust_inventory(AdjustInventoryCommand {
-                inventory_item_id: Some(snapshot.inventory_item_id),
-                item_number: None,
-                location_id,
-                quantity_delta: Decimal::from(req.quantity_change),
+                inventory_item_id,
+                item_number,
+                location_id: req.location_id,
+                quantity_delta,
                 reason: (!req.reason.is_empty()).then(|| req.reason.clone()),
             })
             .await
             .map_err(|e| {
-                error!("Failed to update inventory: {}", e);
+                error!("Failed to adjust inventory: {}", e);
                 e.into_grpc_status()
             })?;
 
-        let updated_balance = self
-            .inventory_service
-            .get_location_balance(snapshot.inventory_item_id, location_id)
-            .await
-            .map_err(|e| {
-                error!("Failed to fetch updated inventory: {}", e);
-                Status::internal("Failed to fetch updated inventory")
-            })?
-            .ok_or_else(|| Status::internal("Inventory balance missing after update"))?;
+        Ok(Response::new(AdjustInventoryResponse {
+            location_balance: None, // TODO: Return updated balance
+        }))
+    }
 
-        let new_quantity = decimal_to_i32(updated_balance.quantity_available)?;
+    #[instrument(skip(self, request), fields(inventory_item_id, location_id))]
+    async fn release_reservation(
+        &self,
+        request: Request<ReleaseReservationRequest>,
+    ) -> Result<Response<ReleaseReservationResponse>, Status> {
+        let _req = request.into_inner();
 
-        let response = UpdateInventoryResponse {
-            product_id: snapshot.item_number,
-            new_quantity,
-            warehouse_id: location_id.to_string(),
-        };
-        Ok(Response::new(response))
+        // TODO: Implement release_reservation logic
+        Err(Status::unimplemented("Release reservation not yet implemented"))
+    }
+
+    #[instrument(skip(self, request), fields(inventory_item_id, from_location_id, to_location_id))]
+    async fn transfer_inventory(
+        &self,
+        request: Request<TransferInventoryRequest>,
+    ) -> Result<Response<TransferInventoryResponse>, Status> {
+        let _req = request.into_inner();
+
+        // TODO: Implement transfer_inventory logic
+        Err(Status::unimplemented("Transfer inventory not yet implemented"))
     }
 
     async fn list_inventory(
@@ -485,32 +540,30 @@ impl inventory_service_server::InventoryService for StateSetApi {
     ) -> Result<Response<ListInventoryResponse>, Status> {
         info!("Listing inventory");
         let req = request.into_inner();
-        let (page, per_page) = match req.pagination {
-            Some(p) => {
-                let page = if p.page <= 0 { 1 } else { p.page as u64 };
-                let mut per_page = if p.per_page <= 0 {
-                    50
-                } else {
-                    p.per_page as u64
-                };
-                if per_page > 100 {
-                    per_page = 100;
-                }
-                (page, per_page)
-            }
-            None => (1u64, 50u64),
-        };
-        let location_filter = if !req.warehouse_id.is_empty() {
-            Some(parse_location_id(&req.warehouse_id)?)
+
+        let page = if req.page == 0 { 1 } else { req.page };
+        let mut per_page = if req.limit == 0 { 50 } else { req.limit };
+        if per_page > 100 {
+            per_page = 100;
+        }
+
+        let location_filter = if req.location_filter != 0 {
+            Some(req.location_filter)
         } else {
             None
         };
 
-        let product_filters: Vec<InventoryIdentifier> = req
-            .product_ids
-            .iter()
-            .filter_map(|p| parse_inventory_identifier(p).ok())
-            .collect();
+        let product_filter = if !req.product_filter.is_empty() {
+            Some(parse_inventory_identifier(&req.product_filter).ok())
+        } else {
+            None
+        };
+
+        let low_stock_threshold = if !req.low_stock_threshold.is_empty() {
+            req.low_stock_threshold.parse::<Decimal>().ok()
+        } else {
+            None
+        };
 
         let (snapshots, total_items) = self
             .inventory_service
@@ -523,18 +576,21 @@ impl inventory_service_server::InventoryService for StateSetApi {
 
         let mut items = Vec::new();
         for snapshot in snapshots {
-            if !product_filters.is_empty()
-                && !product_filters.iter().any(|pf| match pf {
+            // Apply product filter
+            if let Some(Some(ref filter)) = product_filter {
+                let matches = match filter {
                     InventoryIdentifier::Id(id) => *id == snapshot.inventory_item_id,
                     InventoryIdentifier::Number(number) => {
                         snapshot.item_number.eq_ignore_ascii_case(number)
                     }
-                })
-            {
-                continue;
+                };
+                if !matches {
+                    continue;
+                }
             }
 
-            let locations: Vec<&LocationBalance> = if let Some(loc_id) = location_filter {
+            // Filter locations if needed
+            let filtered_locations: Vec<_> = if let Some(loc_id) = location_filter {
                 snapshot
                     .locations
                     .iter()
@@ -544,42 +600,88 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 snapshot.locations.iter().collect()
             };
 
-            for balance in locations {
-                items.push(balance_to_proto_item(&snapshot.item_number, balance)?);
+            // Apply low stock filter if specified
+            if let Some(threshold) = low_stock_threshold {
+                if filtered_locations.iter().all(|b| b.quantity_available >= threshold) {
+                    continue;
+                }
             }
+
+            if filtered_locations.is_empty() {
+                continue;
+            }
+
+            // Build item with filtered locations
+            let locations: Vec<InventoryLocation> = filtered_locations.iter().map(|balance| {
+                InventoryLocation {
+                    location_id: balance.location_id,
+                    location_name: balance.location_name.clone().unwrap_or_else(|| "unknown".to_string()),
+                    quantities: Some(InventoryQuantities {
+                        on_hand: balance.quantity_on_hand.to_string(),
+                        allocated: balance.quantity_allocated.to_string(),
+                        available: balance.quantity_available.to_string(),
+                    }),
+                    updated_at: Some(timestamp_from(balance.updated_at)),
+                }
+            }).collect();
+
+            let total_on_hand: Decimal = filtered_locations.iter().map(|b| b.quantity_on_hand).sum();
+            let total_allocated: Decimal = filtered_locations.iter().map(|b| b.quantity_allocated).sum();
+            let total_available: Decimal = filtered_locations.iter().map(|b| b.quantity_available).sum();
+
+            items.push(InventoryItem {
+                inventory_item_id: snapshot.inventory_item_id,
+                item_number: snapshot.item_number.clone(),
+                description: snapshot.description.clone().unwrap_or_default(),
+                primary_uom_code: snapshot.primary_uom_code.clone().unwrap_or_else(|| "EA".to_string()),
+                organization_id: snapshot.organization_id,
+                quantities: Some(InventoryQuantities {
+                    on_hand: total_on_hand.to_string(),
+                    allocated: total_allocated.to_string(),
+                    available: total_available.to_string(),
+                }),
+                locations,
+            });
         }
 
-        let total_pages = ((total_items + per_page - 1) / per_page) as i32;
-        let pagination = Some(crate::proto::common::PaginationResponse {
-            total_items: items.len() as i32,
-            total_pages,
-            current_page: page as i32,
-            items_per_page: per_page as i32,
-            has_next_page: (page as u64) < (total_pages as u64),
-            has_previous_page: page > 1,
-        });
-        Ok(Response::new(ListInventoryResponse { items, pagination }))
+        Ok(Response::new(ListInventoryResponse {
+            items,
+            total: total_items,
+            page,
+            per_page,
+        }))
     }
-    #[instrument(skip(self, request), fields(product_id, order_id, quantity))]
+    #[instrument(skip(self, request), fields(inventory_item_id, location_id, quantity))]
     async fn reserve_inventory(
         &self,
         request: Request<ReserveInventoryRequest>,
     ) -> Result<Response<ReserveInventoryResponse>, Status> {
         let req = request.into_inner();
-        let identifier = parse_inventory_identifier(&req.product_id)?;
-        let snapshot = fetch_inventory_snapshot(&self.inventory_service, identifier).await?;
 
-        let location_id = if !req.order_id.is_empty() {
-            parse_location_id(&req.order_id)?
-        } else if snapshot.locations.len() == 1 {
-            snapshot.locations[0].location_id
-        } else {
-            return Err(Status::invalid_argument(
-                "order_id must provide a location identifier when multiple locations exist",
-            ));
+        let identifier = match req.identifier {
+            Some(reserve_inventory_request::Identifier::InventoryItemId(id)) => InventoryIdentifier::Id(id),
+            Some(reserve_inventory_request::Identifier::ItemNumber(num)) => InventoryIdentifier::Number(num),
+            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
         };
 
-        let reference_id = Uuid::parse_str(&req.order_id).ok();
+        let snapshot = fetch_inventory_snapshot(&self.inventory_service, identifier).await?;
+
+        let location_id = req.location_id;
+
+        let quantity = req.quantity.parse::<Decimal>()
+            .map_err(|_| Status::invalid_argument("Invalid quantity format"))?;
+
+        let reference_id = if !req.reference_id.is_empty() {
+            Uuid::parse_str(&req.reference_id).ok()
+        } else {
+            None
+        };
+
+        let reference_type = if !req.reference_type.is_empty() {
+            Some(req.reference_type.clone())
+        } else {
+            None
+        };
 
         let outcome = self
             .inventory_service
@@ -587,9 +689,9 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 inventory_item_id: Some(snapshot.inventory_item_id),
                 item_number: None,
                 location_id,
-                quantity: Decimal::from(req.quantity),
+                quantity,
                 reference_id,
-                reference_type: Some("ORDER".to_string()),
+                reference_type,
             })
             .await
             .map_err(|e| {
@@ -607,9 +709,30 @@ impl inventory_service_server::InventoryService for StateSetApi {
             outcome.reservation_id
         );
 
+        // Get updated balance after reservation
+        let balance = self
+            .inventory_service
+            .get_location_balance(snapshot.inventory_item_id, location_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to get updated balance: {}", e);
+                Status::internal("Failed to fetch updated balance")
+            })?;
+
+        let location_balance = balance.map(|b| InventoryLocation {
+            location_id: b.location_id,
+            location_name: b.location_name.unwrap_or_else(|| "unknown".to_string()),
+            quantities: Some(InventoryQuantities {
+                on_hand: b.quantity_on_hand.to_string(),
+                allocated: b.quantity_allocated.to_string(),
+                available: b.quantity_available.to_string(),
+            }),
+            updated_at: Some(timestamp_from(b.updated_at)),
+        });
+
         Ok(Response::new(ReserveInventoryResponse {
-            success: true,
             reservation_id: outcome.id_str(),
+            location_balance,
         }))
     }
 }

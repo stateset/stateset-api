@@ -1,11 +1,11 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelBehavior, ActiveValue, ConnectionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(100))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum IssueType {
     #[sea_orm(string_value = "dimensional")]
     Dimensional,
@@ -18,7 +18,7 @@ pub enum IssueType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum Severity {
     #[sea_orm(string_value = "critical")]
     Critical,
@@ -29,7 +29,7 @@ pub enum Severity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum NcrStatus {
     #[sea_orm(string_value = "open")]
     Open,
@@ -44,7 +44,7 @@ pub enum NcrStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(Some(50))")]
+#[sea_orm(rs_type = "String", db_type = "Text")]
 pub enum Disposition {
     #[sea_orm(string_value = "scrap")]
     Scrap,
@@ -146,7 +146,7 @@ impl Model {
     /// Format: NCR-{YEAR}{MONTH}-{SEQUENCE}
     pub fn generate_ncr_number(sequence: u32) -> String {
         let now = Utc::now();
-        format!("NCR-{:04}{:02}-{:05}", now.year(), now.month(), sequence)
+        format!("NCR-{:04}{:02}-{:05}", now.date_naive().year(), now.date_naive().month(), sequence)
     }
 
     /// Check if NCR is still open

@@ -140,6 +140,82 @@ impl InventoryService {
         Ok((snapshots, total))
     }
 
+    /// Returns a filtered paginated list of inventory snapshots.
+    #[instrument(skip(self))]
+    pub async fn list_inventory_filtered(
+        &self,
+        page: u64,
+        limit: u64,
+        product_filter: Option<&str>,
+        location_filter: Option<i32>,
+        low_stock_threshold: Option<Decimal>,
+    ) -> Result<(Vec<InventorySnapshot>, u64), ServiceError> {
+        if page == 0 {
+            return Err(ServiceError::ValidationError(
+                "Page number must be greater than 0".to_string(),
+            ));
+        }
+        if limit == 0 || limit > 1000 {
+            return Err(ServiceError::ValidationError(
+                "Limit must be between 1 and 1000".to_string(),
+            ));
+        }
+
+        let db = &*self.db_pool;
+
+        // Build query with filters
+        let mut query = ItemMasterEntity::find();
+
+        // Filter by product ID or item number
+        if let Some(product_id_or_number) = product_filter {
+            if let Ok(id) = product_id_or_number.parse::<i64>() {
+                query = query.filter(item_master::Column::InventoryItemId.eq(id));
+            } else {
+                query = query.filter(item_master::Column::ItemNumber.contains(product_id_or_number));
+            }
+        }
+
+        query = query.order_by_asc(item_master::Column::ItemNumber);
+
+        let paginator = query.paginate(db, limit);
+
+        let total = paginator
+            .num_items()
+            .await
+            .map_err(|e| ServiceError::InternalError(format!("Failed to count items: {}", e)))?;
+        let models = paginator.fetch_page(page - 1).await.map_err(|e| {
+            ServiceError::InternalError(format!("Failed to fetch inventory page: {}", e))
+        })?;
+
+        let mut snapshots = Vec::new();
+        for item in models {
+            let mut snapshot = self.snapshot_for_item(&item).await?;
+
+            // Apply location filter if specified
+            if let Some(loc_id) = location_filter {
+                snapshot.locations.retain(|loc| loc.location_id == loc_id);
+                if snapshot.locations.is_empty() {
+                    continue; // Skip items not in this location
+                }
+                // Recalculate totals for filtered location
+                snapshot.total_on_hand = snapshot.locations.iter().map(|l| l.quantity_on_hand).sum();
+                snapshot.total_allocated = snapshot.locations.iter().map(|l| l.quantity_allocated).sum();
+                snapshot.total_available = snapshot.locations.iter().map(|l| l.quantity_available).sum();
+            }
+
+            // Apply low stock filter if specified
+            if let Some(threshold) = low_stock_threshold {
+                if snapshot.total_available >= threshold {
+                    continue; // Skip items above threshold
+                }
+            }
+
+            snapshots.push(snapshot);
+        }
+
+        Ok((snapshots, total))
+    }
+
     /// Ensures an item_master record exists for the provided item number, creating or updating it.
     #[instrument(skip(self, description, primary_uom_code))]
     pub async fn ensure_item(
@@ -324,7 +400,7 @@ impl InventoryService {
                         }
                         let mut active: inventory_balance::ActiveModel = existing.clone().into();
                         active.quantity_on_hand = Set(new_on_hand);
-                        active.quantity_available = Set(new_available);
+                        // quantity_available is computed by database, don't set it
                         active.updated_at = Set(now.into());
                         let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
                         Ok((existing.quantity_on_hand, updated))
@@ -339,7 +415,7 @@ impl InventoryService {
                             location_id: Set(location_id),
                             quantity_on_hand: Set(delta),
                             quantity_allocated: Set(Decimal::ZERO),
-                            quantity_available: Set(delta),
+                            // quantity_available is computed by database, don't set it
                             created_at: Set(now.into()),
                             updated_at: Set(now.into()),
                             ..Default::default()
@@ -421,14 +497,16 @@ impl InventoryService {
 
                     if existing.quantity_available < quantity {
                         return Err(ServiceError::ValidationError(format!(
-                            "Insufficient available quantity. Requested: {}, Available: {}",
-                            quantity, existing.quantity_available
+                            "Insufficient available quantity for item {} at location {}. \
+                             Requested: {}, Available: {}, On-hand: {}, Allocated: {}",
+                            item.item_number, location_id, quantity, existing.quantity_available,
+                            existing.quantity_on_hand, existing.quantity_allocated
                         )));
                     }
 
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
                     active.quantity_allocated = Set(existing.quantity_allocated + quantity);
-                    active.quantity_available = Set(existing.quantity_available - quantity);
+                    // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
 
@@ -540,14 +618,16 @@ impl InventoryService {
 
                     if existing.quantity_allocated < quantity {
                         return Err(ServiceError::ValidationError(format!(
-                            "Cannot release {} when only {} is allocated",
-                            quantity, existing.quantity_allocated
+                            "Cannot release {} units for item {} at location {} when only {} is allocated. \
+                             Available: {}, On-hand: {}",
+                            quantity, item.item_number, location_id, existing.quantity_allocated,
+                            existing.quantity_available, existing.quantity_on_hand
                         )));
                     }
 
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
                     active.quantity_allocated = Set(existing.quantity_allocated - quantity);
-                    active.quantity_available = Set(existing.quantity_available + quantity);
+                    // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
 
@@ -628,14 +708,16 @@ impl InventoryService {
                     })?;
                 if source.quantity_available < quantity {
                     return Err(ServiceError::ValidationError(format!(
-                        "Insufficient stock at source. Requested: {}, Available: {}",
-                        quantity, source.quantity_available
+                        "Insufficient stock at source location {} for item {}. \
+                         Requested: {}, Available: {}, On-hand: {}, Allocated: {}",
+                        from_location, inventory_item_id, quantity, source.quantity_available,
+                        source.quantity_on_hand, source.quantity_allocated
                     )));
                 }
 
                 let mut source_active: inventory_balance::ActiveModel = source.clone().into();
                 source_active.quantity_on_hand = Set(source.quantity_on_hand - quantity);
-                source_active.quantity_available = Set(source.quantity_available - quantity);
+                // quantity_available is computed by database, don't set it
                 source_active.updated_at = Set(now.into());
                 source_active
                     .update(txn)
@@ -652,7 +734,7 @@ impl InventoryService {
                 if let Some(existing) = dest {
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
                     active.quantity_on_hand = Set(existing.quantity_on_hand + quantity);
-                    active.quantity_available = Set(existing.quantity_available + quantity);
+                    // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     active.update(txn).await.map_err(ServiceError::db_error)?;
                 } else {
@@ -661,7 +743,7 @@ impl InventoryService {
                         location_id: Set(to_location),
                         quantity_on_hand: Set(quantity),
                         quantity_allocated: Set(Decimal::ZERO),
-                        quantity_available: Set(quantity),
+                        // quantity_available is computed by database, don't set it
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
                         ..Default::default()
