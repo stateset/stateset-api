@@ -1,0 +1,7 @@
+# StateSet Manufacturing API - Python Client Requirements
+
+# HTTP library for making API requests
+requests>=2.31.0
+
+# Type hints support for older Python versions
+typing-extensions>=4.8.0; python_version < '3.8'
