@@ -4,12 +4,14 @@
 [![Security Scan](https://github.com/stateset/stateset-api/actions/workflows/security.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/security.yml)
 [![codecov](https://codecov.io/gh/stateset/stateset-api/branch/master/graph/badge.svg)](https://codecov.io/gh/stateset/stateset-api)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust Version](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://www.rust-lang.org)
+[![Rust Version](https://img.shields.io/badge/rust-1.90%2B-blue.svg)](https://www.rust-lang.org)
 [![GitHub release](https://img.shields.io/github/v/release/stateset/stateset-api)](https://github.com/stateset/stateset-api/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![code style: rustfmt](https://img.shields.io/badge/code%20style-rustfmt-orange.svg)](https://github.com/rust-lang/rustfmt)
 
 StateSet API is a comprehensive, scalable, and robust backend system for order management, inventory control, returns processing, warranty management, shipment tracking, and work order handling. Built with Rust, it leverages modern web technologies and best practices to provide a high-performance, reliable solution for e-commerce and manufacturing businesses.
+
+**Stats**: 547 Rust source files • ~97,000 lines of code • 100% safe Rust
 
 **Quick Links**: [Getting Started](#getting-started) | [Documentation](#documentation) | [API Endpoints](#api-endpoints) | [Deployment](docs/DEPLOYMENT.md) | [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md)
 
@@ -51,6 +53,27 @@ StateSet API is a comprehensive, scalable, and robust backend system for order m
   - Payment processing with stored records
   - Item receipt recording for purchase orders
 
+- **Supply Chain Management**:
+  - Purchase order creation and tracking
+  - Supplier management and relationships
+  - Advanced shipping notice (ASN) processing
+  - Quality control and maintenance workflows
+
+- **Crypto Payments (StablePay)**:
+  - Stablecoin payment processing
+  - Crypto reconciliation and tracking
+  - Multi-currency support
+
+- **Analytics & Reporting**:
+  - Business intelligence and metrics
+  - Order and inventory analytics
+  - Custom report generation
+
+- **AI-Powered Commerce**:
+  - Agentic Commerce Protocol support (separate server)
+  - ChatGPT Instant Checkout integration
+  - AI agents for commerce operations
+
 ## Tech Stack
 
 Our carefully selected tech stack ensures high performance, scalability, and maintainability:
@@ -91,23 +114,38 @@ Standard response headers:
 
 ## Project Structure
 
+This is a Cargo workspace with multiple members:
+
 ```
 stateset-api/
-├── migrations/           # Database migrations
-├── proto/                # Protocol Buffer definitions
+├── agentic_server/       # Standalone Agentic Commerce Protocol server
+├── migrations/           # Database migrations (SeaORM)
+├── simple_api/           # Lightweight API variant
+├── proto/                # Protocol Buffer definitions (gRPC)
 ├── src/
-│   ├── bin/              # Binary executables
-│   ├── commands/         # Command handlers (write operations)
-│   ├── entities/         # Database entity definitions
+│   ├── bin/              # Binary executables (15+ targets)
+│   │   ├── stateset-api  # Main HTTP/REST API server
+│   │   ├── stateset-cli  # Command-line interface
+│   │   ├── grpc-server   # gRPC service endpoint
+│   │   └── ...           # Additional utilities and servers
+│   ├── commands/         # Command handlers (write operations, 27 modules)
+│   ├── entities/         # Database entity definitions (SeaORM)
 │   ├── errors/           # Error types and handling
 │   ├── events/           # Event definitions and processing
-│   ├── handlers/         # HTTP request handlers
+│   ├── handlers/         # HTTP request handlers (REST API)
 │   ├── models/           # Domain models
 │   ├── queries/          # Query handlers (read operations)
 │   ├── repositories/     # Data access layer
-│   ├── services/         # Business logic services
+│   ├── services/         # Business logic services (40+ services)
+│   ├── auth/             # Authentication and authorization (JWT, API keys, RBAC)
+│   ├── cache/            # Caching layer (Redis)
+│   ├── rate_limiter/     # Rate limiting middleware
+│   ├── webhooks/         # Webhook management
 │   └── config.rs         # Application configuration
-└── tests/                # Integration tests
+├── tests/                # Integration tests
+├── benches/              # Performance benchmarks
+├── docs/                 # Comprehensive documentation
+└── examples/             # Usage examples (cURL, JavaScript, Python)
 ```
 
 ## Getting Started
@@ -149,7 +187,26 @@ Note: The app defaults to SQLite for local development (via SeaORM). PostgreSQL 
 The API will be available at `http://localhost:8080`.
 Requests to unknown routes return a JSON 404 response.
 
-Docker: `docker-compose up -d` starts the API and Redis. Compose reads values from `.env` for container env, which is separate from the app’s `APP__*` variables used by the config system.
+Docker: `docker-compose up -d` starts the API and Redis. Compose reads values from `.env` for container env, which is separate from the app's `APP__*` variables used by the config system.
+
+### Multiple Binary Targets
+
+The project includes 15+ binary targets for different use cases:
+
+- **`stateset-api`** - Main HTTP/REST API server (default)
+- **`stateset-cli`** - Command-line interface for orders, products, customers, etc.
+- **`grpc-server`** - gRPC service endpoint
+- **`simple-server`** - Minimal server variant
+- **`migration`** - Database migration runner
+- **`openapi-export`** - Export OpenAPI specification
+- **`orders-bench`** - Performance benchmarking tool
+- And more...
+
+Run any binary with `cargo run --bin <binary-name>`. For example:
+```sh
+cargo run --bin grpc-server     # Start gRPC server
+cargo run --bin stateset-cli -- --help  # CLI help
+```
 
 ## Stateset CLI
 
@@ -269,6 +326,29 @@ stateset-cli customers addresses --id <uuid> --json
 - Validation mirrors the API: expect the same error messages and permission requirements.
 - Because the CLI instantiates the full service stack, ensure Redis/database dependencies are reachable when commands require them (orders, inventory, etc.).
 
+## Agentic Commerce Server
+
+The repository includes a standalone **Agentic Commerce Server** (`agentic_server/`) that implements OpenAI's Agentic Commerce Protocol for ChatGPT Instant Checkout.
+
+### Features
+- ✅ Full Agentic Checkout Spec compliance (5 required endpoints)
+- ✅ Delegated Payment Spec support with mock PSP
+- ✅ Lightweight and fast (~1,700 lines, <100ms response times)
+- ✅ No database required - fully standalone with in-memory sessions
+- ✅ Production-ready with structured logging, CORS, and compression
+- ✅ Single-use vault tokens with allowance validation
+
+### Quick Start
+
+```sh
+cd agentic_server
+cargo build --release
+cargo run --release
+# Server starts on http://0.0.0.0:8080
+```
+
+The Agentic Commerce Server enables end-to-end checkout flows inside ChatGPT while keeping orders, payments, and compliance on your existing commerce stack. See [agentic_server/README.md](agentic_server/README.md) for full documentation.
+
 ## Continuous Integration & Quality Gates
 
 StateSet API ships with GitHub Actions workflows that enforce quality gates:
@@ -343,10 +423,45 @@ StateSet API provides a rich set of RESTful endpoints:
 - `POST /work-orders/:id/start` - Start a work order
 - `POST /work-orders/:id/complete` - Complete a work order
 
-### Health
+### Bill of Materials (BOM)
+- `POST /bom` - Create a bill of materials
+- `GET /bom/:id` - Get BOM details
+- `PUT /bom/:id` - Update a BOM
+- `POST /bom/:id/components` - Add components to BOM
+
+### Purchase Orders
+- `POST /purchase-orders` - Create a purchase order
+- `GET /purchase-orders/:id` - Get purchase order details
+- `PUT /purchase-orders/:id` - Update a purchase order
+- `POST /purchase-orders/:id/receive` - Record receipt of goods
+
+### Suppliers
+- `POST /suppliers` - Create a supplier
+- `GET /suppliers` - List suppliers
+- `GET /suppliers/:id` - Get supplier details
+- `PUT /suppliers/:id` - Update supplier information
+
+### Advanced Shipping Notice (ASN)
+- `POST /asn` - Create an ASN
+- `GET /asn/:id` - Get ASN details
+- `POST /asn/:id/receive` - Record ASN receipt
+
+### Analytics
+- `GET /analytics/orders` - Order analytics and metrics
+- `GET /analytics/inventory` - Inventory analytics
+- `GET /analytics/reports` - Custom report generation
+
+### Crypto Payments (StablePay)
+- `POST /stablepay/payment` - Create a crypto payment
+- `GET /stablepay/payment/:id` - Get payment status
+- `POST /stablepay/reconcile` - Reconcile crypto transactions
+
+### Health & Metrics
 - `GET /health` - Basic health check
 - `GET /health/readiness` - Database readiness check
 - `GET /health/version` - Build and version information
+- `GET /metrics` - Prometheus metrics (text format)
+- `GET /metrics/json` - Metrics in JSON format
 
 ## Testing
 
@@ -413,13 +528,14 @@ Environment variables:
 - **[FAQ](docs/FAQ.md)** ❓ - Frequently asked questions
 
 **Core Guides:**
-- **[Architecture Documentation](docs/ARCHITECTURE.md)** 🏗️ - **NEW!** Comprehensive system architecture with 6 detailed diagrams
+- **[Architecture Documentation](docs/ARCHITECTURE.md)** 🏗️ - Comprehensive system architecture with 6 detailed diagrams
 - **[API Overview](docs/API_OVERVIEW.md)** 📖 - Complete API reference with architecture, capabilities, and data models
 - **[Use Cases](docs/USE_CASES.md)** 💡 - Real-world scenarios (e-commerce, B2B, manufacturing, AI shopping, crypto)
 - **[Integration Guide](docs/INTEGRATION_GUIDE.md)** 🔧 - Production-ready integration patterns
 - **[Best Practices](docs/BEST_PRACTICES.md)** ✨ - Patterns and anti-patterns for production use
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** 🔍 - Common issues, solutions, and error codes
 - **[Performance Tuning](docs/PERFORMANCE_TUNING.md)** 🚀 - Optimization guide for scale
+- **[2025 Improvements](docs/API_IMPROVEMENTS_2025.md)** 📈 - Recent improvements: test coverage, code quality, architecture diagrams
 
 **Deployment & Operations:**
 - **[Getting Started](GETTING_STARTED.md)** - Initial setup guide
