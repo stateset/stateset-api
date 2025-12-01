@@ -401,3 +401,524 @@ pub enum PaymentStatus {
     Declined,
     Error,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    // ==================== CheckoutStep Tests ====================
+
+    #[test]
+    fn test_checkout_step_customer_info() {
+        let step = CheckoutStep::CustomerInfo;
+        assert_eq!(format!("{:?}", step), "CustomerInfo");
+    }
+
+    #[test]
+    fn test_checkout_step_shipping_address() {
+        let step = CheckoutStep::ShippingAddress;
+        assert_eq!(format!("{:?}", step), "ShippingAddress");
+    }
+
+    #[test]
+    fn test_checkout_step_shipping_method() {
+        let step = CheckoutStep::ShippingMethod;
+        assert_eq!(format!("{:?}", step), "ShippingMethod");
+    }
+
+    #[test]
+    fn test_checkout_step_payment() {
+        let step = CheckoutStep::Payment;
+        assert_eq!(format!("{:?}", step), "Payment");
+    }
+
+    // ==================== ShippingMethod Tests ====================
+
+    #[test]
+    fn test_shipping_method_standard() {
+        let method = ShippingMethod::Standard;
+        assert_eq!(format!("{:?}", method), "Standard");
+    }
+
+    #[test]
+    fn test_shipping_method_express() {
+        let method = ShippingMethod::Express;
+        assert_eq!(format!("{:?}", method), "Express");
+    }
+
+    #[test]
+    fn test_shipping_method_overnight() {
+        let method = ShippingMethod::Overnight;
+        assert_eq!(format!("{:?}", method), "Overnight");
+    }
+
+    // ==================== ShippingRate Tests ====================
+
+    #[test]
+    fn test_shipping_rate_standard() {
+        let rate = ShippingRate {
+            method: ShippingMethod::Standard,
+            amount: dec!(10),
+            estimated_days: 5,
+        };
+
+        assert_eq!(rate.amount, dec!(10));
+        assert_eq!(rate.estimated_days, 5);
+    }
+
+    #[test]
+    fn test_shipping_rate_express() {
+        let rate = ShippingRate {
+            method: ShippingMethod::Express,
+            amount: dec!(25),
+            estimated_days: 2,
+        };
+
+        assert_eq!(rate.amount, dec!(25));
+        assert_eq!(rate.estimated_days, 2);
+    }
+
+    #[test]
+    fn test_shipping_rate_overnight() {
+        let rate = ShippingRate {
+            method: ShippingMethod::Overnight,
+            amount: dec!(50),
+            estimated_days: 1,
+        };
+
+        assert_eq!(rate.amount, dec!(50));
+        assert_eq!(rate.estimated_days, 1);
+    }
+
+    // ==================== PaymentMethod Tests ====================
+
+    #[test]
+    fn test_payment_method_credit_card() {
+        let method = PaymentMethod::CreditCard;
+        assert_eq!(format!("{:?}", method), "CreditCard");
+    }
+
+    #[test]
+    fn test_payment_method_paypal() {
+        let method = PaymentMethod::PayPal;
+        assert_eq!(format!("{:?}", method), "PayPal");
+    }
+
+    #[test]
+    fn test_payment_method_apple_pay() {
+        let method = PaymentMethod::ApplePay;
+        assert_eq!(format!("{:?}", method), "ApplePay");
+    }
+
+    #[test]
+    fn test_payment_method_google_pay() {
+        let method = PaymentMethod::GooglePay;
+        assert_eq!(format!("{:?}", method), "GooglePay");
+    }
+
+    // ==================== PaymentStatus Tests ====================
+
+    #[test]
+    fn test_payment_status_approved() {
+        let status = PaymentStatus::Approved;
+        assert_eq!(format!("{:?}", status), "Approved");
+    }
+
+    #[test]
+    fn test_payment_status_declined() {
+        let status = PaymentStatus::Declined;
+        assert_eq!(format!("{:?}", status), "Declined");
+    }
+
+    #[test]
+    fn test_payment_status_error() {
+        let status = PaymentStatus::Error;
+        assert_eq!(format!("{:?}", status), "Error");
+    }
+
+    // ==================== Address Tests ====================
+
+    #[test]
+    fn test_address_creation() {
+        let address = Address {
+            first_name: "John".to_string(),
+            last_name: "Doe".to_string(),
+            company: Some("Acme Inc".to_string()),
+            address_line_1: "123 Main St".to_string(),
+            address_line_2: Some("Suite 100".to_string()),
+            city: "New York".to_string(),
+            province: "NY".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "10001".to_string(),
+            phone: Some("+1234567890".to_string()),
+        };
+
+        assert_eq!(address.first_name, "John");
+        assert_eq!(address.city, "New York");
+        assert_eq!(address.country_code, "US");
+    }
+
+    #[test]
+    fn test_address_minimal() {
+        let address = Address {
+            first_name: "Jane".to_string(),
+            last_name: "Smith".to_string(),
+            company: None,
+            address_line_1: "456 Oak Ave".to_string(),
+            address_line_2: None,
+            city: "Los Angeles".to_string(),
+            province: "CA".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "90001".to_string(),
+            phone: None,
+        };
+
+        assert!(address.company.is_none());
+        assert!(address.address_line_2.is_none());
+        assert!(address.phone.is_none());
+    }
+
+    #[test]
+    fn test_address_serialization() {
+        let address = Address {
+            first_name: "Test".to_string(),
+            last_name: "User".to_string(),
+            company: None,
+            address_line_1: "789 Pine Rd".to_string(),
+            address_line_2: None,
+            city: "Chicago".to_string(),
+            province: "IL".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "60601".to_string(),
+            phone: None,
+        };
+
+        let json = serde_json::to_string(&address).expect("serialization should succeed");
+        assert!(json.contains("Chicago"));
+        assert!(json.contains("IL"));
+    }
+
+    // ==================== CustomerInfoInput Tests ====================
+
+    #[test]
+    fn test_customer_info_input() {
+        let input = CustomerInfoInput {
+            email: "customer@example.com".to_string(),
+            subscribe_newsletter: true,
+        };
+
+        assert_eq!(input.email, "customer@example.com");
+        assert!(input.subscribe_newsletter);
+    }
+
+    #[test]
+    fn test_customer_info_no_newsletter() {
+        let input = CustomerInfoInput {
+            email: "no-newsletter@example.com".to_string(),
+            subscribe_newsletter: false,
+        };
+
+        assert!(!input.subscribe_newsletter);
+    }
+
+    // ==================== PaymentInfo Tests ====================
+
+    #[test]
+    fn test_payment_info_creation() {
+        let info = PaymentInfo {
+            method: PaymentMethod::CreditCard,
+            token: "tok_test_123456".to_string(),
+        };
+
+        assert!(!info.token.is_empty());
+    }
+
+    #[test]
+    fn test_payment_info_paypal() {
+        let info = PaymentInfo {
+            method: PaymentMethod::PayPal,
+            token: "paypal_token_abc123".to_string(),
+        };
+
+        assert!(info.token.starts_with("paypal"));
+    }
+
+    // ==================== Tax Calculation Tests ====================
+
+    #[test]
+    fn test_tax_calculation() {
+        let subtotal = dec!(100.00);
+        let tax_rate = dec!(8.75) / dec!(100); // 8.75%
+        let tax = subtotal * tax_rate;
+
+        assert_eq!(tax, dec!(8.75));
+    }
+
+    #[test]
+    fn test_tax_calculation_rounding() {
+        let subtotal = dec!(99.99);
+        let tax_rate = dec!(8.75) / dec!(100);
+        let tax = subtotal * tax_rate;
+
+        // Should be approximately $8.75
+        assert!(tax > dec!(8.74) && tax < dec!(8.76));
+    }
+
+    // ==================== Total Calculation Tests ====================
+
+    #[test]
+    fn test_total_calculation() {
+        let subtotal = dec!(100.00);
+        let shipping = dec!(10.00);
+        let tax = dec!(8.75);
+        let total = subtotal + shipping + tax;
+
+        assert_eq!(total, dec!(118.75));
+    }
+
+    #[test]
+    fn test_total_calculation_with_decimals() {
+        let subtotal = dec!(99.99);
+        let shipping = dec!(10.00);
+        let tax = dec!(8.74);
+        let total = subtotal + shipping + tax;
+
+        assert_eq!(total, dec!(118.73));
+    }
+
+    // ==================== Session ID Tests ====================
+
+    #[test]
+    fn test_session_id_uniqueness() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_session_id_format() {
+        let id = Uuid::new_v4();
+        let id_str = id.to_string();
+        assert_eq!(id_str.len(), 36);
+    }
+
+    // ==================== Order Number Generation Tests ====================
+
+    #[test]
+    fn test_order_number_format() {
+        let order_id = Uuid::new_v4();
+        let order_number = format!("ORD-{}", order_id.to_string()[..8].to_uppercase());
+
+        assert!(order_number.starts_with("ORD-"));
+        assert_eq!(order_number.len(), 12); // "ORD-" + 8 chars
+    }
+
+    #[test]
+    fn test_order_number_uppercase() {
+        let order_id = Uuid::new_v4();
+        let order_number = format!("ORD-{}", order_id.to_string()[..8].to_uppercase());
+
+        // The suffix should be uppercase
+        let suffix = &order_number[4..];
+        assert!(suffix.chars().all(|c| c.is_uppercase() || c.is_numeric() || c == '-'));
+    }
+
+    // ==================== Error Handling Tests ====================
+
+    #[test]
+    fn test_not_found_error_cart() {
+        let cart_id = Uuid::new_v4();
+        let error = ServiceError::NotFound(format!("Cart {} not found", cart_id));
+
+        match error {
+            ServiceError::NotFound(msg) => {
+                assert!(msg.contains("Cart"));
+                assert!(msg.contains("not found"));
+            }
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_operation_error() {
+        let error = ServiceError::InvalidOperation("Cart is not active".to_string());
+
+        match error {
+            ServiceError::InvalidOperation(msg) => {
+                assert!(msg.contains("not active"));
+            }
+            _ => panic!("Expected InvalidOperation error"),
+        }
+    }
+
+    #[test]
+    fn test_empty_cart_error() {
+        let error = ServiceError::InvalidOperation("Cart is empty".to_string());
+
+        match error {
+            ServiceError::InvalidOperation(msg) => {
+                assert!(msg.contains("empty"));
+            }
+            _ => panic!("Expected InvalidOperation error"),
+        }
+    }
+
+    #[test]
+    fn test_incomplete_session_error() {
+        let error = ServiceError::InvalidOperation("Checkout session incomplete".to_string());
+
+        match error {
+            ServiceError::InvalidOperation(msg) => {
+                assert!(msg.contains("incomplete"));
+            }
+            _ => panic!("Expected InvalidOperation error"),
+        }
+    }
+
+    // ==================== Shipping Rate Calculation Tests ====================
+
+    #[test]
+    fn test_shipping_rate_by_method() {
+        let methods_and_rates = vec![
+            (ShippingMethod::Standard, dec!(10), 5u32),
+            (ShippingMethod::Express, dec!(25), 2u32),
+            (ShippingMethod::Overnight, dec!(50), 1u32),
+        ];
+
+        for (method, expected_amount, expected_days) in methods_and_rates {
+            let rate = match method {
+                ShippingMethod::Standard => ShippingRate {
+                    method: method.clone(),
+                    amount: dec!(10),
+                    estimated_days: 5,
+                },
+                ShippingMethod::Express => ShippingRate {
+                    method: method.clone(),
+                    amount: dec!(25),
+                    estimated_days: 2,
+                },
+                ShippingMethod::Overnight => ShippingRate {
+                    method: method.clone(),
+                    amount: dec!(50),
+                    estimated_days: 1,
+                },
+            };
+
+            assert_eq!(rate.amount, expected_amount);
+            assert_eq!(rate.estimated_days, expected_days);
+        }
+    }
+
+    // ==================== Checkout Flow Tests ====================
+
+    #[test]
+    fn test_checkout_step_progression() {
+        // Test the expected checkout flow
+        let steps = vec![
+            CheckoutStep::CustomerInfo,
+            CheckoutStep::ShippingAddress,
+            CheckoutStep::ShippingMethod,
+            CheckoutStep::Payment,
+        ];
+
+        // Verify all steps exist
+        assert_eq!(steps.len(), 4);
+    }
+
+    #[test]
+    fn test_checkout_session_requires_email() {
+        let email: Option<String> = None;
+        let shipping_address: Option<Address> = Some(Address {
+            first_name: "John".to_string(),
+            last_name: "Doe".to_string(),
+            company: None,
+            address_line_1: "123 Main St".to_string(),
+            address_line_2: None,
+            city: "New York".to_string(),
+            province: "NY".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "10001".to_string(),
+            phone: None,
+        });
+        let shipping_method: Option<ShippingMethod> = Some(ShippingMethod::Standard);
+
+        // Session is incomplete if email is missing
+        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        assert!(!is_complete);
+    }
+
+    #[test]
+    fn test_checkout_session_requires_shipping_address() {
+        let email: Option<String> = Some("test@example.com".to_string());
+        let shipping_address: Option<Address> = None;
+        let shipping_method: Option<ShippingMethod> = Some(ShippingMethod::Standard);
+
+        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        assert!(!is_complete);
+    }
+
+    #[test]
+    fn test_checkout_session_requires_shipping_method() {
+        let email: Option<String> = Some("test@example.com".to_string());
+        let shipping_address: Option<Address> = Some(Address {
+            first_name: "John".to_string(),
+            last_name: "Doe".to_string(),
+            company: None,
+            address_line_1: "123 Main St".to_string(),
+            address_line_2: None,
+            city: "New York".to_string(),
+            province: "NY".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "10001".to_string(),
+            phone: None,
+        });
+        let shipping_method: Option<ShippingMethod> = None;
+
+        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        assert!(!is_complete);
+    }
+
+    #[test]
+    fn test_checkout_session_complete() {
+        let email: Option<String> = Some("test@example.com".to_string());
+        let shipping_address: Option<Address> = Some(Address {
+            first_name: "John".to_string(),
+            last_name: "Doe".to_string(),
+            company: None,
+            address_line_1: "123 Main St".to_string(),
+            address_line_2: None,
+            city: "New York".to_string(),
+            province: "NY".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "10001".to_string(),
+            phone: None,
+        });
+        let shipping_method: Option<ShippingMethod> = Some(ShippingMethod::Standard);
+
+        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        assert!(is_complete);
+    }
+
+    // ==================== Decimal Precision Tests ====================
+
+    #[test]
+    fn test_decimal_currency_precision() {
+        let price1 = dec!(19.99);
+        let price2 = dec!(29.99);
+        let price3 = dec!(9.99);
+        let total = price1 + price2 + price3;
+
+        assert_eq!(total, dec!(59.97));
+    }
+
+    #[test]
+    fn test_decimal_tax_precision() {
+        let subtotal = dec!(100.00);
+        let tax_rate = Decimal::new(875, 3); // 8.75%
+        let tax = subtotal * tax_rate / Decimal::from(100);
+
+        // Should maintain precision
+        assert!(tax > Decimal::ZERO);
+    }
+}

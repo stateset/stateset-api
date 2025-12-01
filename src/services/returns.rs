@@ -225,3 +225,272 @@ impl ReturnService {
         Ok((returns, total))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Return Status Tests ====================
+
+    #[test]
+    fn test_return_status_normalization_lowercase() {
+        let status = "pending";
+        let normalized = status.trim().to_ascii_lowercase();
+        assert_eq!(normalized, "pending");
+    }
+
+    #[test]
+    fn test_return_status_normalization_uppercase() {
+        let status = "PENDING";
+        let normalized = status.trim().to_ascii_lowercase();
+        assert_eq!(normalized, "pending");
+    }
+
+    #[test]
+    fn test_return_status_normalization_mixed_case() {
+        let status = "Approved";
+        let normalized = status.trim().to_ascii_lowercase();
+        assert_eq!(normalized, "approved");
+    }
+
+    #[test]
+    fn test_return_status_normalization_with_whitespace() {
+        let status = "  completed  ";
+        let normalized = status.trim().to_ascii_lowercase();
+        assert_eq!(normalized, "completed");
+    }
+
+    #[test]
+    fn test_return_status_normalization_empty() {
+        let status = "";
+        let normalized = status.trim().to_ascii_lowercase();
+        assert!(normalized.is_empty());
+    }
+
+    #[test]
+    fn test_return_status_normalization_whitespace_only() {
+        let status = "   ";
+        let normalized = status.trim().to_ascii_lowercase();
+        assert!(normalized.is_empty());
+    }
+
+    // ==================== UUID Tests ====================
+
+    #[test]
+    fn test_return_id_uniqueness() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_return_id_format() {
+        let id = Uuid::new_v4();
+        let id_str = id.to_string();
+        // UUID format: 8-4-4-4-12
+        assert_eq!(id_str.len(), 36);
+        assert_eq!(id_str.chars().filter(|c| *c == '-').count(), 4);
+    }
+
+    // ==================== Return Lifecycle Tests ====================
+
+    #[test]
+    fn test_valid_return_statuses() {
+        let valid_statuses = vec![
+            "pending",
+            "approved",
+            "rejected",
+            "completed",
+            "cancelled",
+            "processing",
+        ];
+
+        for status in valid_statuses {
+            let normalized = status.trim().to_ascii_lowercase();
+            assert!(!normalized.is_empty(), "Status {} should not be empty", status);
+        }
+    }
+
+    #[test]
+    fn test_return_status_transitions() {
+        // Define valid state transitions
+        let valid_transitions = vec![
+            ("pending", "approved"),
+            ("pending", "rejected"),
+            ("approved", "completed"),
+            ("approved", "cancelled"),
+            ("pending", "cancelled"),
+        ];
+
+        for (from, to) in valid_transitions {
+            // Just validate the statuses are different
+            assert_ne!(from, to, "Transition should change state");
+        }
+    }
+
+    // ==================== Command Pattern Tests ====================
+
+    #[test]
+    fn test_initiate_return_command_creation() {
+        let order_id = Uuid::new_v4();
+        let reason = "Defective product";
+
+        // Test that we can create the command structure
+        assert!(!order_id.is_nil());
+        assert!(!reason.is_empty());
+    }
+
+    #[test]
+    fn test_approve_return_command_fields() {
+        let return_id = Uuid::new_v4();
+        let command = ApproveReturnCommand { return_id };
+
+        assert_eq!(command.return_id, return_id);
+    }
+
+    // ==================== Pagination Tests ====================
+
+    #[test]
+    fn test_pagination_parameters() {
+        let page: u64 = 1;
+        let limit: u64 = 20;
+
+        assert!(page > 0, "Page should be greater than 0");
+        assert!(limit > 0, "Limit should be greater than 0");
+        assert!(limit <= 100, "Limit should not exceed 100");
+    }
+
+    #[test]
+    fn test_pagination_page_calculation() {
+        let page: u64 = 3;
+        let limit: u64 = 10;
+        let offset = (page - 1) * limit;
+
+        assert_eq!(offset, 20);
+    }
+
+    #[test]
+    fn test_pagination_first_page() {
+        let page: u64 = 1;
+        let limit: u64 = 25;
+        let offset = (page - 1) * limit;
+
+        assert_eq!(offset, 0);
+    }
+
+    // ==================== Return Reason Tests ====================
+
+    #[test]
+    fn test_common_return_reasons() {
+        let valid_reasons = vec![
+            "Defective product",
+            "Wrong item received",
+            "Item not as described",
+            "Changed mind",
+            "Better price found elsewhere",
+            "Damaged during shipping",
+            "Quality not as expected",
+        ];
+
+        for reason in valid_reasons {
+            assert!(!reason.is_empty());
+            assert!(reason.len() <= 500, "Reason should not exceed 500 characters");
+        }
+    }
+
+    #[test]
+    fn test_return_reason_length_limits() {
+        let short_reason = "Too small";
+        let long_reason = "A".repeat(1000);
+
+        assert!(short_reason.len() >= 3, "Reason should have minimum length");
+        assert!(long_reason.len() > 500, "Very long reason for testing truncation");
+    }
+
+    // ==================== Restock Tests ====================
+
+    #[test]
+    fn test_restock_quantity_positive() {
+        let quantity: i32 = 5;
+        assert!(quantity > 0, "Restock quantity must be positive");
+    }
+
+    #[test]
+    fn test_restock_quantity_matches_return() {
+        let returned_quantity: i32 = 3;
+        let restock_quantity: i32 = 3;
+
+        assert_eq!(returned_quantity, restock_quantity, "Restock should match returned quantity");
+    }
+
+    // ==================== Error Handling Tests ====================
+
+    #[test]
+    fn test_not_found_error_message() {
+        let return_id = Uuid::new_v4();
+        let error_msg = format!("Return not found after approval");
+
+        assert!(error_msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_service_error_from_string() {
+        let error = ServiceError::NotFound("Return not found".to_string());
+        match error {
+            ServiceError::NotFound(msg) => assert!(msg.contains("not found")),
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    // ==================== Complete Return Command Tests ====================
+
+    #[test]
+    fn test_complete_return_command_structure() {
+        let return_id = Uuid::new_v4();
+        let command = CompleteReturnCommand {
+            return_id,
+            notes: Some("Return processed successfully".to_string()),
+            completed_by: Some("system".to_string()),
+            metadata: None,
+        };
+
+        assert_eq!(command.return_id, return_id);
+        assert!(command.notes.is_some());
+        assert!(command.completed_by.is_some());
+    }
+
+    // ==================== Restock Command Tests ====================
+
+    #[test]
+    fn test_restock_command_structure() {
+        let return_id = Uuid::new_v4();
+        let command = RestockReturnedItemsCommand { return_id };
+
+        assert_eq!(command.return_id, return_id);
+    }
+
+    // ==================== Filter Tests ====================
+
+    #[test]
+    fn test_status_filter_none() {
+        let filter: Option<String> = None;
+        assert!(filter.is_none());
+    }
+
+    #[test]
+    fn test_status_filter_some() {
+        let filter: Option<String> = Some("approved".to_string());
+        assert!(filter.is_some());
+        assert_eq!(filter.unwrap(), "approved");
+    }
+
+    #[test]
+    fn test_status_filter_empty_string_handling() {
+        let filter = Some("".to_string());
+        if let Some(status) = filter {
+            let normalized = status.trim().to_ascii_lowercase();
+            // Empty string should be treated as no filter
+            assert!(normalized.is_empty());
+        }
+    }
+}

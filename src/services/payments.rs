@@ -441,3 +441,311 @@ impl PaymentService {
         Ok(total)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    // ==================== PaymentStatus Tests ====================
+
+    #[test]
+    fn test_payment_status_display() {
+        assert_eq!(PaymentStatus::Pending.to_string(), "pending");
+        assert_eq!(PaymentStatus::Processing.to_string(), "processing");
+        assert_eq!(PaymentStatus::Succeeded.to_string(), "succeeded");
+        assert_eq!(PaymentStatus::Failed.to_string(), "failed");
+        assert_eq!(PaymentStatus::Cancelled.to_string(), "cancelled");
+        assert_eq!(PaymentStatus::Refunded.to_string(), "refunded");
+    }
+
+    // ==================== Validation Tests ====================
+
+    #[test]
+    fn test_validate_positive_decimal_with_positive_value() {
+        let amount = dec!(100.50);
+        assert!(validate_positive_decimal(&amount).is_ok());
+    }
+
+    #[test]
+    fn test_validate_positive_decimal_with_zero() {
+        let amount = Decimal::ZERO;
+        let result = validate_positive_decimal(&amount);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, std::borrow::Cow::Borrowed("range"));
+    }
+
+    #[test]
+    fn test_validate_positive_decimal_with_negative() {
+        let amount = dec!(-50.00);
+        let result = validate_positive_decimal(&amount);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_positive_decimal_with_small_positive() {
+        let amount = dec!(0.01);
+        assert!(validate_positive_decimal(&amount).is_ok());
+    }
+
+    // ==================== ProcessPaymentRequest Validation Tests ====================
+
+    #[test]
+    fn test_process_payment_request_valid() {
+        let request = ProcessPaymentRequest {
+            order_id: Uuid::new_v4(),
+            amount: dec!(99.99),
+            payment_method: PaymentMethod::CreditCard,
+            payment_method_id: Some("pm_123".to_string()),
+            currency: "USD".to_string(),
+            description: Some("Test payment".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_process_payment_request_zero_amount_fails() {
+        let request = ProcessPaymentRequest {
+            order_id: Uuid::new_v4(),
+            amount: Decimal::ZERO,
+            payment_method: PaymentMethod::CreditCard,
+            payment_method_id: None,
+            currency: "USD".to_string(),
+            description: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_process_payment_request_negative_amount_fails() {
+        let request = ProcessPaymentRequest {
+            order_id: Uuid::new_v4(),
+            amount: dec!(-100.00),
+            payment_method: PaymentMethod::PayPal,
+            payment_method_id: None,
+            currency: "EUR".to_string(),
+            description: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_process_payment_request_large_amount_valid() {
+        let request = ProcessPaymentRequest {
+            order_id: Uuid::new_v4(),
+            amount: dec!(999999.99),
+            payment_method: PaymentMethod::BankTransfer,
+            payment_method_id: None,
+            currency: "USD".to_string(),
+            description: Some("Large payment".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_process_payment_request_minimal_amount_valid() {
+        let request = ProcessPaymentRequest {
+            order_id: Uuid::new_v4(),
+            amount: dec!(0.01),
+            payment_method: PaymentMethod::Cash,
+            payment_method_id: None,
+            currency: "USD".to_string(),
+            description: None,
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    // ==================== PaymentMethod Tests ====================
+
+    #[test]
+    fn test_payment_method_debug_format() {
+        assert_eq!(format!("{:?}", PaymentMethod::CreditCard), "CreditCard");
+        assert_eq!(format!("{:?}", PaymentMethod::DebitCard), "DebitCard");
+        assert_eq!(format!("{:?}", PaymentMethod::PayPal), "PayPal");
+        assert_eq!(format!("{:?}", PaymentMethod::BankTransfer), "BankTransfer");
+        assert_eq!(format!("{:?}", PaymentMethod::Cash), "Cash");
+        assert_eq!(format!("{:?}", PaymentMethod::Check), "Check");
+    }
+
+    // ==================== PaymentResponse Tests ====================
+
+    #[test]
+    fn test_payment_response_serialization() {
+        let response = PaymentResponse {
+            id: Uuid::new_v4(),
+            order_id: Uuid::new_v4(),
+            amount: dec!(150.00),
+            currency: "USD".to_string(),
+            status: "succeeded".to_string(),
+            payment_method: "CreditCard".to_string(),
+            payment_method_id: Some("pm_test_123".to_string()),
+            description: Some("Order payment".to_string()),
+            created_at: Utc::now(),
+            processed_at: Some(Utc::now()),
+        };
+
+        let json = serde_json::to_string(&response).expect("serialization should succeed");
+        assert!(json.contains("\"amount\":\"150.00\"") || json.contains("\"amount\":150"));
+        assert!(json.contains("\"currency\":\"USD\""));
+        assert!(json.contains("\"status\":\"succeeded\""));
+    }
+
+    #[test]
+    fn test_payment_response_deserialization() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "order_id": "550e8400-e29b-41d4-a716-446655440001",
+            "amount": "100.50",
+            "currency": "EUR",
+            "status": "pending",
+            "payment_method": "PayPal",
+            "payment_method_id": null,
+            "description": null,
+            "created_at": "2024-01-15T10:30:00Z",
+            "processed_at": null
+        }"#;
+
+        let response: PaymentResponse = serde_json::from_str(json).expect("deserialization should succeed");
+        assert_eq!(response.currency, "EUR");
+        assert_eq!(response.status, "pending");
+        assert_eq!(response.payment_method, "PayPal");
+        assert!(response.payment_method_id.is_none());
+        assert!(response.processed_at.is_none());
+    }
+
+    // ==================== RefundPaymentRequest Tests ====================
+
+    #[test]
+    fn test_refund_request_full_refund() {
+        let request = RefundPaymentRequest {
+            payment_id: Uuid::new_v4(),
+            amount: None, // Full refund
+            reason: Some("Customer requested refund".to_string()),
+        };
+
+        let json = serde_json::to_string(&request).expect("serialization should succeed");
+        assert!(json.contains("\"amount\":null"));
+        assert!(json.contains("Customer requested refund"));
+    }
+
+    #[test]
+    fn test_refund_request_partial_refund() {
+        let request = RefundPaymentRequest {
+            payment_id: Uuid::new_v4(),
+            amount: Some(dec!(25.00)),
+            reason: Some("Partial item return".to_string()),
+        };
+
+        assert!(request.amount.is_some());
+        assert_eq!(request.amount.unwrap(), dec!(25.00));
+    }
+
+    #[test]
+    fn test_refund_request_no_reason() {
+        let request = RefundPaymentRequest {
+            payment_id: Uuid::new_v4(),
+            amount: Some(dec!(10.00)),
+            reason: None,
+        };
+
+        assert!(request.reason.is_none());
+    }
+
+    // ==================== Edge Case Tests ====================
+
+    #[test]
+    fn test_decimal_precision() {
+        // Test that decimal arithmetic maintains precision
+        let amount1 = dec!(33.33);
+        let amount2 = dec!(33.33);
+        let amount3 = dec!(33.34);
+        let total = amount1 + amount2 + amount3;
+        assert_eq!(total, dec!(100.00));
+    }
+
+    #[test]
+    fn test_currency_codes() {
+        // Common currency codes should be accepted
+        let currencies = vec!["USD", "EUR", "GBP", "JPY", "CAD", "AUD"];
+        for currency in currencies {
+            let request = ProcessPaymentRequest {
+                order_id: Uuid::new_v4(),
+                amount: dec!(100.00),
+                payment_method: PaymentMethod::CreditCard,
+                payment_method_id: None,
+                currency: currency.to_string(),
+                description: None,
+            };
+            assert!(request.validate().is_ok(), "Currency {} should be valid", currency);
+        }
+    }
+
+    #[test]
+    fn test_payment_method_serialization_roundtrip() {
+        let methods = vec![
+            PaymentMethod::CreditCard,
+            PaymentMethod::DebitCard,
+            PaymentMethod::PayPal,
+            PaymentMethod::BankTransfer,
+            PaymentMethod::Cash,
+            PaymentMethod::Check,
+        ];
+
+        for method in methods {
+            let json = serde_json::to_string(&method).expect("serialize payment method");
+            let deserialized: PaymentMethod = serde_json::from_str(&json).expect("deserialize payment method");
+            assert_eq!(format!("{:?}", method), format!("{:?}", deserialized));
+        }
+    }
+
+    #[test]
+    fn test_payment_status_serialization_roundtrip() {
+        let statuses = vec![
+            PaymentStatus::Pending,
+            PaymentStatus::Processing,
+            PaymentStatus::Succeeded,
+            PaymentStatus::Failed,
+            PaymentStatus::Cancelled,
+            PaymentStatus::Refunded,
+        ];
+
+        for status in statuses {
+            let json = serde_json::to_string(&status).expect("serialize payment status");
+            let deserialized: PaymentStatus = serde_json::from_str(&json).expect("deserialize payment status");
+            assert_eq!(status.to_string(), deserialized.to_string());
+        }
+    }
+
+    #[test]
+    fn test_uuid_uniqueness() {
+        // Ensure UUIDs are unique for each payment
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_process_payment_request_with_all_payment_methods() {
+        let methods = vec![
+            PaymentMethod::CreditCard,
+            PaymentMethod::DebitCard,
+            PaymentMethod::PayPal,
+            PaymentMethod::BankTransfer,
+            PaymentMethod::Cash,
+            PaymentMethod::Check,
+        ];
+
+        for method in methods {
+            let request = ProcessPaymentRequest {
+                order_id: Uuid::new_v4(),
+                amount: dec!(50.00),
+                payment_method: method,
+                payment_method_id: None,
+                currency: "USD".to_string(),
+                description: None,
+            };
+            assert!(request.validate().is_ok());
+        }
+    }
+}

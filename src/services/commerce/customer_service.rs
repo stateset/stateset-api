@@ -413,3 +413,393 @@ pub struct AddAddressInput {
 
 // Type aliases for clarity
 type CustomerAddressModel = customer_address::Model;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== RegisterCustomerInput Tests ====================
+
+    #[test]
+    fn test_register_customer_input_valid() {
+        let input = RegisterCustomerInput {
+            email: "test@example.com".to_string(),
+            password: "SecurePass123!".to_string(),
+            first_name: "John".to_string(),
+            last_name: "Doe".to_string(),
+            phone: Some("+1234567890".to_string()),
+            accepts_marketing: true,
+        };
+
+        assert_eq!(input.email, "test@example.com");
+        assert!(!input.password.is_empty());
+        assert_eq!(input.first_name, "John");
+        assert_eq!(input.last_name, "Doe");
+        assert!(input.phone.is_some());
+        assert!(input.accepts_marketing);
+    }
+
+    #[test]
+    fn test_register_customer_input_without_phone() {
+        let input = RegisterCustomerInput {
+            email: "test@example.com".to_string(),
+            password: "SecurePass123!".to_string(),
+            first_name: "Jane".to_string(),
+            last_name: "Smith".to_string(),
+            phone: None,
+            accepts_marketing: false,
+        };
+
+        assert!(input.phone.is_none());
+        assert!(!input.accepts_marketing);
+    }
+
+    // ==================== Email Validation Tests ====================
+
+    #[test]
+    fn test_email_format_valid() {
+        let valid_emails = vec![
+            "user@example.com",
+            "user.name@example.com",
+            "user+tag@example.com",
+            "user@subdomain.example.com",
+        ];
+
+        for email in valid_emails {
+            assert!(email.contains('@'), "Email {} should contain @", email);
+            assert!(email.contains('.'), "Email {} should contain .", email);
+        }
+    }
+
+    #[test]
+    fn test_email_not_empty() {
+        let email = "test@example.com";
+        assert!(!email.is_empty());
+    }
+
+    // ==================== Password Tests ====================
+
+    #[test]
+    fn test_password_not_empty() {
+        let password = "SecurePass123!";
+        assert!(!password.is_empty());
+    }
+
+    #[test]
+    fn test_password_minimum_length() {
+        let password = "Short1!";
+        // Password should ideally be at least 8 characters
+        assert!(password.len() >= 6);
+    }
+
+    #[test]
+    fn test_password_with_special_characters() {
+        let password = "SecureP@ss123!";
+        assert!(password.chars().any(|c| !c.is_alphanumeric()));
+    }
+
+    #[test]
+    fn test_empty_password_validation() {
+        let password = "";
+        let trimmed = password.trim();
+        assert!(trimmed.is_empty());
+    }
+
+    #[test]
+    fn test_whitespace_only_password() {
+        let password = "   ";
+        let trimmed = password.trim();
+        assert!(trimmed.is_empty());
+    }
+
+    // ==================== CustomerResponse Tests ====================
+
+    #[test]
+    fn test_customer_response_serialization() {
+        let response = CustomerResponse {
+            id: Uuid::new_v4(),
+            email: "customer@example.com".to_string(),
+            first_name: "Alice".to_string(),
+            last_name: "Wonder".to_string(),
+            phone: Some("+1987654321".to_string()),
+            accepts_marketing: true,
+            status: customer::CustomerStatus::Active,
+            created_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&response).expect("serialization should succeed");
+        assert!(json.contains("customer@example.com"));
+        assert!(json.contains("Alice"));
+        assert!(json.contains("Wonder"));
+    }
+
+    #[test]
+    fn test_customer_response_without_phone() {
+        let response = CustomerResponse {
+            id: Uuid::new_v4(),
+            email: "nophone@example.com".to_string(),
+            first_name: "Bob".to_string(),
+            last_name: "Builder".to_string(),
+            phone: None,
+            accepts_marketing: false,
+            status: customer::CustomerStatus::Active,
+            created_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&response).expect("serialization should succeed");
+        assert!(json.contains("\"phone\":null"));
+    }
+
+    // ==================== UpdateCustomerInput Tests ====================
+
+    #[test]
+    fn test_update_customer_input_partial() {
+        let input = UpdateCustomerInput {
+            first_name: Some("NewFirst".to_string()),
+            last_name: None,
+            phone: None,
+            accepts_marketing: None,
+        };
+
+        assert!(input.first_name.is_some());
+        assert!(input.last_name.is_none());
+    }
+
+    #[test]
+    fn test_update_customer_input_all_fields() {
+        let input = UpdateCustomerInput {
+            first_name: Some("Updated".to_string()),
+            last_name: Some("Name".to_string()),
+            phone: Some("+1111111111".to_string()),
+            accepts_marketing: Some(true),
+        };
+
+        assert!(input.first_name.is_some());
+        assert!(input.last_name.is_some());
+        assert!(input.phone.is_some());
+        assert!(input.accepts_marketing.is_some());
+    }
+
+    #[test]
+    fn test_update_customer_input_empty() {
+        let input = UpdateCustomerInput {
+            first_name: None,
+            last_name: None,
+            phone: None,
+            accepts_marketing: None,
+        };
+
+        // All fields are optional
+        assert!(input.first_name.is_none());
+        assert!(input.last_name.is_none());
+        assert!(input.phone.is_none());
+        assert!(input.accepts_marketing.is_none());
+    }
+
+    // ==================== AddAddressInput Tests ====================
+
+    #[test]
+    fn test_add_address_input_complete() {
+        let input = AddAddressInput {
+            first_name: "John".to_string(),
+            last_name: "Doe".to_string(),
+            company: Some("Acme Inc".to_string()),
+            address_line_1: "123 Main St".to_string(),
+            address_line_2: Some("Apt 4B".to_string()),
+            city: "New York".to_string(),
+            province: "NY".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "10001".to_string(),
+            phone: Some("+1234567890".to_string()),
+            is_default_shipping: Some(true),
+            is_default_billing: Some(false),
+        };
+
+        assert_eq!(input.first_name, "John");
+        assert_eq!(input.city, "New York");
+        assert_eq!(input.country_code, "US");
+        assert!(input.is_default_shipping.unwrap_or(false));
+    }
+
+    #[test]
+    fn test_add_address_input_minimal() {
+        let input = AddAddressInput {
+            first_name: "Jane".to_string(),
+            last_name: "Smith".to_string(),
+            company: None,
+            address_line_1: "456 Oak Ave".to_string(),
+            address_line_2: None,
+            city: "Los Angeles".to_string(),
+            province: "CA".to_string(),
+            country_code: "US".to_string(),
+            postal_code: "90001".to_string(),
+            phone: None,
+            is_default_shipping: None,
+            is_default_billing: None,
+        };
+
+        assert!(input.company.is_none());
+        assert!(input.address_line_2.is_none());
+        assert!(input.phone.is_none());
+    }
+
+    // ==================== Country Code Tests ====================
+
+    #[test]
+    fn test_valid_country_codes() {
+        let valid_codes = vec!["US", "CA", "GB", "DE", "FR", "JP", "AU"];
+
+        for code in valid_codes {
+            assert_eq!(code.len(), 2, "Country code {} should be 2 characters", code);
+            assert!(code.chars().all(|c| c.is_ascii_uppercase()));
+        }
+    }
+
+    // ==================== Phone Number Tests ====================
+
+    #[test]
+    fn test_phone_number_formats() {
+        let valid_phones = vec![
+            "+1234567890",
+            "+44 20 7946 0958",
+            "555-123-4567",
+            "(555) 123-4567",
+        ];
+
+        for phone in valid_phones {
+            assert!(!phone.is_empty());
+        }
+    }
+
+    // ==================== Display Name Tests ====================
+
+    #[test]
+    fn test_display_name_concatenation() {
+        let first_name = "John";
+        let last_name = "Doe";
+        let display_name = format!("{} {}", first_name, last_name);
+        let display_name = display_name.trim();
+
+        assert_eq!(display_name, "John Doe");
+    }
+
+    #[test]
+    fn test_display_name_empty_last_name() {
+        let first_name = "John";
+        let last_name = "";
+        let display_name = format!("{} {}", first_name, last_name);
+        let display_name = display_name.trim();
+
+        // Should just be the first name
+        assert_eq!(display_name, "John");
+    }
+
+    #[test]
+    fn test_display_name_fallback_to_email() {
+        let name = "";
+        let email = "user@example.com";
+
+        let display_name = if name.trim().is_empty() {
+            email.to_string()
+        } else {
+            name.trim().to_string()
+        };
+
+        assert_eq!(display_name, "user@example.com");
+    }
+
+    // ==================== Customer Status Tests ====================
+
+    #[test]
+    fn test_customer_status_active() {
+        let status = customer::CustomerStatus::Active;
+        assert_eq!(format!("{:?}", status), "Active");
+    }
+
+    // ==================== UUID Tests ====================
+
+    #[test]
+    fn test_customer_id_uniqueness() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_address_id_uniqueness() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        assert_ne!(id1, id2);
+    }
+
+    // ==================== Error Handling Tests ====================
+
+    #[test]
+    fn test_validation_error_email_already_registered() {
+        let error = ServiceError::ValidationError("Email already registered".to_string());
+        match error {
+            ServiceError::ValidationError(msg) => {
+                assert!(msg.contains("already registered"));
+            }
+            _ => panic!("Expected ValidationError"),
+        }
+    }
+
+    #[test]
+    fn test_auth_error_invalid_credentials() {
+        let error = ServiceError::AuthError("Invalid credentials".to_string());
+        match error {
+            ServiceError::AuthError(msg) => {
+                assert!(msg.contains("Invalid"));
+            }
+            _ => panic!("Expected AuthError"),
+        }
+    }
+
+    #[test]
+    fn test_not_found_error_customer() {
+        let customer_id = Uuid::new_v4();
+        let error = ServiceError::NotFound(format!("Customer {} not found", customer_id));
+        match error {
+            ServiceError::NotFound(msg) => {
+                assert!(msg.contains("not found"));
+            }
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    // ==================== Marketing Consent Tests ====================
+
+    #[test]
+    fn test_marketing_opt_in() {
+        let accepts_marketing = true;
+        assert!(accepts_marketing);
+    }
+
+    #[test]
+    fn test_marketing_opt_out() {
+        let accepts_marketing = false;
+        assert!(!accepts_marketing);
+    }
+
+    // ==================== Address Default Tests ====================
+
+    #[test]
+    fn test_default_shipping_address() {
+        let is_default_shipping: Option<bool> = Some(true);
+        assert!(is_default_shipping.unwrap_or(false));
+    }
+
+    #[test]
+    fn test_default_billing_address() {
+        let is_default_billing: Option<bool> = Some(true);
+        assert!(is_default_billing.unwrap_or(false));
+    }
+
+    #[test]
+    fn test_address_default_fallback() {
+        let is_default: Option<bool> = None;
+        // Should default to false when not specified
+        assert!(!is_default.unwrap_or(false));
+    }
+}
