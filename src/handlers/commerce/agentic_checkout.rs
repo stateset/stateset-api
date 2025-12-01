@@ -687,19 +687,17 @@ fn convert_payment_request(
     provider: &str,
     billing_address: Option<Address>,
 ) -> Result<PaymentData, ApiError> {
-    if payment.delegated_token.is_none() && payment.method.is_none() {
-        return Err(acp_invalid_request(
-            "payment.delegated_token or payment.method required",
-            Some("payment"),
-            "validation_error",
-        ));
-    }
-
     let token = payment
         .delegated_token
         .clone()
         .or_else(|| payment.method.clone())
-        .unwrap();
+        .ok_or_else(|| {
+            acp_invalid_request(
+                "payment.delegated_token or payment.method required",
+                Some("payment"),
+                "validation_error",
+            )
+        })?;
 
     Ok(PaymentData {
         token,
@@ -837,6 +835,7 @@ async fn create_checkout_session(
         buyer: converted_customer.buyer,
         items: convert_items(items),
         fulfillment_address: converted_customer.shipping,
+        promotion_code: None,
     };
 
     let create_result = state
@@ -958,6 +957,7 @@ async fn update_checkout_session(
         items,
         fulfillment_address: converted_customer.shipping,
         fulfillment_option_id,
+        promotion_code: None,
     };
 
     let session = state

@@ -104,29 +104,8 @@ pub struct ItemReceivedRequest {
     pub condition: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate, ToSchema, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct DateRangeParams {
-    pub start_date: String,
-
-    pub end_date: String,
-}
-
-impl DateRangeParams {
-    /// Converts string dates to NaiveDateTime
-    pub fn to_datetime_range(&self) -> Result<(NaiveDateTime, NaiveDateTime), ApiError> {
-        let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::ValidationError(format!("Invalid start date format: {}", e)))?;
-
-        let end_date = NaiveDate::parse_from_str(&self.end_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::ValidationError(format!("Invalid end date format: {}", e)))?;
-
-        Ok((
-            start_date.and_hms_opt(0, 0, 0).unwrap(),
-            end_date.and_hms_opt(23, 59, 59).unwrap(),
-        ))
-    }
-}
+// Re-export DateRangeParams from common module
+pub use crate::common::DateRangeParams;
 
 // Handler functions
 
@@ -264,11 +243,11 @@ pub async fn update_purchase_order(
 
     // Parse the expected delivery date if provided
     let expected_delivery_date = if let Some(date_str) = &payload.expected_delivery_date {
+        let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+            .map_err(|e| ApiError::ValidationError(format!("Invalid date format: {}", e)))?;
         Some(
-            NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-                .map_err(|e| ApiError::ValidationError(format!("Invalid date format: {}", e)))?
-                .and_hms_opt(0, 0, 0)
-                .unwrap(),
+            date.and_hms_opt(0, 0, 0)
+                .ok_or_else(|| ApiError::ValidationError("Invalid datetime".to_string()))?,
         )
     } else {
         None

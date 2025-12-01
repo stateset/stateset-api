@@ -118,8 +118,24 @@ fn verify_signature(
                     return false;
                 }
             }
-            let signed = format!("{}.{}", ts, std::str::from_utf8(payload).unwrap_or(""));
-            let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+            // Explicitly validate UTF-8 encoding - do not silently fallback
+            let payload_str = match std::str::from_utf8(payload) {
+                Ok(s) => s,
+                Err(_) => {
+                    warn!("Webhook payload is not valid UTF-8");
+                    return false;
+                }
+            };
+            let signed = format!("{}.{}", ts, payload_str);
+
+            // Safely create HMAC - secret must be valid
+            let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+                Ok(m) => m,
+                Err(_) => {
+                    warn!("Invalid webhook secret for HMAC");
+                    return false;
+                }
+            };
             mac.update(signed.as_bytes());
             let expected = hex::encode(mac.finalize().into_bytes());
             return constant_time_eq(&expected, sig);
@@ -141,8 +157,24 @@ fn verify_signature(
             }
         }
         if !ts.is_empty() && !v1.is_empty() {
-            let signed = format!("{}.{}", ts, std::str::from_utf8(payload).unwrap_or(""));
-            let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+            // Explicitly validate UTF-8 encoding - do not silently fallback
+            let payload_str = match std::str::from_utf8(payload) {
+                Ok(s) => s,
+                Err(_) => {
+                    warn!("Webhook payload is not valid UTF-8");
+                    return false;
+                }
+            };
+            let signed = format!("{}.{}", ts, payload_str);
+
+            // Safely create HMAC - secret must be valid
+            let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+                Ok(m) => m,
+                Err(_) => {
+                    warn!("Invalid webhook secret for HMAC");
+                    return false;
+                }
+            };
             mac.update(signed.as_bytes());
             let expected = hex::encode(mac.finalize().into_bytes());
             return constant_time_eq(&expected, v1);

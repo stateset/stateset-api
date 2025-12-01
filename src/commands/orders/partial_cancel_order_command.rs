@@ -139,7 +139,12 @@ impl PartialCancelOrderCommand {
         );
 
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(|e| {
                 error!(

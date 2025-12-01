@@ -63,7 +63,12 @@ impl DeleteOrderNoteCommand {
         info!(order_id = %self.order_id, note_id = %self.note_id, "Order note deleted");
         // Send event
         if let Err(e) = event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
         {
             let msg = format!("Failed to send event for deleted order note: {}", e);

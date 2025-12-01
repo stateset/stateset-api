@@ -151,7 +151,12 @@ impl UpdateOrderItemsCommand {
         event_sender: &EventSender,
         _updated_order: &order_entity::Model,
     ) -> Result<(), ServiceError> {
-        if let Err(e) = event_sender.send(Event::OrderUpdated(self.order_id)).await {
+        if let Err(e) = event_sender.send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            }).await {
             ORDER_ITEM_UPDATE_FAILURES.inc();
             error!(
                 "Failed to send OrderUpdated event for order ID {}: {}",

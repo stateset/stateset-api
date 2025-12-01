@@ -72,7 +72,12 @@ impl EventSender {
 pub enum Event {
     // Order events
     OrderCreated(Uuid),
-    OrderUpdated(Uuid),
+    OrderUpdated {
+        order_id: Uuid,
+        checkout_session_id: Option<String>,
+        status: Option<String>,
+        refunds: Vec<crate::webhooks::agentic_commerce::Refund>,
+    },
     OrderCancelled(Uuid),
     OrderCompleted(Uuid),
     OrderStatusChanged {
@@ -616,23 +621,40 @@ pub async fn process_events(
                     }
                 }
             }
-            Event::OrderUpdated(order_id) => {
-                info!("Order updated: {}", order_id);
+            Event::OrderUpdated {
+                order_id,
+                checkout_session_id,
+                status,
+                refunds,
+            } => {
+                info!("Order updated: {} (status: {:?})", order_id, status);
 
-                // Send webhook to OpenAI if configured
-                // Note: In a real implementation, you'd fetch the order details to get:
-                // - checkout_session_id
-                // - current status
-                // - refunds
-                // For now, this is a placeholder
+                // Send webhook to OpenAI if configured with actual order details
                 if let (Some(service), Some(url)) = (&webhook_service, &webhook_url) {
-                    // TODO: Fetch actual order details from database
-                    // This is a simplified version - in production you'd need to:
-                    // 1. Query the order from the database
-                    // 2. Get the associated checkout_session_id
-                    // 3. Get the current order status
-                    // 4. Get any refunds
-                    info!("Order update webhook would be sent for order {}", order_id);
+                    if let Some(ref session_id) = checkout_session_id {
+                        let permalink = format!("https://merchant.example.com/orders/{}", order_id);
+                        let order_status = status.clone().unwrap_or_else(|| "unknown".to_string());
+
+                        if let Err(e) = service
+                            .send_order_updated(
+                                &url,
+                                session_id.clone(),
+                                permalink,
+                                order_status,
+                                refunds.clone(),
+                            )
+                            .await
+                        {
+                            error!("Failed to send order_updated webhook: {}", e);
+                        } else {
+                            info!("Sent order_updated webhook for order {}", order_id);
+                        }
+                    } else {
+                        info!(
+                            "No checkout_session_id available for order {}, skipping webhook",
+                            order_id
+                        );
+                    }
                 }
             }
             // Add more event handlers as needed

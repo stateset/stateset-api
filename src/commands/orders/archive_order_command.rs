@@ -54,7 +54,12 @@ impl Command for ArchiveOrderCommand {
             .map_err(|e| ServiceError::OrderError(format!("Archive failed: {}", e)))?;
 
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(|e| ServiceError::EventError(e.to_string()))?;
 

@@ -77,8 +77,8 @@ pub struct AppConfig {
     /// Redis connection URL
     pub redis_url: String,
 
-    /// JWT secret key (minimum 32 characters)
-    #[validate(length(min = 32), custom = "validate_jwt_secret")]
+    /// JWT secret key (minimum 64 characters for enhanced security)
+    #[validate(length(min = 64), custom = "validate_jwt_secret")]
     pub jwt_secret: String,
 
     /// JWT expiration time in seconds (5min - 24h)
@@ -195,6 +195,14 @@ pub struct AppConfig {
     #[serde(default)]
     pub payment_provider: Option<String>,
 
+    /// Default tax rate (as decimal, e.g., 0.08 for 8%)
+    #[serde(default = "default_tax_rate")]
+    pub default_tax_rate: f64,
+
+    /// Event channel capacity for async event processing
+    #[serde(default = "default_event_channel_capacity")]
+    pub event_channel_capacity: usize,
+
     /// Webhook secret for verifying payment gateway callbacks
     #[serde(default)]
     pub payment_webhook_secret: Option<String>,
@@ -277,6 +285,8 @@ impl AppConfig {
             message_queue_namespace: default_message_queue_namespace(),
             message_queue_block_timeout_secs: default_message_queue_block_timeout_secs(),
             payment_provider: None,
+            default_tax_rate: default_tax_rate(),
+            event_channel_capacity: default_event_channel_capacity(),
             payment_webhook_secret: None,
             payment_webhook_tolerance_secs: None,
             agentic_commerce_webhook_url: None,
@@ -427,6 +437,14 @@ fn default_true_bool() -> bool {
     true
 }
 
+fn default_tax_rate() -> f64 {
+    0.08 // 8% default tax rate
+}
+
+fn default_event_channel_capacity() -> usize {
+    1024 // Default channel capacity
+}
+
 fn validate_message_queue_backend(value: &str) -> Result<(), ValidationError> {
     match value.to_ascii_lowercase().as_str() {
         "in-memory" | "redis" => Ok(()),
@@ -452,6 +470,13 @@ fn validate_log_level(level: &str) -> Result<(), ValidationError> {
 
 fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
     let trimmed = secret.trim();
+
+    // Enforce minimum length (should be 64+ for HS256)
+    if trimmed.len() < 64 {
+        let mut err = ValidationError::new("jwt_secret");
+        err.message = Some("JWT secret must be at least 64 characters for adequate security".into());
+        return Err(err);
+    }
 
     // Reject known insecure defaults and obvious placeholders
     const DISALLOWED: [&str; 4] = [
@@ -479,12 +504,20 @@ fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
     }
 
     let lower = trimmed.to_ascii_lowercase();
-    let weak_fragments = ["changeme", "password", "default", "12345"];
+    let weak_fragments = ["changeme", "password", "default", "12345", "abcdef"];
     if weak_fragments.iter().any(|pattern| lower.contains(pattern)) {
         let mut err = ValidationError::new("jwt_secret");
         err.message = Some(
             "JWT secret appears to be weak; use a cryptographically strong random string".into(),
         );
+        return Err(err);
+    }
+
+    // Check for minimum character diversity (at least 4 unique characters)
+    let unique_chars: std::collections::HashSet<char> = trimmed.chars().collect();
+    if unique_chars.len() < 10 {
+        let mut err = ValidationError::new("jwt_secret");
+        err.message = Some("JWT secret must have at least 10 unique characters for adequate entropy".into());
         return Err(err);
     }
 

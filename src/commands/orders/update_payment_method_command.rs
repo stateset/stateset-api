@@ -95,7 +95,12 @@ impl UpdatePaymentMethodCommand {
         _updated_order: &order_entity::Model,
     ) -> Result<(), ServiceError> {
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(|e| {
                 let msg = format!("Failed to send event for payment method update: {}", e);

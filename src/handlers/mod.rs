@@ -111,6 +111,9 @@ impl AppServices {
         let cash_sales = Arc::new(crate::services::cash_sale::CashSaleService::new(
             db_pool.clone(),
         ));
+        let promotions = Arc::new(crate::services::promotions::PromotionService::new(
+            (*db_pool).clone(),
+        ));
         let shipments = Arc::new(crate::services::shipments::ShipmentService::new(
             db_pool.clone(),
             event_sender.clone(),
@@ -127,6 +130,7 @@ impl AppServices {
             product_catalog.clone(),
             order_service.clone(),
             payments.clone(),
+            promotions.clone(),
             shipments.clone(),
             invoicing.clone(),
             cash_sales.clone(),

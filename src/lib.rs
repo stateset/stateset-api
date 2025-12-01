@@ -12,6 +12,7 @@ pub mod auth;
 pub mod cache;
 pub mod circuit_breaker;
 pub mod commands;
+pub mod common;
 pub mod config;
 pub mod db;
 pub mod dto;

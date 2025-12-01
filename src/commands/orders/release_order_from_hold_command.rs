@@ -110,7 +110,7 @@ impl ReleaseOrderFromHoldCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        _updated_order: &order_entity::Model,
+        updated_order: &order_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             order_id = %self.order_id,
@@ -118,7 +118,12 @@ impl ReleaseOrderFromHoldCommand {
         );
 
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None, // Orders may not have checkout_session_id
+                status: Some(updated_order.status.clone()),
+                refunds: vec![],
+            })
             .await
             .map_err(|e| {
                 ORDER_RELEASES_FROM_HOLD_FAILURES.inc();

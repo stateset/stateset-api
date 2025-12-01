@@ -13,6 +13,7 @@ use crate::{
             UpdateOrderStatusRequest,
         },
         payments::{PaymentMethod, PaymentService, ProcessPaymentRequest},
+        promotions::PromotionService,
         shipments::ShipmentService,
     },
 };
@@ -110,6 +111,7 @@ pub struct AgenticCheckoutService {
     product_catalog: Arc<ProductCatalogService>,
     order_service: Arc<OrderService>,
     payment_service: Arc<PaymentService>,
+    promotion_service: Arc<PromotionService>,
     shipment_service: Arc<ShipmentService>,
     invoicing_service: Arc<InvoicingService>,
     cash_sale_service: Arc<CashSaleService>,
@@ -126,6 +128,7 @@ impl AgenticCheckoutService {
         product_catalog: Arc<ProductCatalogService>,
         order_service: Arc<OrderService>,
         payment_service: Arc<PaymentService>,
+        promotion_service: Arc<PromotionService>,
         shipment_service: Arc<ShipmentService>,
         invoicing_service: Arc<InvoicingService>,
         cash_sale_service: Arc<CashSaleService>,
@@ -137,6 +140,7 @@ impl AgenticCheckoutService {
             product_catalog,
             order_service,
             payment_service,
+            promotion_service,
             shipment_service,
             invoicing_service,
             cash_sale_service,
@@ -151,6 +155,7 @@ impl AgenticCheckoutService {
         product_catalog: Arc<ProductCatalogService>,
         order_service: Arc<OrderService>,
         payment_service: Arc<PaymentService>,
+        promotion_service: Arc<PromotionService>,
         shipment_service: Arc<ShipmentService>,
         invoicing_service: Arc<InvoicingService>,
         cash_sale_service: Arc<CashSaleService>,
@@ -163,6 +168,7 @@ impl AgenticCheckoutService {
             product_catalog,
             order_service,
             payment_service,
+            promotion_service,
             shipment_service,
             invoicing_service,
             cash_sale_service,
@@ -237,6 +243,26 @@ impl AgenticCheckoutService {
 
         let line_items = self.build_line_items(&request.items).await?;
 
+        // Validate and load promotion if provided
+        let promotion = if let Some(ref promo_code) = request.promotion_code {
+            match self.promotion_service.find_active_promotion(promo_code).await {
+                Ok(Some(promo)) => {
+                    info!("Applied promotion: {} ({})", promo.name, promo_code);
+                    Some(promo)
+                }
+                Ok(None) => {
+                    warn!("Invalid or expired promotion code: {}", promo_code);
+                    None
+                }
+                Err(e) => {
+                    warn!("Error loading promotion {}: {}", promo_code, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let session_id = Uuid::new_v4();
         let currency = "USD".to_string();
         let now = Utc::now();
@@ -244,9 +270,9 @@ impl AgenticCheckoutService {
             + chrono::Duration::from_std(self.session_ttl())
                 .unwrap_or_else(|_| chrono::Duration::seconds(SESSION_TTL_SECS as i64));
 
-        // Calculate totals
+        // Calculate totals with promotion applied
         let totals =
-            self.calculate_totals(&line_items, request.fulfillment_address.as_ref(), None)?;
+            self.calculate_totals_with_promotion(&line_items, request.fulfillment_address.as_ref(), None, promotion.as_ref())?;
 
         // Determine fulfillment options
         let fulfillment_options =
@@ -273,6 +299,7 @@ impl AgenticCheckoutService {
             fulfillment_address: request.fulfillment_address,
             fulfillment_options,
             fulfillment_option_id: None,
+            promotion_code: request.promotion_code,
             totals,
             messages: vec![],
             links: vec![
@@ -306,12 +333,14 @@ impl AgenticCheckoutService {
                 .map_err(|e| ServiceError::CacheError(e.to_string()))?;
         }
 
-        self.event_sender
-            .send_or_log(Event::CheckoutStarted {
-                cart_id: Uuid::nil(), // Not cart-based
-                session_id: Uuid::parse_str(&session.id).unwrap(),
-            })
-            .await;
+        if let Ok(session_uuid) = Uuid::parse_str(&session.id) {
+            self.event_sender
+                .send_or_log(Event::CheckoutStarted {
+                    cart_id: Uuid::nil(), // Not cart-based
+                    session_id: session_uuid,
+                })
+                .await;
+        }
 
         info!("Created checkout session: {}", session.id);
         Ok(CreateSessionResult {
@@ -1036,6 +1065,16 @@ impl AgenticCheckoutService {
         address: Option<&Address>,
         fulfillment_option_id: Option<&str>,
     ) -> Result<Vec<Total>, ServiceError> {
+        self.calculate_totals_with_promotion(line_items, address, fulfillment_option_id, None)
+    }
+
+    fn calculate_totals_with_promotion(
+        &self,
+        line_items: &[LineItem],
+        address: Option<&Address>,
+        fulfillment_option_id: Option<&str>,
+        promotion: Option<&crate::models::promotion_entity::Model>,
+    ) -> Result<Vec<Total>, ServiceError> {
         let mut totals = Vec::new();
 
         // Items base amount
@@ -1046,39 +1085,72 @@ impl AgenticCheckoutService {
             amount: items_base,
         });
 
-        // Items discount
-        let items_discount: i64 = line_items.iter().map(|item| item.discount).sum();
-        if items_discount > 0 {
+        // Items discount (from line items)
+        let line_items_discount: i64 = line_items.iter().map(|item| item.discount).sum();
+
+        // Apply promotion discount
+        let promotion_discount = if let Some(promo) = promotion {
+            self.promotion_service.calculate_discount(promo, items_base)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let total_items_discount = line_items_discount + promotion_discount;
+
+        if total_items_discount > 0 {
             totals.push(Total {
                 total_type: "items_discount".to_string(),
-                display_text: "Discount".to_string(),
-                amount: -items_discount,
+                display_text: if let Some(promo) = promotion {
+                    format!("Discount ({})", promo.promotion_code)
+                } else {
+                    "Discount".to_string()
+                },
+                amount: -total_items_discount,
             });
         }
 
-        // Subtotal
-        let subtotal: i64 = line_items.iter().map(|item| item.subtotal).sum();
+        // Subtotal after discount
+        let subtotal = items_base - total_items_discount;
         totals.push(Total {
             total_type: "subtotal".to_string(),
             display_text: "Subtotal".to_string(),
             amount: subtotal,
         });
 
-        // Fulfillment
-        let fulfillment_cost = if fulfillment_option_id.is_some() {
+        // Fulfillment cost (check if promotion provides free shipping)
+        let mut fulfillment_cost = if fulfillment_option_id.is_some() {
             1000 // $10.00 shipping
         } else {
             0
         };
+
         if fulfillment_cost > 0 {
-            totals.push(Total {
-                total_type: "fulfillment".to_string(),
-                display_text: "Shipping".to_string(),
-                amount: fulfillment_cost,
-            });
+            if let Some(promo) = promotion {
+                if self.promotion_service.provides_free_shipping(promo) {
+                    fulfillment_cost = 0;
+                    totals.push(Total {
+                        total_type: "fulfillment".to_string(),
+                        display_text: format!("Shipping (FREE with {})", promo.promotion_code),
+                        amount: 0,
+                    });
+                } else {
+                    totals.push(Total {
+                        total_type: "fulfillment".to_string(),
+                        display_text: "Shipping".to_string(),
+                        amount: fulfillment_cost,
+                    });
+                }
+            } else {
+                totals.push(Total {
+                    total_type: "fulfillment".to_string(),
+                    display_text: "Shipping".to_string(),
+                    amount: fulfillment_cost,
+                });
+            }
         }
 
-        // Tax
+        // Tax (calculated on subtotal + shipping)
         let tax: i64 = line_items.iter().map(|item| item.tax).sum();
         totals.push(Total {
             total_type: "tax".to_string(),
@@ -1919,6 +1991,8 @@ pub struct CheckoutSession {
     pub fulfillment_options: Vec<FulfillmentOption>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment_option_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub promotion_code: Option<String>,
     pub totals: Vec<Total>,
     pub messages: Vec<Message>,
     pub links: Vec<Link>,
@@ -1959,6 +2033,8 @@ pub struct CheckoutSessionCreateRequest {
     pub items: Vec<Item>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment_address: Option<Address>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub promotion_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1971,6 +2047,8 @@ pub struct CheckoutSessionUpdateRequest {
     pub fulfillment_address: Option<Address>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment_option_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub promotion_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

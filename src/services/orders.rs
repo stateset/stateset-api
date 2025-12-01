@@ -577,7 +577,12 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+            sender.send_or_log(Event::OrderUpdated {
+                order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            }).await;
         }
 
         Ok(saved)
@@ -648,10 +653,11 @@ impl OrderService {
         }
 
         // Update the order
+        let current_version = order.version;
         let mut order_active_model: OrderActiveModel = order.into();
         order_active_model.status = Set(normalized_status.clone());
         order_active_model.updated_at = Set(Some(now));
-        order_active_model.version = Set(order_active_model.version.unwrap() + 1);
+        order_active_model.version = Set(current_version + 1);
 
         if let Some(notes) = request.notes {
             order_active_model.notes = Set(Some(notes));
@@ -746,7 +752,12 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+            sender.send_or_log(Event::OrderUpdated {
+                order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            }).await;
         }
 
         Ok(self.model_to_response(updated))
@@ -796,7 +807,12 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+            sender.send_or_log(Event::OrderUpdated {
+                order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            }).await;
         }
 
         Ok(self.model_to_response(updated))
@@ -859,10 +875,11 @@ impl OrderService {
             ServiceError::NotFound("Order not found".to_string())
         })?;
 
+        let current_version = order.version;
         let mut order_active_model: OrderActiveModel = order.into();
         order_active_model.is_archived = Set(true);
         order_active_model.updated_at = Set(Some(now));
-        order_active_model.version = Set(order_active_model.version.unwrap() + 1);
+        order_active_model.version = Set(current_version + 1);
 
         let archived_order = order_active_model.update(db).await.map_err(|e| {
             error!(error = %e, order_id = %order_id, "Failed to archive order");
@@ -1249,7 +1266,12 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated(order_id)).await;
+            sender.send_or_log(Event::OrderUpdated {
+                order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            }).await;
         }
 
         Ok(self.model_to_response(updated))

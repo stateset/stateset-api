@@ -115,11 +115,6 @@ pub async fn establish_connection_with_config(config: &DbConfig) -> Result<DbPoo
         .idle_timeout(config.idle_timeout)
         .sqlx_logging(true);
 
-    if let Some(timeout) = config.statement_timeout {
-        // TODO: Fix statement timeout API
-        // opt.set_statement_timeout(Some(timeout));
-    }
-
     // Register metrics
     gauge!("stateset_db.max_connections", config.max_connections as f64);
 
@@ -133,6 +128,19 @@ pub async fn establish_connection_with_config(config: &DbConfig) -> Result<DbPoo
         .await
         .map_err(|e| AppError::DatabaseError(e))
         .context("Database connection establishment failed")?;
+
+    // Set statement timeout using raw SQL for PostgreSQL
+    if let Some(timeout) = config.statement_timeout {
+        let backend = db_pool.get_database_backend();
+        if backend == DbBackend::Postgres {
+            let timeout_ms = timeout.as_millis() as i64;
+            let sql = format!("SET statement_timeout = {}", timeout_ms);
+            match db_pool.execute(Statement::from_string(backend, sql)).await {
+                Ok(_) => info!("Statement timeout set to {}ms", timeout_ms),
+                Err(e) => warn!("Failed to set statement timeout: {}", e),
+            }
+        }
+    }
 
     info!("Database connection pool established successfully");
 

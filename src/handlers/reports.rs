@@ -19,29 +19,8 @@ use validator::Validate;
 
 // Request and response DTOs
 
-#[derive(Debug, Deserialize, Validate)]
-pub struct DateRangeParams {
-    
-    pub start_date: String,
-    
-    pub end_date: String,
-}
-
-impl DateRangeParams {
-    /// Converts string dates to NaiveDateTime
-    pub fn to_datetime_range(&self) -> Result<(NaiveDateTime, NaiveDateTime), ApiError> {
-        let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest { message: format!("Invalid start date format: {}", e), error_code: None })?;
-
-        let end_date = NaiveDate::parse_from_str(&self.end_date, "%Y-%m-%d")
-            .map_err(|e| ApiError::BadRequest { message: format!("Invalid end date format: {}", e), error_code: None })?;
-
-        Ok((
-            start_date.and_hms_opt(0, 0, 0).unwrap(),
-            end_date.and_hms_opt(23, 59, 59).unwrap(),
-        ))
-    }
-}
+// Re-export DateRangeParams from common module
+pub use crate::common::DateRangeParams;
 
 // Handler functions
 

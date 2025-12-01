@@ -98,8 +98,9 @@ impl RefundOrderCommand {
                     return Err(ServiceError::InvalidOperation(msg));
                 }
 
+                let current_total = order.total_amount;
                 let mut order: order_entity::ActiveModel = order.into();
-                let new_total = order.total_amount.unwrap() - refund_amount;
+                let new_total = current_total - refund_amount;
                 order.total_amount = Set(new_total);
                 order.updated_at = Set(Utc::now());
 
@@ -140,7 +141,7 @@ impl RefundOrderCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        _updated_order: &order_entity::Model,
+        updated_order: &order_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             order_id = %self.order_id,
@@ -150,7 +151,12 @@ impl RefundOrderCommand {
         );
 
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None, // Orders may not have checkout_session_id
+                status: Some(updated_order.status.clone()),
+                refunds: vec![format!("${}", self.refund_amount)],
+            })
             .await
             .map_err(|e| {
                 let msg = format!("Failed to send order refunded event: {}", e);

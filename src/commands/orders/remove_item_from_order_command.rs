@@ -81,7 +81,12 @@ impl Command for RemoveItemFromOrderCommand {
 
         // Trigger an event indicating that an item was removed from the order
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(ServiceError::EventError)?;
 

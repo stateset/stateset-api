@@ -63,7 +63,12 @@ impl DeleteOrderCommand {
     async fn log_and_trigger_event(&self, event_sender: &EventSender) -> Result<(), ServiceError> {
         info!(order_id = %self.order_id, "Order deleted successfully");
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(|e| {
                 let msg = format!("Failed to send event for deleted order: {}", e);

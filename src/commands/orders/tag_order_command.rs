@@ -96,7 +96,12 @@ impl TagOrderCommand {
         for order in tagged_orders {
             info!("Order ID {} tagged with '{}'", order.id, self.tag_name);
             event_sender
-                .send(Event::OrderUpdated(order.id))
+                .send(Event::OrderUpdated {
+                order_id: order.id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
                 .await
                 .map_err(|e| {
                     error!(

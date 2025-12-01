@@ -103,7 +103,12 @@ impl UpdateBillingAddressCommand {
         _updated_order: &order_entity::Model,
     ) -> Result<(), ServiceError> {
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(|e| {
                 BILLING_ADDRESS_UPDATE_FAILURES.inc();

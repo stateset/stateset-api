@@ -79,7 +79,12 @@ impl UpdateOrderNoteCommand {
     ) -> Result<(), ServiceError> {
         info!(order_id = %self.order_id, note_id = %self.note_id, "Order note updated");
         event_sender
-            .send(Event::OrderUpdated(self.order_id))
+            .send(Event::OrderUpdated {
+                order_id: self.order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            })
             .await
             .map_err(|e| {
                 let msg = format!("Failed to send event for updated order note: {}", e);

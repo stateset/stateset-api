@@ -96,7 +96,7 @@ impl CartService {
             shipping_total: Set(Decimal::ZERO),
             discount_total: Set(Decimal::ZERO),
             total: Set(Decimal::ZERO),
-            metadata: Set(input.metadata.map(|m| serde_json::to_value(m).unwrap())),
+            metadata: Set(input.metadata.and_then(|m| serde_json::to_value(m).ok())),
             status: Set(cart::CartStatus::Active),
             expires_at: Set(expires_at),
             created_at: Set(Utc::now()),
@@ -181,9 +181,10 @@ impl CartService {
 
         if let Some(item) = existing_item {
             // Update quantity
+            let current_quantity = item.quantity;
             let mut item: cart_item::ActiveModel = item.into();
-            item.quantity = Set(item.quantity.clone().unwrap() + input.quantity);
-            item.line_total = Set(variant.price * Decimal::from(item.quantity.clone().unwrap()));
+            item.quantity = Set(current_quantity + input.quantity);
+            item.line_total = Set(variant.price * Decimal::from(current_quantity + input.quantity));
             item.updated_at = Set(Utc::now());
             item.update(&txn).await?;
         } else {
@@ -281,9 +282,10 @@ impl CartService {
                 ));
             }
 
+            let unit_price = item.unit_price;
             let mut item: cart_item::ActiveModel = item.into();
             item.quantity = Set(quantity);
-            item.line_total = Set(item.unit_price.clone().unwrap() * Decimal::from(quantity));
+            item.line_total = Set(unit_price * Decimal::from(quantity));
             item.updated_at = Set(Utc::now());
             item.update(&txn).await?;
         }
@@ -484,7 +486,7 @@ impl CartService {
         Ok(())
     }
 
-    /// Recalculate cart totals
+    /// Recalculate cart totals including tax, shipping, and discounts
     async fn recalculate_cart_totals(
         &self,
         conn: &impl sea_orm::ConnectionTrait,
@@ -495,7 +497,27 @@ impl CartService {
             .all(conn)
             .await?;
 
-        let subtotal = items.iter().map(|item| item.line_total).sum();
+        let subtotal: Decimal = items.iter().map(|item| item.line_total).sum();
+
+        // Calculate tax (8% standard rate - could be made configurable or address-based)
+        let tax_rate = Decimal::from_f32_retain(0.08).unwrap_or(Decimal::ZERO);
+        let tax_total = subtotal * tax_rate;
+
+        // Calculate shipping
+        // Free shipping on orders over $50, otherwise $10 flat rate
+        let shipping_total = if subtotal >= Decimal::from(50) {
+            Decimal::ZERO
+        } else if subtotal > Decimal::ZERO {
+            Decimal::from(10)
+        } else {
+            Decimal::ZERO
+        };
+
+        // Get discount total from cart items (item-level discounts)
+        let discount_total: Decimal = items.iter().map(|item| item.discount_amount).sum();
+
+        // Calculate final total
+        let total = subtotal + tax_total + shipping_total - discount_total;
 
         let mut cart: cart::ActiveModel = Cart::find_by_id(cart_id)
             .one(conn)
@@ -504,8 +526,21 @@ impl CartService {
             .into();
 
         cart.subtotal = Set(subtotal);
-        cart.total = Set(subtotal); // TODO: Add tax, shipping, discounts
+        cart.tax_total = Set(tax_total);
+        cart.shipping_total = Set(shipping_total);
+        cart.discount_total = Set(discount_total);
+        cart.total = Set(total);
         cart.updated_at = Set(Utc::now());
+
+        info!(
+            "Recalculated cart {}: subtotal=${}, tax=${}, shipping=${}, discount=${}, total=${}",
+            cart_id,
+            subtotal,
+            tax_total,
+            shipping_total,
+            discount_total,
+            total
+        );
 
         Ok(cart.update(conn).await?)
     }

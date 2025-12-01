@@ -12,7 +12,7 @@ use crate::{
     events::EventSender,
     proto::{inventory::*, order::*, return_order::*, shipment::*, warranty::*, work_order::*},
     services::inventory::{
-        AdjustInventoryCommand, InventoryService as InvService, InventorySnapshot, LocationBalance,
+        AdjustInventoryCommand, InventoryService as InvService, InventorySnapshot,
         ReserveInventoryCommand,
     },
     services::order_status::OrderStatusService,
@@ -157,7 +157,7 @@ fn balance_to_proto_item(
     inventory_item_id: i64,
     item_number: &str,
     description: Option<&str>,
-    balance: &LocationBalance,
+    balance: &crate::services::inventory::LocationBalance,
 ) -> Result<InventoryItem, Status> {
     Ok(InventoryItem {
         inventory_item_id,
@@ -493,7 +493,7 @@ impl inventory_service_server::InventoryService for StateSetApi {
         let quantity_delta = req.quantity_delta.parse::<rust_decimal::Decimal>()
             .map_err(|_| Status::invalid_argument("Invalid quantity_delta"))?;
 
-        self.inventory_service
+        let balance = self.inventory_service
             .adjust_inventory(AdjustInventoryCommand {
                 inventory_item_id,
                 item_number,
@@ -508,7 +508,19 @@ impl inventory_service_server::InventoryService for StateSetApi {
             })?;
 
         Ok(Response::new(AdjustInventoryResponse {
-            location_balance: None, // TODO: Return updated balance
+            location_balance: Some(InventoryLocation {
+                location_id: balance.location_id,
+                location_name: balance.location_name.unwrap_or_default(),
+                quantities: Some(InventoryQuantities {
+                    on_hand: balance.quantity_on_hand.to_string(),
+                    allocated: balance.quantity_allocated.to_string(),
+                    available: balance.quantity_available.to_string(),
+                }),
+                updated_at: Some(prost_types::Timestamp {
+                    seconds: balance.updated_at.timestamp(),
+                    nanos: balance.updated_at.timestamp_subsec_nanos() as i32,
+                }),
+            }),
         }))
     }
 
@@ -517,10 +529,45 @@ impl inventory_service_server::InventoryService for StateSetApi {
         &self,
         request: Request<ReleaseReservationRequest>,
     ) -> Result<Response<ReleaseReservationResponse>, Status> {
-        let _req = request.into_inner();
+        let req = request.into_inner();
 
-        // TODO: Implement release_reservation logic
-        Err(Status::unimplemented("Release reservation not yet implemented"))
+        let (inventory_item_id, item_number) = match req.identifier {
+            Some(release_reservation_request::Identifier::InventoryItemId(id)) => (Some(id), None),
+            Some(release_reservation_request::Identifier::ItemNumber(num)) => (None, Some(num)),
+            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+        };
+
+        let quantity = req.quantity.parse::<rust_decimal::Decimal>()
+            .map_err(|_| Status::invalid_argument("Invalid quantity"))?;
+
+        let balance = self.inventory_service
+            .release_reservation(crate::services::inventory::ReleaseReservationCommand {
+                inventory_item_id,
+                item_number,
+                location_id: req.location_id,
+                quantity,
+            })
+            .await
+            .map_err(|e| {
+                error!("Failed to release reservation: {}", e);
+                e.into_grpc_status()
+            })?;
+
+        Ok(Response::new(ReleaseReservationResponse {
+            location_balance: Some(InventoryLocation {
+                location_id: balance.location_id,
+                location_name: balance.location_name.unwrap_or_default(),
+                quantities: Some(InventoryQuantities {
+                    on_hand: balance.quantity_on_hand.to_string(),
+                    allocated: balance.quantity_allocated.to_string(),
+                    available: balance.quantity_available.to_string(),
+                }),
+                updated_at: Some(prost_types::Timestamp {
+                    seconds: balance.updated_at.timestamp(),
+                    nanos: balance.updated_at.timestamp_subsec_nanos() as i32,
+                }),
+            }),
+        }))
     }
 
     #[instrument(skip(self, request), fields(inventory_item_id, from_location_id, to_location_id))]
@@ -528,10 +575,27 @@ impl inventory_service_server::InventoryService for StateSetApi {
         &self,
         request: Request<TransferInventoryRequest>,
     ) -> Result<Response<TransferInventoryResponse>, Status> {
-        let _req = request.into_inner();
+        let req = request.into_inner();
 
-        // TODO: Implement transfer_inventory logic
-        Err(Status::unimplemented("Transfer inventory not yet implemented"))
+        let quantity = req.quantity.parse::<rust_decimal::Decimal>()
+            .map_err(|_| Status::invalid_argument("Invalid quantity"))?;
+
+        let _ = self.inventory_service
+            .transfer_inventory(
+                req.inventory_item_id,
+                req.from_location_id,
+                req.to_location_id,
+                quantity,
+            )
+            .await
+            .map_err(|e| {
+                error!("Failed to transfer inventory: {}", e);
+                e.into_grpc_status()
+            })?;
+
+        Ok(Response::new(TransferInventoryResponse {
+            success: true,
+        }))
     }
 
     async fn list_inventory(

@@ -35,11 +35,12 @@ pub mod leads;
 pub mod notifications;
 
 // Financial Services
-// pub mod accounting;
+pub mod accounting;
 pub mod cash_sale;
 pub mod invoicing;
 // pub mod item_receipts;
 pub mod payments;
+pub mod promotions;
 pub mod stablepay_service;
 pub mod stablepay_crypto_service;
 pub mod stablepay_reconciliation_service;
@@ -47,7 +48,7 @@ pub mod stablepay_reconciliation_service;
 // Analytics and Reporting
 pub mod business_intelligence;
 pub mod forecasting;
-// pub mod reports;
+pub mod reports;
 
 // External Services
 pub mod geocoding;
