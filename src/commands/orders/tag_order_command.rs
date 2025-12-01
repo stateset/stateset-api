@@ -15,7 +15,9 @@ use chrono::Utc;
 
 pub struct TagOrderCommand {
     pub order_id: Uuid,
-    pub tag_id: i32,
+    pub tag_name: String,
+    pub tag_value: Option<String>,
+    pub created_by: Option<Uuid>,
 }
 
 #[async_trait]
@@ -65,18 +67,23 @@ impl TagOrderCommand {
                 ServiceError::NotFound(format!("Order {} not found", self.order_id))
             })?;
 
-        // TODO: Fix schema mismatch - order_tag expects i32 order_id but order entity has UUID id
-        // For now, we'll skip creating the tag and just log
-        error!("Cannot create tag - schema mismatch: order_tag expects i32 order_id but order has UUID");
-        
-        // let tag = order_tag::ActiveModel {
-        //     id: Set(Uuid::new_v4()),
-        //     order_id: Set(order.id), // This won't work - type mismatch
-        //     tag_name: Set(self.tag_name.clone()),
-        //     tag_value: Set(self.tag_value.clone()),
-        //     created_by: Set(Some(self.user_id)),
-        //     created_at: Set(Utc::now()),
-        // };
+        // Create the order tag
+        let tag = order_tag::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            order_id: Set(order.id),
+            tag_name: Set(self.tag_name.clone()),
+            tag_value: Set(self.tag_value.clone()),
+            created_by: Set(self.created_by),
+            created_at: Set(Utc::now()),
+        };
+
+        // Insert the tag
+        tag.insert(txn).await.map_err(|e| {
+            error!("Failed to create tag for order {}: {}", self.order_id, e);
+            ServiceError::db_error(e)
+        })?;
+
+        info!("Successfully tagged order {} with '{}'", order.id, self.tag_name);
 
         Ok(vec![order])
     }
@@ -87,7 +94,7 @@ impl TagOrderCommand {
         tagged_orders: &[order::Model],
     ) -> Result<(), ServiceError> {
         for order in tagged_orders {
-            info!("Order ID {} tagged with tag ID {}", order.id, self.tag_id);
+            info!("Order ID {} tagged with '{}'", order.id, self.tag_name);
             event_sender
                 .send(Event::OrderUpdated(order.id))
                 .await

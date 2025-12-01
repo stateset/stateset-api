@@ -14,7 +14,33 @@ use std::sync::Arc;
 use tracing::{info, instrument};
 use uuid::Uuid;
 
-/// Shopping cart service
+/// Shopping cart service for managing e-commerce shopping carts.
+///
+/// The `CartService` provides comprehensive cart management functionality including:
+/// - Cart creation and lifecycle management
+/// - Adding, updating, and removing cart items
+/// - Automatic total calculation (subtotal, tax, shipping, discounts)
+/// - Cart abandonment tracking
+/// - Customer cart history
+///
+/// # Examples
+///
+/// ```ignore
+/// use stateset_api::services::commerce::CartService;
+/// use stateset_api::services::commerce::CreateCartInput;
+///
+/// let cart_service = CartService::new(db, event_sender);
+///
+/// // Create a new cart
+/// let input = CreateCartInput {
+///     session_id: Some("session_123".to_string()),
+///     customer_id: Some(customer_uuid),
+///     currency: Some("USD".to_string()),
+///     metadata: None,
+/// };
+///
+/// let cart = cart_service.create_cart(input).await?;
+/// ```
 #[derive(Clone)]
 pub struct CartService {
     db: Arc<DatabaseConnection>,
@@ -22,11 +48,39 @@ pub struct CartService {
 }
 
 impl CartService {
+    /// Creates a new `CartService` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Database connection pool
+    /// * `event_sender` - Event sender for publishing cart events
     pub fn new(db: Arc<DatabaseConnection>, event_sender: Arc<EventSender>) -> Self {
         Self { db, event_sender }
     }
 
-    /// Create a new cart
+    /// Creates a new shopping cart.
+    ///
+    /// Creates a cart with automatic 30-day expiration and zero initial totals.
+    /// Publishes a `CartCreated` event upon success.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Cart creation parameters including session ID, customer ID, and currency
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CartModel)` - The created cart with generated UUID
+    /// * `Err(ServiceError)` - Database error if cart creation fails
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let cart = cart_service.create_cart(CreateCartInput {
+    ///     customer_id: Some(uuid),
+    ///     currency: Some("EUR".to_string()),
+    ///     ..Default::default()
+    /// }).await?;
+    /// ```
     #[instrument(skip(self))]
     pub async fn create_cart(&self, input: CreateCartInput) -> Result<CartModel, ServiceError> {
         let cart_id = Uuid::new_v4();
@@ -59,7 +113,37 @@ impl CartService {
         Ok(cart)
     }
 
-    /// Add item to cart
+    /// Adds an item to the cart or updates quantity if item already exists.
+    ///
+    /// This method handles both new items and existing items intelligently:
+    /// - If the variant is already in the cart, increments the quantity
+    /// - If the variant is new, creates a new cart item
+    /// - Automatically recalculates cart totals after adding
+    /// - Publishes a `CartItemAdded` event upon success
+    ///
+    /// # Arguments
+    ///
+    /// * `cart_id` - UUID of the target cart
+    /// * `input` - Item details including variant ID and quantity
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CartModel)` - Updated cart with recalculated totals
+    /// * `Err(ServiceError::NotFound)` - Cart or variant not found
+    /// * `Err(ServiceError::InvalidOperation)` - Cart is not active
+    /// * `Err(ServiceError)` - Database transaction error
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let updated_cart = cart_service.add_item(
+    ///     cart_id,
+    ///     AddToCartInput {
+    ///         variant_id: product_variant_uuid,
+    ///         quantity: 2,
+    ///     }
+    /// ).await?;
+    /// ```
     #[instrument(skip(self))]
     pub async fn add_item(
         &self,
@@ -142,7 +226,35 @@ impl CartService {
         Ok(updated_cart)
     }
 
-    /// Update cart item quantity
+    /// Updates the quantity of a cart item.
+    ///
+    /// Special handling:
+    /// - If quantity is 0 or negative, removes the item from the cart
+    /// - If quantity is positive, updates the item and recalculates line total
+    /// - Automatically recalculates cart totals after update
+    ///
+    /// # Arguments
+    ///
+    /// * `cart_id` - UUID of the cart (for validation)
+    /// * `item_id` - UUID of the cart item to update
+    /// * `quantity` - New quantity (0 or negative to remove)
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CartModel)` - Updated cart with recalculated totals
+    /// * `Err(ServiceError::NotFound)` - Cart item not found
+    /// * `Err(ServiceError::InvalidOperation)` - Item doesn't belong to specified cart
+    /// * `Err(ServiceError)` - Database transaction error
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Update quantity to 5
+    /// let cart = cart_service.update_item_quantity(cart_id, item_id, 5).await?;
+    ///
+    /// // Remove item (quantity 0)
+    /// let cart = cart_service.update_item_quantity(cart_id, item_id, 0).await?;
+    /// ```
     #[instrument(skip(self))]
     pub async fn update_item_quantity(
         &self,
@@ -182,7 +294,27 @@ impl CartService {
         Ok(updated_cart)
     }
 
-    /// Get cart with items
+    /// Retrieves a cart with all its items.
+    ///
+    /// Performs a join to efficiently load the cart and all associated items
+    /// in a single database query.
+    ///
+    /// # Arguments
+    ///
+    /// * `cart_id` - UUID of the cart to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CartWithItems)` - Cart model with associated items
+    /// * `Err(ServiceError::NotFound)` - Cart not found
+    /// * `Err(ServiceError)` - Database error
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let cart_with_items = cart_service.get_cart(cart_id).await?;
+    /// println!("Cart has {} items", cart_with_items.items.len());
+    /// ```
     #[instrument(skip(self))]
     pub async fn get_cart(&self, cart_id: Uuid) -> Result<CartWithItems, ServiceError> {
         let cart = Cart::find_by_id(cart_id)
@@ -195,7 +327,20 @@ impl CartService {
         Ok(CartWithItems { cart, items })
     }
 
-    /// Fetch a cart without loading its items.
+    /// Retrieves a cart without loading its items.
+    ///
+    /// More efficient than `get_cart` when you only need cart metadata
+    /// and don't need the associated items.
+    ///
+    /// # Arguments
+    ///
+    /// * `cart_id` - UUID of the cart to retrieve
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CartModel)` - Cart model without items
+    /// * `Err(ServiceError::NotFound)` - Cart not found
+    /// * `Err(ServiceError)` - Database error
     pub async fn get_cart_model(&self, cart_id: Uuid) -> Result<CartModel, ServiceError> {
         Cart::find_by_id(cart_id)
             .one(&*self.db)
@@ -203,7 +348,31 @@ impl CartService {
             .ok_or_else(|| ServiceError::NotFound(format!("Cart {} not found", cart_id)))
     }
 
-    /// List carts for a specific customer with pagination
+    /// Lists all carts for a specific customer with pagination.
+    ///
+    /// Returns carts ordered by creation date (newest first).
+    ///
+    /// # Arguments
+    ///
+    /// * `customer_id` - UUID of the customer
+    /// * `page` - Page number (1-indexed)
+    /// * `per_page` - Number of carts per page
+    ///
+    /// # Returns
+    ///
+    /// * `Ok((Vec<CartModel>, u64))` - Tuple of (carts for page, total count)
+    /// * `Err(ServiceError)` - Database error
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let (carts, total) = cart_service.list_carts_for_customer(
+    ///     customer_id,
+    ///     1, // page
+    ///     20 // per_page
+    /// ).await?;
+    /// println!("Showing {} of {} total carts", carts.len(), total);
+    /// ```
     pub async fn list_carts_for_customer(
         &self,
         customer_id: Uuid,
@@ -221,7 +390,30 @@ impl CartService {
         Ok((data, total))
     }
 
-    /// Mark a cart as abandoned (soft delete)
+    /// Marks a cart as abandoned (soft delete).
+    ///
+    /// Changes the cart status to `Abandoned` without deleting the cart or items.
+    /// Useful for cart abandonment analysis and recovery campaigns.
+    /// Publishes a `CartUpdated` event upon success.
+    ///
+    /// # Arguments
+    ///
+    /// * `cart_id` - UUID of the cart to abandon
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CartModel)` - Updated cart with abandoned status
+    /// * `Err(ServiceError::NotFound)` - Cart not found
+    /// * `Err(ServiceError)` - Database error
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Mark cart as abandoned after 24 hours of inactivity
+    /// let abandoned_cart = cart_service.abandon_cart(cart_id).await?;
+    /// // Trigger cart recovery email
+    /// send_cart_recovery_email(&abandoned_cart).await?;
+    /// ```
     pub async fn abandon_cart(&self, cart_id: Uuid) -> Result<CartModel, ServiceError> {
         let cart = Cart::find_by_id(cart_id)
             .one(&*self.db)
@@ -240,7 +432,27 @@ impl CartService {
         Ok(updated)
     }
 
-    /// Clear cart
+    /// Clears all items from a cart and resets totals to zero.
+    ///
+    /// Deletes all cart items and resets all monetary totals (subtotal, tax,
+    /// shipping, discount, total) to zero. The cart itself remains active.
+    ///
+    /// # Arguments
+    ///
+    /// * `cart_id` - UUID of the cart to clear
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - Cart successfully cleared
+    /// * `Err(ServiceError::NotFound)` - Cart not found
+    /// * `Err(ServiceError)` - Database transaction error
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Clear cart before starting new shopping session
+    /// cart_service.clear_cart(cart_id).await?;
+    /// ```
     #[instrument(skip(self))]
     pub async fn clear_cart(&self, cart_id: Uuid) -> Result<(), ServiceError> {
         let txn = self.db.begin().await?;

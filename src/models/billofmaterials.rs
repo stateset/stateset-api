@@ -33,17 +33,15 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    // TODO: Uncomment when bill_of_materials_line_item entity is implemented
-    // #[sea_orm(has_many = "super::bill_of_materials_line_item::Entity")]
-    // LineItems,
+    #[sea_orm(has_many = "super::bom_line_item::Entity")]
+    LineItems,
 }
 
-// TODO: Uncomment when bill_of_materials_line_item entity is implemented
-// impl Related<super::bill_of_materials_line_item::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::LineItems.def()
-//     }
-// }
+impl Related<super::bom_line_item::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::LineItems.def()
+    }
+}
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {

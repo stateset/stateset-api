@@ -1,2 +1,2 @@
-// This file is being consolidated - please use proper entity definitions instead
-// TODO: Create proper Return entity or reference existing one
+// Re-export the Return model as an entity
+pub use crate::models::return_entity::*;
