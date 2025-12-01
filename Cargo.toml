@@ -75,6 +75,10 @@ async-recursion = "1.0"
 argon2 = { version = "0.5", features = ["std"] }
 clap = { version = "4.5.4", features = ["derive"] }
 
+# OAuth2 support
+oauth2 = "4.4"
+url = "2.5"
+
 [features]
 default = []
 demos = []

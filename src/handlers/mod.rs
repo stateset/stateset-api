@@ -24,6 +24,7 @@ pub mod commerce;
 pub mod outbox_admin;
 pub mod users;
 pub mod manufacturing;
+pub mod oauth2;
 
 use crate::events::EventSender;
 use crate::message_queue::MessageQueue;

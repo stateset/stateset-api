@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms)]
 #![allow(elided_lifetimes_in_paths)]
+#![allow(dead_code)] // Allow dead code for API extensibility - handlers and services are used dynamically
 #![warn(clippy::all, clippy::perf, clippy::dbg_macro)]
 
 // Core modules

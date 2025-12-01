@@ -226,6 +226,56 @@ pub struct AppConfig {
     /// Agentic Commerce: Signature timestamp tolerance in seconds (default 300s)
     #[serde(default)]
     pub agentic_commerce_signature_tolerance_secs: Option<u64>,
+
+    // ========== OAuth2 Configuration ==========
+
+    /// Enable OAuth2 authentication
+    #[serde(default)]
+    pub oauth2_enabled: bool,
+
+    /// OAuth2 frontend redirect URL (where to redirect after auth)
+    #[serde(default)]
+    pub oauth2_frontend_url: Option<String>,
+
+    /// Google OAuth2 Client ID
+    #[serde(default)]
+    pub oauth2_google_client_id: Option<String>,
+
+    /// Google OAuth2 Client Secret
+    #[serde(default)]
+    pub oauth2_google_client_secret: Option<String>,
+
+    /// Google OAuth2 Redirect URL
+    #[serde(default)]
+    pub oauth2_google_redirect_url: Option<String>,
+
+    /// GitHub OAuth2 Client ID
+    #[serde(default)]
+    pub oauth2_github_client_id: Option<String>,
+
+    /// GitHub OAuth2 Client Secret
+    #[serde(default)]
+    pub oauth2_github_client_secret: Option<String>,
+
+    /// GitHub OAuth2 Redirect URL
+    #[serde(default)]
+    pub oauth2_github_redirect_url: Option<String>,
+
+    /// Microsoft OAuth2 Client ID
+    #[serde(default)]
+    pub oauth2_microsoft_client_id: Option<String>,
+
+    /// Microsoft OAuth2 Client Secret
+    #[serde(default)]
+    pub oauth2_microsoft_client_secret: Option<String>,
+
+    /// Microsoft OAuth2 Redirect URL
+    #[serde(default)]
+    pub oauth2_microsoft_redirect_url: Option<String>,
+
+    /// Microsoft OAuth2 Tenant ID (defaults to "common")
+    #[serde(default)]
+    pub oauth2_microsoft_tenant_id: Option<String>,
 }
 
 impl AppConfig {
@@ -293,6 +343,19 @@ impl AppConfig {
             agentic_commerce_webhook_secret: None,
             agentic_commerce_signing_secret: None,
             agentic_commerce_signature_tolerance_secs: None,
+            // OAuth2 defaults
+            oauth2_enabled: false,
+            oauth2_frontend_url: None,
+            oauth2_google_client_id: None,
+            oauth2_google_client_secret: None,
+            oauth2_google_redirect_url: None,
+            oauth2_github_client_id: None,
+            oauth2_github_client_secret: None,
+            oauth2_github_redirect_url: None,
+            oauth2_microsoft_client_id: None,
+            oauth2_microsoft_client_secret: None,
+            oauth2_microsoft_redirect_url: None,
+            oauth2_microsoft_tenant_id: None,
         };
         config.db_url = config.database_url.clone();
         config
@@ -324,6 +387,72 @@ impl AppConfig {
     /// Whether we should fall back to permissive CORS
     pub fn should_allow_permissive_cors(&self) -> bool {
         self.is_development() || self.cors_allow_any_origin
+    }
+
+    /// Build OAuth2 configuration from app config
+    pub fn build_oauth2_config(&self) -> crate::auth::OAuth2Config {
+        use crate::auth::{OAuth2Config, OAuth2ProviderConfig};
+
+        let google = match (
+            &self.oauth2_google_client_id,
+            &self.oauth2_google_client_secret,
+            &self.oauth2_google_redirect_url,
+        ) {
+            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => {
+                Some(OAuth2ProviderConfig::google(
+                    id.clone(),
+                    secret.clone(),
+                    redirect.clone(),
+                ))
+            }
+            _ => None,
+        };
+
+        let github = match (
+            &self.oauth2_github_client_id,
+            &self.oauth2_github_client_secret,
+            &self.oauth2_github_redirect_url,
+        ) {
+            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => {
+                Some(OAuth2ProviderConfig::github(
+                    id.clone(),
+                    secret.clone(),
+                    redirect.clone(),
+                ))
+            }
+            _ => None,
+        };
+
+        let microsoft = match (
+            &self.oauth2_microsoft_client_id,
+            &self.oauth2_microsoft_client_secret,
+            &self.oauth2_microsoft_redirect_url,
+        ) {
+            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => {
+                Some(OAuth2ProviderConfig::microsoft(
+                    id.clone(),
+                    secret.clone(),
+                    redirect.clone(),
+                    self.oauth2_microsoft_tenant_id.clone(),
+                ))
+            }
+            _ => None,
+        };
+
+        OAuth2Config {
+            enabled: self.oauth2_enabled,
+            google,
+            github,
+            microsoft,
+            custom: None,
+        }
+    }
+
+    /// Get OAuth2 frontend redirect URL
+    pub fn oauth2_frontend_url(&self) -> String {
+        self.oauth2_frontend_url
+            .clone()
+            .unwrap_or_else(|| format!("http://{}:{}/auth/callback", self.host, self.port))
     }
 
     fn validate_additional_constraints(&self) -> Result<(), ValidationErrors> {

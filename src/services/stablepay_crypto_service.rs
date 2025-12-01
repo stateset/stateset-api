@@ -14,7 +14,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info, instrument, warn};
+use tracing::{info, instrument, warn};
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 

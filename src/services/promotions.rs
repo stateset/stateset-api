@@ -112,7 +112,7 @@ impl PromotionService {
         &self,
         promotion_id: uuid::Uuid,
     ) -> Result<(), ServiceError> {
-        use crate::models::promotion_entity::{ActiveModel, Column};
+        use crate::models::promotion_entity::ActiveModel;
         use sea_orm::{ActiveModelTrait, Set};
 
         let promotion = Promotion::find_by_id(promotion_id)

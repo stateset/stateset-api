@@ -8,12 +8,11 @@ use uuid::Uuid;
 
 use crate::{
     dto::manufacturing::{
-        certification::{CreateCertificationRequest, CertificationResponse, UpdateCertificationRequest},
+        certification::{CreateCertificationRequest, CertificationResponse},
         component_serial::{
             ComponentSerialResponse, CreateComponentSerialRequest, InstallComponentRequest,
-            RemoveComponentRequest, UpdateComponentSerialRequest,
         },
-        ncr::{CloseNcrRequest, CreateNcrRequest, ListNcrQuery, NcrResponse, UpdateNcrRequest},
+        ncr::{CloseNcrRequest, CreateNcrRequest, ListNcrQuery, NcrResponse},
         production::{CreateProductionMetricsRequest, ProductionMetricsResponse, ProductionMetricsQuery},
         robot_serial::{
             CreateRobotSerialRequest, ListRobotSerialsQuery, RobotGenealogyResponse,
@@ -21,10 +20,9 @@ use crate::{
         },
         service::{
             CompleteServiceRequest, CreateServiceRecordRequest, ServiceRecordResponse,
-            UpdateServiceRecordRequest,
         },
-        test_protocol::{CreateTestProtocolRequest, TestProtocolResponse, UpdateTestProtocolRequest},
-        test_result::{CreateTestResultRequest, TestResultResponse, UpdateTestResultRequest},
+        test_protocol::{CreateTestProtocolRequest, TestProtocolResponse},
+        test_result::{CreateTestResultRequest, TestResultResponse},
     },
     entities::manufacturing::{
         robot_serial_number, component_serial_number, robot_component_genealogy,

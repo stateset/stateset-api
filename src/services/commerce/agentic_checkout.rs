@@ -105,6 +105,7 @@ impl Default for SessionConfig {
 /// Agentic checkout service for ChatGPT-driven checkout flow
 #[derive(Clone)]
 pub struct AgenticCheckoutService {
+    #[allow(dead_code)] // Reserved for direct database operations
     db: Arc<DatabaseConnection>,
     cache: Arc<InMemoryCache>,
     event_sender: Arc<EventSender>,
@@ -2104,6 +2105,10 @@ mod tests {
             logger,
         ));
 
+        let promotion_service = Arc::new(crate::services::promotions::PromotionService::new(
+            (*db).clone(),
+        ));
+
         AgenticCheckoutService::new(
             db,
             cache,
@@ -2111,6 +2116,7 @@ mod tests {
             product_catalog,
             order_service,
             payment_service,
+            promotion_service,
             shipment_service,
             invoicing_service,
             cash_sale_service,
@@ -2153,6 +2159,7 @@ mod tests {
                 quantity: 1,
             }],
             fulfillment_address: Some(fixture_address()),
+            promotion_code: None,
         };
 
         let result = service.create_session(request, None).await;
@@ -2169,6 +2176,7 @@ mod tests {
                 quantity: 2,
             }],
             fulfillment_address: Some(fixture_address()),
+            promotion_code: None,
         };
 
         let first = service
@@ -2195,6 +2203,7 @@ mod tests {
                 quantity: 1,
             }],
             fulfillment_address: Some(fixture_address()),
+            promotion_code: None,
         };
 
         let first = service
@@ -2227,6 +2236,7 @@ mod tests {
                 quantity: 1,
             }],
             fulfillment_address: Some(fixture_address()),
+            promotion_code: None,
         };
 
         let created = service
@@ -2252,6 +2262,7 @@ mod tests {
                     items: None,
                     fulfillment_address: None,
                     fulfillment_option_id: Some(shipping_option),
+                    promotion_code: None,
                 },
             )
             .await

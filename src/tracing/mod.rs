@@ -837,10 +837,12 @@ where
 }
 
 /// Adapter to read HttpBody and convert to tokio streams
+#[allow(dead_code)] // Used for streaming body responses
 struct StreamReader<B> {
     body: B,
 }
 
+#[allow(dead_code)] // Constructor for StreamReader
 impl<B> StreamReader<B> {
     fn new(body: B) -> Self {
         Self { body }

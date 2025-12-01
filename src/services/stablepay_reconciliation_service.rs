@@ -1,6 +1,6 @@
 use crate::{
     errors::ServiceError,
-    models::{stablepay_provider, stablepay_reconciliation, stablepay_transaction},
+    models::{stablepay_reconciliation, stablepay_transaction},
 };
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 use uuid::Uuid;
 
 /// External transaction data from provider statement

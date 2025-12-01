@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct PricingService {
+    #[allow(dead_code)] // Reserved for database-based pricing lookups
     db_pool: Arc<DbPool>,
 }
 

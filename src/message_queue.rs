@@ -24,6 +24,8 @@ pub enum MessageQueueError {
     SerializationError(String),
     #[error("Connection error: {0}")]
     ConnectionError(String),
+    #[error("Lock error: {0}")]
+    LockError(String),
 }
 
 /// Message envelope for queue items
@@ -85,7 +87,8 @@ impl InMemoryMessageQueue {
 #[async_trait]
 impl MessageQueue for InMemoryMessageQueue {
     async fn publish(&self, message: Message) -> Result<(), MessageQueueError> {
-        let mut queues = self.queues.lock().unwrap();
+        let mut queues = self.queues.lock()
+            .map_err(|e| MessageQueueError::LockError(format!("Lock poisoned: {}", e)))?;
         let queue = queues
             .entry(message.topic.clone())
             .or_insert_with(VecDeque::new);
@@ -99,7 +102,8 @@ impl MessageQueue for InMemoryMessageQueue {
     }
 
     async fn subscribe(&self, topic: &str) -> Result<Option<Message>, MessageQueueError> {
-        let mut queues = self.queues.lock().unwrap();
+        let mut queues = self.queues.lock()
+            .map_err(|e| MessageQueueError::LockError(format!("Lock poisoned: {}", e)))?;
         if let Some(queue) = queues.get_mut(topic) {
             Ok(queue.pop_front())
         } else {
@@ -266,13 +270,15 @@ impl MessageQueue for RedisMessageQueue {
             let message: Message = serde_json::from_str(&payload)
                 .map_err(|e| MessageQueueError::SerializationError(e.to_string()))?;
 
-            self.inflight.lock().unwrap().insert(
-                message.id,
-                InFlightRecord {
-                    topic: topic.to_string(),
-                    payload,
-                },
-            );
+            self.inflight.lock()
+                .map_err(|e| MessageQueueError::LockError(format!("Lock poisoned: {}", e)))?
+                .insert(
+                    message.id,
+                    InFlightRecord {
+                        topic: topic.to_string(),
+                        payload,
+                    },
+                );
 
             Ok(Some(message))
         } else {
@@ -282,7 +288,8 @@ impl MessageQueue for RedisMessageQueue {
 
     async fn ack(&self, message_id: &Uuid) -> Result<(), MessageQueueError> {
         let record = {
-            let mut inflight = self.inflight.lock().unwrap();
+            let mut inflight = self.inflight.lock()
+                .map_err(|e| MessageQueueError::LockError(format!("Lock poisoned: {}", e)))?;
             inflight.remove(message_id)
         };
 
@@ -307,7 +314,8 @@ impl MessageQueue for RedisMessageQueue {
 
     async fn nack(&self, message_id: &Uuid) -> Result<(), MessageQueueError> {
         let record = {
-            let mut inflight = self.inflight.lock().unwrap();
+            let mut inflight = self.inflight.lock()
+                .map_err(|e| MessageQueueError::LockError(format!("Lock poisoned: {}", e)))?;
             inflight.remove(message_id)
         };
 

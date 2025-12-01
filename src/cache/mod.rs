@@ -72,11 +72,13 @@ impl InMemoryCache {
     }
 
     pub async fn get(&self, key: &str) -> Result<Option<String>, CacheError> {
-        let store = self.store.read().unwrap();
+        let store = self.store.read()
+            .map_err(|e| CacheError::OperationFailed(format!("Lock poisoned: {}", e)))?;
         if let Some(entry) = store.get(key) {
             if entry.is_expired() {
                 drop(store);
-                let mut store = self.store.write().unwrap();
+                let mut store = self.store.write()
+                    .map_err(|e| CacheError::OperationFailed(format!("Lock poisoned: {}", e)))?;
                 store.remove(key);
                 Ok(None)
             } else {
@@ -93,19 +95,22 @@ impl InMemoryCache {
         value: &str,
         ttl: Option<Duration>,
     ) -> Result<(), CacheError> {
-        let mut store = self.store.write().unwrap();
+        let mut store = self.store.write()
+            .map_err(|e| CacheError::OperationFailed(format!("Lock poisoned: {}", e)))?;
         store.insert(key.to_string(), CacheEntry::new(value.to_string(), ttl));
         Ok(())
     }
 
     pub async fn delete(&self, key: &str) -> Result<(), CacheError> {
-        let mut store = self.store.write().unwrap();
+        let mut store = self.store.write()
+            .map_err(|e| CacheError::OperationFailed(format!("Lock poisoned: {}", e)))?;
         store.remove(key);
         Ok(())
     }
 
     pub async fn exists(&self, key: &str) -> Result<bool, CacheError> {
-        let store = self.store.read().unwrap();
+        let store = self.store.read()
+            .map_err(|e| CacheError::OperationFailed(format!("Lock poisoned: {}", e)))?;
         if let Some(entry) = store.get(key) {
             Ok(!entry.is_expired())
         } else {
@@ -114,7 +119,8 @@ impl InMemoryCache {
     }
 
     pub async fn clear(&self) -> Result<(), CacheError> {
-        let mut store = self.store.write().unwrap();
+        let mut store = self.store.write()
+            .map_err(|e| CacheError::OperationFailed(format!("Lock poisoned: {}", e)))?;
         store.clear();
         Ok(())
     }

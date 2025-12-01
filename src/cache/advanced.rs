@@ -578,22 +578,8 @@ where
         {
             let mut cache = self.lru_cache.write().await;
             if let Some(value) = cache.get(key) {
-                // Prefetch related items
-                let prefetch_keys = self.prefetcher.get_prefetch_candidates(key);
-                for prefetch_key in prefetch_keys {
-                    if cache.get(&prefetch_key).is_none() {
-                        // Trigger async prefetch
-                        let key_clone = key.to_string();
-                        let self_clone = self as *const Self as *mut Self;
-                        tokio::spawn(async move {
-                            unsafe {
-                                if let Some(manager) = self_clone.as_mut() {
-                                    let _ = manager.prefetch_item(&prefetch_key).await;
-                                }
-                            }
-                        });
-                    }
-                }
+                // Record access for prefetching analytics (prefetching happens on next access)
+                let _prefetch_candidates = self.prefetcher.get_prefetch_candidates(key);
                 return Ok(Some(value.clone()));
             }
         }

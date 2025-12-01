@@ -13,7 +13,6 @@ use crate::{
     errors::ApiError,
     handlers::AppState,
 };
-use tracing::{info, warn};
 
 /// Component health status
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,7 +184,7 @@ async fn detailed_health_check(
 
 /// Check Redis connection
 async fn check_redis_connection(client: &redis::Client) -> Result<(), String> {
-    use redis::AsyncCommands;
+    
 
     let mut conn = client
         .get_async_connection()

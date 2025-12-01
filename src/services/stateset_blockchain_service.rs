@@ -9,8 +9,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info, instrument, warn};
-use uuid::Uuid;
+use tracing::{info, instrument};
 
 /// Configuration for the StateSet blockchain client
 #[derive(Debug, Clone, Serialize, Deserialize)]

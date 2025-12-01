@@ -1,6 +1,6 @@
 use crate::{
     entities::ledger_entry::{
-        ActiveModel as LedgerEntryActive, Entity as LedgerEntry, LedgerEntryStatus,
+        ActiveModel as LedgerEntryActive, LedgerEntryStatus,
         LedgerEntryType, Model as LedgerEntryModel,
     },
     errors::AppError,

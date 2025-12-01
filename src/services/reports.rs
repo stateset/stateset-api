@@ -3,20 +3,20 @@ use crate::{
     db::DbPool,
     errors::ServiceError,
     models::{
-        inventory_items, order, order_line_item, return_entity, shipment, suppliers, work_order,
+        inventory_items, order, order_line_item, return_entity, suppliers,
     },
 };
 use anyhow::Result;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use redis::Client as RedisClient;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{error, instrument};
 use uuid::Uuid;
 
 /// Service for generating various reports and analytics

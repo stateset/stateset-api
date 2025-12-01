@@ -2,14 +2,14 @@ use crate::{
     errors::ServiceError,
     events::{Event, EventSender},
     models::{
-        stablepay_payment_method, stablepay_provider, stablepay_refund, stablepay_transaction,
+        stablepay_provider, stablepay_refund, stablepay_transaction,
     },
 };
 use chrono::{Duration, Utc};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};

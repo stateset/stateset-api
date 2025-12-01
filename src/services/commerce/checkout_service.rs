@@ -23,6 +23,7 @@ use uuid::Uuid;
 pub struct CheckoutService {
     db: Arc<DatabaseConnection>,
     event_sender: Arc<EventSender>,
+    #[allow(dead_code)] // Reserved for future order operations
     order_service: Arc<OrderService>,
 }
 
@@ -177,13 +178,13 @@ impl CheckoutService {
             tracking_number: Set(None),
             shipping_address: Set(Some(
                 serde_json::to_value(&session.shipping_address)
-                    .unwrap()
-                    .to_string(),
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
             )),
             billing_address: Set(Some(
                 serde_json::to_value(&session.billing_address)
-                    .unwrap()
-                    .to_string(),
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
             )),
             is_archived: Set(false),
             created_at: Set(Utc::now()),

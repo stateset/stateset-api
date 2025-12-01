@@ -55,6 +55,7 @@ mod permissions;
 mod rate_limit;
 mod rbac;
 mod types;
+pub mod oauth2;
 
 // Re-exports
 pub use api_key_service::*;
@@ -62,6 +63,7 @@ pub use permissions::*;
 pub use rate_limit::*;
 pub use rbac::*;
 pub use types::*;
+pub use oauth2::{OAuth2Config, OAuth2Provider, OAuth2ProviderConfig, OAuth2Service, OAuth2UserInfo};
 
 use self::api_key::Entity as ApiKeyEntity;
 use self::api_key_permission::Entity as ApiKeyPermissionEntity;
