@@ -204,7 +204,7 @@ impl ReportService {
             .ok_or_else(|| {
                 let msg = format!("Supplier not found with ID: {}", supplier_id);
                 error!(supplier_id = %supplier_id, "Supplier not found");
-                ServiceError::NotFoundError(msg)
+                ServiceError::NotFound(msg)
             })?;
 
         // TODO: Get supplier orders and calculate performance metrics

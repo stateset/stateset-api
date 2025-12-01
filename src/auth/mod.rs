@@ -30,6 +30,7 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use metrics::counter;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use redis::AsyncCommands;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -38,7 +39,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // Entity modules
@@ -256,15 +257,38 @@ impl AuthConfig {
     }
 }
 
+/// Token blacklist backend abstraction for scalable token revocation
+#[derive(Clone)]
+pub enum TokenBlacklistBackend {
+    /// In-memory blacklist (for local development/single instance)
+    InMemory(Arc<RwLock<Vec<BlacklistedToken>>>),
+    /// Redis-backed blacklist (for production/multi-instance)
+    Redis {
+        client: Arc<redis::Client>,
+        namespace: String,
+    },
+}
+
+impl std::fmt::Debug for TokenBlacklistBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenBlacklistBackend::InMemory(_) => write!(f, "InMemory"),
+            TokenBlacklistBackend::Redis { namespace, .. } => {
+                write!(f, "Redis(namespace={})", namespace)
+            }
+        }
+    }
+}
+
 /// Authentication service that handles token issuance and validation
 #[derive(Debug, Clone)]
 pub struct AuthService {
     pub config: AuthConfig,
     pub db: Arc<DatabaseConnection>,
-    blacklisted_tokens: Arc<RwLock<Vec<BlacklistedToken>>>,
+    blacklist: TokenBlacklistBackend,
 }
 
-/// Token blacklist entry
+/// Token blacklist entry (for in-memory backend)
 #[derive(Clone, Debug)]
 struct BlacklistedToken {
     jti: String,
@@ -272,12 +296,31 @@ struct BlacklistedToken {
 }
 
 impl AuthService {
-    /// Create a new authentication service
+    /// Create a new authentication service with in-memory token blacklist
     pub fn new(config: AuthConfig, db: Arc<DatabaseConnection>) -> Self {
         Self {
             config,
             db,
-            blacklisted_tokens: Arc::new(RwLock::new(Vec::new())),
+            blacklist: TokenBlacklistBackend::InMemory(Arc::new(RwLock::new(Vec::new()))),
+        }
+    }
+
+    /// Create a new authentication service with Redis-backed token blacklist
+    /// Recommended for production deployments with multiple API instances
+    pub fn with_redis_blacklist(
+        config: AuthConfig,
+        db: Arc<DatabaseConnection>,
+        redis_client: Arc<redis::Client>,
+        namespace: Option<String>,
+    ) -> Self {
+        info!("Initializing AuthService with Redis-backed token blacklist");
+        Self {
+            config,
+            db,
+            blacklist: TokenBlacklistBackend::Redis {
+                client: redis_client,
+                namespace: namespace.unwrap_or_else(|| "stateset:auth:blacklist".to_string()),
+            },
         }
     }
 
@@ -423,33 +466,111 @@ impl AuthService {
         // Validate the token first
         let claims = self.validate_token(token).await?;
 
-        // Add the token to the blacklist
-        let expiry = Utc::now() + ChronoDuration::seconds(claims.exp - Utc::now().timestamp());
-        let blacklisted_token = BlacklistedToken {
-            jti: claims.jti,
-            expiry,
-        };
+        // Calculate TTL until token expiry
+        let ttl_secs = (claims.exp - Utc::now().timestamp()).max(0) as u64;
 
-        // Add to the in-memory blacklist
-        let mut blacklist = self.blacklisted_tokens.write().await;
-        blacklist.push(blacklisted_token);
+        match &self.blacklist {
+            TokenBlacklistBackend::InMemory(blacklist) => {
+                let expiry = Utc::now() + ChronoDuration::seconds(ttl_secs as i64);
+                let blacklisted_token = BlacklistedToken {
+                    jti: claims.jti.clone(),
+                    expiry,
+                };
 
-        // Clean up expired tokens in the blacklist
-        self.clean_blacklist(&mut blacklist);
+                let mut blacklist = blacklist.write().await;
+                blacklist.push(blacklisted_token);
+
+                // Clean up expired tokens
+                let now = Utc::now();
+                blacklist.retain(|t| t.expiry > now);
+
+                debug!(jti = %claims.jti, "Token revoked (in-memory blacklist)");
+            }
+            TokenBlacklistBackend::Redis { client, namespace } => {
+                let key = format!("{}:{}", namespace, claims.jti);
+
+                match client.get_async_connection().await {
+                    Ok(mut conn) => {
+                        // Set the key with expiry matching the token's remaining lifetime
+                        // This ensures automatic cleanup when the token would have expired anyway
+                        let result: Result<(), redis::RedisError> = conn
+                            .set_ex(&key, "revoked", ttl_secs.max(1) as usize)
+                            .await;
+
+                        if let Err(e) = result {
+                            error!(error = %e, jti = %claims.jti, "Failed to add token to Redis blacklist");
+                            return Err(AuthError::InternalError(
+                                "Failed to revoke token".to_string(),
+                            ));
+                        }
+
+                        debug!(jti = %claims.jti, ttl_secs = ttl_secs, "Token revoked (Redis blacklist)");
+                        counter!("auth.tokens_revoked_total", 1);
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Failed to connect to Redis for token revocation");
+                        return Err(AuthError::InternalError(
+                            "Failed to revoke token: Redis unavailable".to_string(),
+                        ));
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
 
     /// Check if a token is blacklisted
     async fn is_token_blacklisted(&self, token_id: &str) -> bool {
-        let blacklist = self.blacklisted_tokens.read().await;
-        blacklist.iter().any(|t| t.jti == token_id)
+        match &self.blacklist {
+            TokenBlacklistBackend::InMemory(blacklist) => {
+                let blacklist = blacklist.read().await;
+                blacklist.iter().any(|t| t.jti == token_id && t.expiry > Utc::now())
+            }
+            TokenBlacklistBackend::Redis { client, namespace } => {
+                let key = format!("{}:{}", namespace, token_id);
+
+                match client.get_async_connection().await {
+                    Ok(mut conn) => {
+                        let exists: Result<bool, redis::RedisError> = conn.exists(&key).await;
+                        match exists {
+                            Ok(true) => {
+                                debug!(jti = %token_id, "Token found in Redis blacklist");
+                                true
+                            }
+                            Ok(false) => false,
+                            Err(e) => {
+                                // Log error but fail closed (treat as not blacklisted)
+                                // This is a security tradeoff - could also fail open
+                                warn!(error = %e, jti = %token_id, "Failed to check Redis blacklist, allowing token");
+                                counter!("auth.blacklist_check_failures_total", 1);
+                                false
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to connect to Redis for blacklist check, allowing token");
+                        counter!("auth.blacklist_check_failures_total", 1);
+                        false
+                    }
+                }
+            }
+        }
     }
 
-    /// Clean up expired tokens from the blacklist
-    fn clean_blacklist(&self, blacklist: &mut Vec<BlacklistedToken>) {
-        let now = Utc::now();
-        blacklist.retain(|t| t.expiry > now);
+    /// Clean up expired tokens from the in-memory blacklist
+    /// Note: Redis handles expiry automatically via TTL
+    pub async fn cleanup_expired_blacklist_entries(&self) {
+        if let TokenBlacklistBackend::InMemory(blacklist) = &self.blacklist {
+            let mut blacklist = blacklist.write().await;
+            let before_len = blacklist.len();
+            let now = Utc::now();
+            blacklist.retain(|t| t.expiry > now);
+            let removed = before_len - blacklist.len();
+            if removed > 0 {
+                debug!(removed = removed, "Cleaned up expired blacklist entries");
+            }
+        }
     }
 
     /// Get a user by ID

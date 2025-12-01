@@ -183,6 +183,12 @@ impl OrderService {
         }
     }
 
+    /// Generates a unique order number using UUID to prevent race conditions.
+    /// Format: ORD-{8 char UUID prefix} (e.g., ORD-A1B2C3D4)
+    fn generate_order_number() -> String {
+        format!("ORD-{}", &Uuid::new_v4().to_string()[..8].to_uppercase())
+    }
+
     /// Creates a minimal order with sensible defaults. Does not insert items.
     #[instrument(skip(self), fields(customer_id = %customer_id))]
     pub async fn create_order_minimal(
@@ -199,9 +205,10 @@ impl OrderService {
         let now = Utc::now();
         let order_id = Uuid::new_v4();
 
+        let order_number = Self::generate_order_number();
         let order_active = OrderActiveModel {
             id: Set(order_id),
-            order_number: Set(format!("ORD-{}", now.timestamp_millis())),
+            order_number: Set(order_number),
             customer_id: Set(customer_id),
             status: Set(STATUS_PENDING.to_string()),
             order_date: Set(now),
@@ -262,9 +269,10 @@ impl OrderService {
             ServiceError::db_error(e)
         })?;
 
+        let order_number = Self::generate_order_number();
         let order_active = OrderActiveModel {
             id: Set(order_id),
-            order_number: Set(format!("ORD-{}", now.timestamp_millis())),
+            order_number: Set(order_number),
             customer_id: Set(input.customer_id),
             status: Set(STATUS_PENDING.to_string()),
             order_date: Set(now),

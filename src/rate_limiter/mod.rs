@@ -52,6 +52,8 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tracing::{debug, warn};
 
+use crate::auth::AuthUser;
+
 /// Helper function to convert a number to a HeaderValue.
 /// This is safe because numeric strings are always valid ASCII header values.
 fn num_to_header_value<T: ToString>(n: T) -> http::HeaderValue {
@@ -445,18 +447,20 @@ pub fn extract_ip_key(request: &Request) -> String {
     "ip:unknown".to_string()
 }
 
+/// Extracts a rate limit key for authenticated users.
+///
+/// Priority:
+/// 1. AuthUser from request extensions (set by auth middleware after JWT validation)
+/// 2. x-user-id header (for internal/service-to-service calls)
+/// 3. None if no user context available
 pub fn extract_user_key(request: &Request) -> Option<String> {
-    // Try to get user ID from Authorization header or custom header
-    if let Some(auth) = request.headers().get("authorization") {
-        if let Ok(auth_str) = auth.to_str() {
-            // Simple extraction - in real implementation you'd decode JWT token
-            return Some(format!(
-                "user:{}",
-                auth_str.chars().take(20).collect::<String>()
-            ));
-        }
+    // Primary: Get user ID from validated AuthUser in request extensions
+    // This is populated by the auth middleware after JWT token validation
+    if let Some(auth_user) = request.extensions().get::<AuthUser>() {
+        return Some(format!("user:{}", auth_user.user_id));
     }
 
+    // Fallback: x-user-id header for internal service-to-service calls
     if let Some(user_id) = request.headers().get("x-user-id") {
         if let Ok(user_str) = user_id.to_str() {
             return Some(format!("user:{}", user_str));

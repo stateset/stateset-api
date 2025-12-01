@@ -214,7 +214,7 @@ impl DatabaseAccess {
                 counter!("stateset_db.query.error", 1);
                 ServiceError::db_error(e)
             })?
-            .ok_or_else(|| ServiceError::NotFoundError("No data found".to_string()))?;
+            .ok_or_else(|| ServiceError::NotFound("No data found".to_string()))?;
 
         let elapsed = start.elapsed();
         histogram!("stateset_db.query.duration", elapsed);

@@ -6,6 +6,7 @@ pub mod bom;
 pub mod cash_sales;
 pub mod common;
 pub mod customers;
+pub mod health;
 pub mod inventory;
 pub mod notifications;
 pub mod orders;

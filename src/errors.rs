@@ -169,6 +169,8 @@ pub enum ServiceError {
     #[error("Concurrent modification: {0}")]
     ConcurrentModification(Uuid),
 
+    /// Deprecated: Use `NotFound` instead. This variant exists for backward compatibility.
+    #[deprecated(since = "0.1.0", note = "Use ServiceError::NotFound instead")]
     #[error("Not found error: {0}")]
     NotFoundError(String),
 

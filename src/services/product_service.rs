@@ -253,7 +253,7 @@ impl ProductService {
             .ok_or_else(|| {
                 let msg = format!("Product with ID {} not found", id);
                 error!(%msg);
-                ServiceError::NotFoundError(msg)
+                ServiceError::NotFound(msg)
             })?;
             
         // Update the product
@@ -378,7 +378,7 @@ impl ProductService {
             .ok_or_else(|| {
                 let msg = format!("Product with ID {} not found", id);
                 error!(%msg);
-                ServiceError::NotFoundError(msg)
+                ServiceError::NotFound(msg)
             })?;
             
         // Delete the product

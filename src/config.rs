@@ -602,10 +602,11 @@ pub fn load_config() -> Result<AppConfig, AppConfigError> {
         );
     }
 
+    // NOTE: jwt_secret has no default - it MUST be provided via environment variable
+    // or config file. This prevents accidental use of insecure defaults in production.
     let mut builder = Config::builder()
         .set_default("database_url", "sqlite://stateset.db?mode=rwc")?
         .set_default("redis_url", "redis://localhost:6379")?
-        .set_default("jwt_secret", "CHANGE_THIS_SECRET_IN_PRODUCTION")?
         .set_default("jwt_expiration", 3600)?
         .set_default("refresh_token_expiration", 604800)?
         .set_default("host", "0.0.0.0")?
@@ -625,6 +626,15 @@ pub fn load_config() -> Result<AppConfig, AppConfigError> {
     let config = builder
         .add_source(Environment::with_prefix("APP").separator("__"))
         .build()?;
+
+    // Check for jwt_secret before deserialization to provide a clear error message
+    if config.get_string("jwt_secret").is_err() {
+        error!("JWT secret is not configured. Set APP__JWT_SECRET environment variable with a secure random string (minimum 64 characters).");
+        error!("Generate a secure secret with: openssl rand -base64 64");
+        return Err(AppConfigError::Load(ConfigError::NotFound(
+            "jwt_secret is required but not configured. Set APP__JWT_SECRET environment variable.".into()
+        )));
+    }
 
     let app_config: AppConfig = config.try_deserialize()?;
 
