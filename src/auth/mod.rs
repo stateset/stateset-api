@@ -1280,9 +1280,8 @@ pub fn auth_routes() -> axum::Router<Arc<AuthService>> {
     axum::Router::new()
         .route("/login", axum::routing::post(login_handler))
         .route("/refresh", axum::routing::post(refresh_token_handler))
-        // TODO: Fix handler trait compatibility
-        // .route("/logout", axum::routing::post(logout_handler))
-        // .route("/api-keys", axum::routing::post(create_api_key_handler))
+        .route("/logout", axum::routing::post(logout_handler))
+        .route("/api-keys", axum::routing::post(create_api_key_handler))
         .layer(DefaultBodyLimit::max(1024 * 64)) // 64KB limit
 }
 

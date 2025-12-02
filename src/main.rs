@@ -184,6 +184,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
         )
         .nest("/api/v1", api::api_v1_routes())
+        .nest("/auth", api::auth::auth_routes().with_state(auth_service.clone()))
         .merge(api::openapi::swagger_ui())
         // HTTP tracing layer for consistent request/response telemetry
         .layer(api::tracing::configure_http_tracing())
