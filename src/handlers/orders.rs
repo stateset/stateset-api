@@ -114,12 +114,14 @@ impl Default for OrdersListQuery {
 fn map_status_str(status: &str) -> Result<OrderStatus, ServiceError> {
     match status.to_ascii_lowercase().as_str() {
         "pending" => Ok(OrderStatus::Pending),
+        "confirmed" => Ok(OrderStatus::Confirmed),
         "processing" => Ok(OrderStatus::Processing),
+        "on_hold" | "onhold" => Ok(OrderStatus::OnHold),
         "shipped" => Ok(OrderStatus::Shipped),
         "delivered" => Ok(OrderStatus::Delivered),
         "cancelled" | "canceled" => Ok(OrderStatus::Cancelled),
         "refunded" => Ok(OrderStatus::Refunded),
-        "confirmed" => Ok(OrderStatus::Confirmed),
+        "exchanged" => Ok(OrderStatus::Exchanged),
         other => Err(ServiceError::InvalidStatus(format!(
             "Unknown order status: {other}"
         ))),
@@ -131,10 +133,12 @@ fn order_status_to_service_str(status: &OrderStatus) -> &'static str {
         OrderStatus::Pending => "pending",
         OrderStatus::Confirmed => "confirmed",
         OrderStatus::Processing => "processing",
+        OrderStatus::OnHold => "on_hold",
         OrderStatus::Shipped => "shipped",
         OrderStatus::Delivered => "delivered",
         OrderStatus::Cancelled => "cancelled",
         OrderStatus::Refunded => "refunded",
+        OrderStatus::Exchanged => "exchanged",
     }
 }
 
@@ -383,15 +387,17 @@ pub struct Address {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum OrderStatus {
     Pending,
     Confirmed,
     Processing,
+    OnHold,
     Shipped,
     Delivered,
     Cancelled,
     Refunded,
+    Exchanged,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]

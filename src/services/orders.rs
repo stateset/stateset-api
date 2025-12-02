@@ -169,10 +169,12 @@ pub struct OrderService {
 const STATUS_PENDING: &str = "pending";
 const STATUS_CONFIRMED: &str = "confirmed";
 const STATUS_PROCESSING: &str = "processing";
+const STATUS_ON_HOLD: &str = "on_hold";
 const STATUS_SHIPPED: &str = "shipped";
 const STATUS_DELIVERED: &str = "delivered";
 const STATUS_CANCELLED: &str = "cancelled";
 const STATUS_REFUNDED: &str = "refunded";
+const STATUS_EXCHANGED: &str = "exchanged";
 
 impl OrderService {
     /// Creates a new order service instance
@@ -596,6 +598,70 @@ impl OrderService {
         Ok(saved)
     }
 
+    /// Recalculates and updates the order total based on its items
+    ///
+    /// This method sums all order item totals (including taxes) and updates
+    /// the order's total_amount field. Use this after adding, removing, or
+    /// modifying order items.
+    #[instrument(skip(self), fields(order_id = %order_id))]
+    pub async fn recalculate_order_total(
+        &self,
+        order_id: Uuid,
+    ) -> Result<OrderResponse, ServiceError> {
+        let db = &*self.db_pool;
+
+        // Get the order first to verify it exists
+        let order = OrderEntity::find_by_id(order_id)
+            .one(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to find order for total recalculation");
+                ServiceError::db_error(e)
+            })?
+            .ok_or_else(|| {
+                warn!(order_id = %order_id, "Order not found for total recalculation");
+                ServiceError::NotFound("Order not found".to_string())
+            })?;
+
+        // Get all items for this order
+        let items = self.get_order_items(order_id).await?;
+
+        // Calculate the new total (sum of item totals + tax amounts)
+        let new_total: Decimal = items
+            .iter()
+            .map(|item| item.total_price + item.tax_amount)
+            .sum();
+
+        // Update the order with the new total
+        let current_version = order.version;
+        let mut order_active: OrderActiveModel = order.into();
+        order_active.total_amount = Set(new_total);
+        order_active.updated_at = Set(Some(Utc::now()));
+        order_active.version = Set(current_version + 1);
+
+        let updated = order_active.update(db).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to update order total");
+            ServiceError::db_error(e)
+        })?;
+
+        info!(
+            order_id = %order_id,
+            new_total = %new_total,
+            "Order total recalculated successfully"
+        );
+
+        if let Some(sender) = &self.event_sender {
+            sender.send_or_log(Event::OrderUpdated {
+                order_id,
+                checkout_session_id: None,
+                status: None,
+                refunds: vec![],
+            }).await;
+        }
+
+        Ok(self.model_to_response(updated))
+    }
+
     /// Updates an order's status
     #[instrument(skip(self, request), fields(order_id = %order_id, new_status = %request.status))]
     pub async fn update_order_status(
@@ -614,10 +680,12 @@ impl OrderService {
             STATUS_PENDING,
             STATUS_CONFIRMED,
             STATUS_PROCESSING,
+            STATUS_ON_HOLD,
             STATUS_SHIPPED,
             STATUS_DELIVERED,
             STATUS_CANCELLED,
             STATUS_REFUNDED,
+            STATUS_EXCHANGED,
         ];
 
         if !valid_statuses.contains(&normalized_status.as_str()) {
@@ -1032,25 +1100,56 @@ impl OrderService {
     }
 
     /// Validates if a status transition is allowed
+    ///
+    /// Order lifecycle state machine:
+    /// ```text
+    /// pending -> confirmed -> processing -> shipped -> delivered
+    ///    |          |            |            |           |
+    ///    v          v            v            |           v
+    /// cancelled  cancelled   on_hold         |        refunded
+    ///    |                      |             |        exchanged
+    ///    v                      v             v
+    /// refunded              processing    delivered
+    /// ```
     fn is_valid_status_transition(&self, from: &str, to: &str) -> bool {
         let from = from.to_ascii_lowercase();
         let to = to.to_ascii_lowercase();
 
         match (from.as_str(), to.as_str()) {
-            // From pending, can go to confirmed, processing, cancelled
+            // From pending, can go to confirmed, processing, on_hold, or cancelled
             (STATUS_PENDING, STATUS_CONFIRMED)
             | (STATUS_PENDING, STATUS_PROCESSING)
+            | (STATUS_PENDING, STATUS_ON_HOLD)
             | (STATUS_PENDING, STATUS_CANCELLED) => true,
-            // From confirmed, can go to processing or cancelled
-            (STATUS_CONFIRMED, STATUS_PROCESSING) | (STATUS_CONFIRMED, STATUS_CANCELLED) => true,
-            // From processing, can go to shipped, cancelled
-            (STATUS_PROCESSING, STATUS_SHIPPED) | (STATUS_PROCESSING, STATUS_CANCELLED) => true,
-            // From shipped, can go to delivered
-            (STATUS_SHIPPED, STATUS_DELIVERED) => true,
-            // From delivered, can go to refunded
-            (STATUS_DELIVERED, STATUS_REFUNDED) => true,
+
+            // From confirmed, can go to processing, on_hold, or cancelled
+            (STATUS_CONFIRMED, STATUS_PROCESSING)
+            | (STATUS_CONFIRMED, STATUS_ON_HOLD)
+            | (STATUS_CONFIRMED, STATUS_CANCELLED) => true,
+
+            // From processing, can go to shipped, on_hold, or cancelled
+            (STATUS_PROCESSING, STATUS_SHIPPED)
+            | (STATUS_PROCESSING, STATUS_ON_HOLD)
+            | (STATUS_PROCESSING, STATUS_CANCELLED) => true,
+
+            // From on_hold, can go back to processing or be cancelled
+            (STATUS_ON_HOLD, STATUS_PROCESSING)
+            | (STATUS_ON_HOLD, STATUS_CANCELLED) => true,
+
+            // From shipped, can go to delivered or on_hold (for delivery issues)
+            (STATUS_SHIPPED, STATUS_DELIVERED)
+            | (STATUS_SHIPPED, STATUS_ON_HOLD) => true,
+
+            // From delivered, can go to refunded or exchanged
+            (STATUS_DELIVERED, STATUS_REFUNDED)
+            | (STATUS_DELIVERED, STATUS_EXCHANGED) => true,
+
             // From cancelled, can go to refunded
             (STATUS_CANCELLED, STATUS_REFUNDED) => true,
+
+            // From exchanged, can go to refunded (if exchange fails)
+            (STATUS_EXCHANGED, STATUS_REFUNDED) => true,
+
             // All other transitions are invalid
             _ => false,
         }
@@ -1563,9 +1662,93 @@ mod unit_tests {
         assert_eq!(STATUS_PENDING, "pending");
         assert_eq!(STATUS_CONFIRMED, "confirmed");
         assert_eq!(STATUS_PROCESSING, "processing");
+        assert_eq!(STATUS_ON_HOLD, "on_hold");
         assert_eq!(STATUS_SHIPPED, "shipped");
         assert_eq!(STATUS_DELIVERED, "delivered");
         assert_eq!(STATUS_CANCELLED, "cancelled");
         assert_eq!(STATUS_REFUNDED, "refunded");
+        assert_eq!(STATUS_EXCHANGED, "exchanged");
+    }
+
+    /// Test valid status transitions
+    #[test]
+    fn test_valid_status_transitions() {
+        let db_pool = Arc::new(sea_orm::DatabaseConnection::Disconnected);
+        let service = OrderService::new(db_pool, None);
+
+        // From pending
+        assert!(service.is_valid_status_transition(STATUS_PENDING, STATUS_CONFIRMED));
+        assert!(service.is_valid_status_transition(STATUS_PENDING, STATUS_PROCESSING));
+        assert!(service.is_valid_status_transition(STATUS_PENDING, STATUS_ON_HOLD));
+        assert!(service.is_valid_status_transition(STATUS_PENDING, STATUS_CANCELLED));
+
+        // From confirmed
+        assert!(service.is_valid_status_transition(STATUS_CONFIRMED, STATUS_PROCESSING));
+        assert!(service.is_valid_status_transition(STATUS_CONFIRMED, STATUS_ON_HOLD));
+        assert!(service.is_valid_status_transition(STATUS_CONFIRMED, STATUS_CANCELLED));
+
+        // From processing
+        assert!(service.is_valid_status_transition(STATUS_PROCESSING, STATUS_SHIPPED));
+        assert!(service.is_valid_status_transition(STATUS_PROCESSING, STATUS_ON_HOLD));
+        assert!(service.is_valid_status_transition(STATUS_PROCESSING, STATUS_CANCELLED));
+
+        // From on_hold
+        assert!(service.is_valid_status_transition(STATUS_ON_HOLD, STATUS_PROCESSING));
+        assert!(service.is_valid_status_transition(STATUS_ON_HOLD, STATUS_CANCELLED));
+
+        // From shipped
+        assert!(service.is_valid_status_transition(STATUS_SHIPPED, STATUS_DELIVERED));
+        assert!(service.is_valid_status_transition(STATUS_SHIPPED, STATUS_ON_HOLD));
+
+        // From delivered
+        assert!(service.is_valid_status_transition(STATUS_DELIVERED, STATUS_REFUNDED));
+        assert!(service.is_valid_status_transition(STATUS_DELIVERED, STATUS_EXCHANGED));
+
+        // From cancelled
+        assert!(service.is_valid_status_transition(STATUS_CANCELLED, STATUS_REFUNDED));
+
+        // From exchanged
+        assert!(service.is_valid_status_transition(STATUS_EXCHANGED, STATUS_REFUNDED));
+    }
+
+    /// Test invalid status transitions
+    #[test]
+    fn test_invalid_status_transitions() {
+        let db_pool = Arc::new(sea_orm::DatabaseConnection::Disconnected);
+        let service = OrderService::new(db_pool, None);
+
+        // Cannot go backwards in the main flow
+        assert!(!service.is_valid_status_transition(STATUS_CONFIRMED, STATUS_PENDING));
+        assert!(!service.is_valid_status_transition(STATUS_PROCESSING, STATUS_PENDING));
+        assert!(!service.is_valid_status_transition(STATUS_SHIPPED, STATUS_PROCESSING));
+        assert!(!service.is_valid_status_transition(STATUS_DELIVERED, STATUS_SHIPPED));
+
+        // Cannot skip steps
+        assert!(!service.is_valid_status_transition(STATUS_PENDING, STATUS_SHIPPED));
+        assert!(!service.is_valid_status_transition(STATUS_PENDING, STATUS_DELIVERED));
+        assert!(!service.is_valid_status_transition(STATUS_CONFIRMED, STATUS_DELIVERED));
+
+        // Cannot modify terminal states (except to refunded)
+        assert!(!service.is_valid_status_transition(STATUS_REFUNDED, STATUS_PENDING));
+        assert!(!service.is_valid_status_transition(STATUS_REFUNDED, STATUS_CANCELLED));
+
+        // Cannot ship cancelled orders
+        assert!(!service.is_valid_status_transition(STATUS_CANCELLED, STATUS_SHIPPED));
+
+        // Cannot deliver from on_hold directly
+        assert!(!service.is_valid_status_transition(STATUS_ON_HOLD, STATUS_DELIVERED));
+    }
+
+    /// Test case-insensitive status transitions
+    #[test]
+    fn test_case_insensitive_status_transitions() {
+        let db_pool = Arc::new(sea_orm::DatabaseConnection::Disconnected);
+        let service = OrderService::new(db_pool, None);
+
+        // Should work with different cases
+        assert!(service.is_valid_status_transition("PENDING", "CONFIRMED"));
+        assert!(service.is_valid_status_transition("Pending", "Confirmed"));
+        assert!(service.is_valid_status_transition("pending", "PROCESSING"));
+        assert!(service.is_valid_status_transition("SHIPPED", "delivered"));
     }
 }
