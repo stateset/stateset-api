@@ -42,6 +42,7 @@ async fn make_request(
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn comprehensive_smoke_test() {
     let app = TestApp::new().await;
     let variant = app

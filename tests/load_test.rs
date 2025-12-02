@@ -221,6 +221,7 @@ mod load_tests {
     use tokio::time::sleep;
 
     #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
     async fn test_sustained_load() {
         println!("🏋️ Running sustained load test...");
 
@@ -275,6 +276,7 @@ mod load_tests {
     }
 
     #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
     async fn test_memory_usage() {
         println!("🧠 Testing memory usage under load...");
 
@@ -307,6 +309,7 @@ mod load_tests {
     }
 
     #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
     async fn test_database_connection_pool() {
         println!("💾 Testing database connection pool...");
 

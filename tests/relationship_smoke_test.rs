@@ -12,6 +12,7 @@ use stateset_api::models::{
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn relationship_smoke_test() {
     let app = common::TestApp::new().await;
     let db = &*app.state.db;

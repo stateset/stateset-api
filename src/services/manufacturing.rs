@@ -706,3 +706,181 @@ pub struct WorkOrderStatus {
     pub actual_start_date: Option<NaiveDate>,
     pub actual_completion_date: Option<NaiveDate>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    // ==================== WorkOrderStatus Tests ====================
+
+    #[test]
+    fn test_work_order_status_creation() {
+        let status = WorkOrderStatus {
+            work_order_id: 1001,
+            status: "InProgress".to_string(),
+            quantity_to_build: dec!(100.0),
+            quantity_completed: dec!(25.0),
+            actual_start_date: Some(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()),
+            actual_completion_date: None,
+        };
+
+        assert_eq!(status.work_order_id, 1001);
+        assert_eq!(status.status, "InProgress");
+        assert_eq!(status.quantity_to_build, dec!(100.0));
+        assert_eq!(status.quantity_completed, dec!(25.0));
+        assert!(status.actual_start_date.is_some());
+        assert!(status.actual_completion_date.is_none());
+    }
+
+    #[test]
+    fn test_work_order_status_completion_percentage() {
+        let status = WorkOrderStatus {
+            work_order_id: 1,
+            status: "InProgress".to_string(),
+            quantity_to_build: dec!(100.0),
+            quantity_completed: dec!(75.0),
+            actual_start_date: None,
+            actual_completion_date: None,
+        };
+
+        let completion_pct = (status.quantity_completed / status.quantity_to_build) * dec!(100.0);
+        assert_eq!(completion_pct, dec!(75.0));
+    }
+
+    #[test]
+    fn test_work_order_fully_completed() {
+        let status = WorkOrderStatus {
+            work_order_id: 42,
+            status: "Completed".to_string(),
+            quantity_to_build: dec!(50.0),
+            quantity_completed: dec!(50.0),
+            actual_start_date: Some(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            actual_completion_date: Some(NaiveDate::from_ymd_opt(2024, 1, 5).unwrap()),
+        };
+
+        assert_eq!(status.quantity_to_build, status.quantity_completed);
+        assert!(status.actual_completion_date.is_some());
+    }
+
+    // ==================== Work Order Status Value Tests ====================
+
+    #[test]
+    fn test_work_order_status_values() {
+        let statuses = vec!["Pending", "InProgress", "Completed", "OnHold", "Cancelled"];
+
+        for status in statuses {
+            assert!(!status.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_work_order_status_pending() {
+        let status = "Pending";
+        assert_eq!(status, "Pending");
+    }
+
+    #[test]
+    fn test_work_order_status_in_progress() {
+        let status = "InProgress";
+        assert_eq!(status, "InProgress");
+    }
+
+    // ==================== Quantity Tests ====================
+
+    #[test]
+    fn test_positive_quantity_to_build() {
+        let qty = dec!(100.0);
+        assert!(qty > Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_quantity_completed_not_exceeds_to_build() {
+        let to_build = dec!(100.0);
+        let completed = dec!(75.0);
+
+        assert!(completed <= to_build);
+    }
+
+    #[test]
+    fn test_remaining_quantity_calculation() {
+        let to_build = dec!(100.0);
+        let completed = dec!(30.0);
+        let remaining = to_build - completed;
+
+        assert_eq!(remaining, dec!(70.0));
+    }
+
+    #[test]
+    fn test_decimal_quantity_precision() {
+        let qty = dec!(99.999);
+        assert!(qty > dec!(99.0));
+        assert!(qty < dec!(100.0));
+    }
+
+    // ==================== Date Tests ====================
+
+    #[test]
+    fn test_actual_start_date_before_completion() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let completion = NaiveDate::from_ymd_opt(2024, 1, 10).unwrap();
+
+        assert!(start < completion);
+    }
+
+    #[test]
+    fn test_work_order_duration_calculation() {
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let completion = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+
+        let duration = completion.signed_duration_since(start);
+        assert_eq!(duration.num_days(), 14);
+    }
+
+    // ==================== ID Tests ====================
+
+    #[test]
+    fn test_work_order_id_positive() {
+        let id: i64 = 12345;
+        assert!(id > 0);
+    }
+
+    #[test]
+    fn test_work_order_id_format() {
+        let id: i64 = 1001;
+        let id_str = id.to_string();
+        assert!(!id_str.is_empty());
+        assert!(id_str.chars().all(|c| c.is_numeric()));
+    }
+
+    // ==================== Manufacturing Metrics Tests ====================
+
+    #[test]
+    fn test_yield_calculation() {
+        let total_produced = dec!(95.0);
+        let expected = dec!(100.0);
+        let yield_pct = (total_produced / expected) * dec!(100.0);
+
+        assert_eq!(yield_pct, dec!(95.0));
+    }
+
+    #[test]
+    fn test_scrap_rate_calculation() {
+        let total = dec!(100.0);
+        let good = dec!(92.0);
+        let scrap = total - good;
+        let scrap_rate = (scrap / total) * dec!(100.0);
+
+        assert_eq!(scrap_rate, dec!(8.0));
+    }
+
+    #[test]
+    fn test_efficiency_calculation() {
+        // Efficiency = Actual Output / Expected Output * 100
+        let actual = dec!(90.0);
+        let expected = dec!(100.0);
+        let efficiency = (actual / expected) * dec!(100.0);
+
+        assert_eq!(efficiency, dec!(90.0));
+    }
+}

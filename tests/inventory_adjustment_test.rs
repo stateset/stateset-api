@@ -34,6 +34,7 @@ fn dec_zero() -> Decimal {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_inventory_adjustments_with_item_master() {
     env::set_var("APP__DATABASE_URL", "sqlite::memory:?cache=shared");
 

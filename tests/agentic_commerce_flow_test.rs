@@ -21,6 +21,7 @@ use uuid::Uuid;
 use common::TestApp;
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn agentic_checkout_end_to_end_persists_order_finance_and_fulfillment_records() {
     let app = TestApp::new().await;
 

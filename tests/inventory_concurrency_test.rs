@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 // This test is ignored by default because it requires a real SQLite/Postgres DB and migrations.
 // Run with: cargo test -- --ignored inventory_concurrency
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 #[ignore]
 async fn inventory_concurrency() {
     // Set up DB (use SQLite memory or configured DB)

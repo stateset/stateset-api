@@ -851,6 +851,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires live blockchain node"]
     async fn test_instant_transfer() {
         let service = StateSetBlockchainService::with_defaults();
         service.connect().await.unwrap();
@@ -869,6 +870,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires live blockchain node"]
     async fn test_create_escrow() {
         let service = StateSetBlockchainService::with_defaults();
         service.connect().await.unwrap();
@@ -888,6 +890,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires live blockchain node"]
     async fn test_open_channel() {
         let service = StateSetBlockchainService::with_defaults();
         service.connect().await.unwrap();
@@ -905,6 +908,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires live blockchain node"]
     async fn test_create_batch() {
         let service = StateSetBlockchainService::with_defaults();
         service.connect().await.unwrap();

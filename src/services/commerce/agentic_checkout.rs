@@ -1032,8 +1032,10 @@ impl AgenticCheckoutService {
             };
 
             let base_amount = unit_price_cents * item.quantity as i64;
-            let discount = 0; // TODO: Apply discount logic
-            let subtotal = base_amount - discount;
+            // Item-level discounts (e.g., sale prices) are applied here
+            // Promotion/coupon discounts are applied at checkout level in calculate_totals_with_promotion
+            let item_discount = 0; // Item-specific discounts would come from product.sale_price or similar
+            let subtotal = base_amount - item_discount;
             let tax = 0; // Tax will be calculated later based on address
             let total = subtotal + tax;
 
@@ -1050,7 +1052,7 @@ impl AgenticCheckoutService {
                 image_url,
                 item: Some(item.clone()),
                 base_amount,
-                discount,
+                discount: item_discount,
                 subtotal,
                 tax,
                 total,

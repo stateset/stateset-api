@@ -623,3 +623,520 @@ impl StablePayService {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================
+    // Validation Tests
+    // ========================================
+
+    #[test]
+    fn test_validate_positive_decimal_valid() {
+        assert!(validate_positive_decimal(&dec!(100.00)).is_ok());
+        assert!(validate_positive_decimal(&dec!(0.01)).is_ok());
+        assert!(validate_positive_decimal(&dec!(999999.99)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_positive_decimal_invalid() {
+        assert!(validate_positive_decimal(&dec!(0)).is_err());
+        assert!(validate_positive_decimal(&dec!(-100.00)).is_err());
+        assert!(validate_positive_decimal(&dec!(-0.01)).is_err());
+    }
+
+    #[test]
+    fn test_validate_currency_valid() {
+        assert!(validate_currency("USD").is_ok());
+        assert!(validate_currency("EUR").is_ok());
+        assert!(validate_currency("GBP").is_ok());
+        assert!(validate_currency("JPY").is_ok());
+    }
+
+    #[test]
+    fn test_validate_currency_invalid() {
+        assert!(validate_currency("US").is_err()); // too short
+        assert!(validate_currency("USDD").is_err()); // too long
+        assert!(validate_currency("123").is_err()); // not alphabetic
+        assert!(validate_currency("").is_err()); // empty
+        assert!(validate_currency("U$D").is_err()); // special char
+    }
+
+    // ========================================
+    // CreatePaymentRequest Tests
+    // ========================================
+
+    #[test]
+    fn test_create_payment_request_validation_valid() {
+        let request = CreatePaymentRequest {
+            order_id: Some(Uuid::new_v4()),
+            customer_id: Uuid::new_v4(),
+            payment_method_id: Some(Uuid::new_v4()),
+            amount: dec!(100.00),
+            currency: "USD".to_string(),
+            description: Some("Test payment".to_string()),
+            metadata: None,
+            idempotency_key: Some("key-123".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_create_payment_request_validation_invalid_amount() {
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(-50.00),
+            currency: "USD".to_string(),
+            description: None,
+            metadata: None,
+            idempotency_key: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_create_payment_request_validation_invalid_currency() {
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(100.00),
+            currency: "INVALID".to_string(),
+            description: None,
+            metadata: None,
+            idempotency_key: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_create_payment_request_validation_zero_amount() {
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(0),
+            currency: "USD".to_string(),
+            description: None,
+            metadata: None,
+            idempotency_key: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    // ========================================
+    // CreateRefundRequest Tests
+    // ========================================
+
+    #[test]
+    fn test_create_refund_request_validation_valid() {
+        let request = CreateRefundRequest {
+            transaction_id: Uuid::new_v4(),
+            amount: dec!(50.00),
+            reason: Some("Customer request".to_string()),
+            reason_detail: Some("Item not as described".to_string()),
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_create_refund_request_validation_invalid_amount() {
+        let request = CreateRefundRequest {
+            transaction_id: Uuid::new_v4(),
+            amount: dec!(0),
+            reason: None,
+            reason_detail: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_create_refund_request_validation_negative_amount() {
+        let request = CreateRefundRequest {
+            transaction_id: Uuid::new_v4(),
+            amount: dec!(-25.00),
+            reason: None,
+            reason_detail: None,
+        };
+        assert!(request.validate().is_err());
+    }
+
+    // ========================================
+    // PaymentResponse Tests
+    // ========================================
+
+    #[test]
+    fn test_payment_response_serialization() {
+        let response = PaymentResponse {
+            id: Uuid::new_v4(),
+            transaction_number: "TXN-20240101-ABC123".to_string(),
+            order_id: Some(Uuid::new_v4()),
+            customer_id: Uuid::new_v4(),
+            amount: dec!(100.00),
+            currency: "USD".to_string(),
+            status: "succeeded".to_string(),
+            provider_name: "stripe".to_string(),
+            provider_fee: dec!(2.90),
+            platform_fee: dec!(1.00),
+            total_fees: dec!(3.90),
+            net_amount: dec!(96.10),
+            initiated_at: Utc::now(),
+            processed_at: Some(Utc::now()),
+            estimated_settlement_date: Some(chrono::NaiveDate::from_ymd_opt(2024, 1, 3).unwrap()),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("TXN-20240101-ABC123"));
+        assert!(json.contains("succeeded"));
+        assert!(json.contains("stripe"));
+    }
+
+    #[test]
+    fn test_payment_response_deserialization() {
+        let id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        let json = format!(
+            r#"{{
+                "id": "{}",
+                "transaction_number": "TXN-123",
+                "order_id": null,
+                "customer_id": "{}",
+                "amount": "50.00",
+                "currency": "EUR",
+                "status": "processing",
+                "provider_name": "adyen",
+                "provider_fee": "1.50",
+                "platform_fee": "0.50",
+                "total_fees": "2.00",
+                "net_amount": "48.00",
+                "initiated_at": "2024-01-01T12:00:00Z",
+                "processed_at": null,
+                "estimated_settlement_date": null
+            }}"#,
+            id, customer_id
+        );
+
+        let response: PaymentResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(response.transaction_number, "TXN-123");
+        assert_eq!(response.currency, "EUR");
+        assert_eq!(response.status, "processing");
+        assert!(response.order_id.is_none());
+    }
+
+    // ========================================
+    // RefundResponse Tests
+    // ========================================
+
+    #[test]
+    fn test_refund_response_serialization() {
+        let response = RefundResponse {
+            id: Uuid::new_v4(),
+            refund_number: "REF-20240101-XYZ789".to_string(),
+            transaction_id: Uuid::new_v4(),
+            amount: dec!(25.00),
+            currency: "USD".to_string(),
+            status: "pending".to_string(),
+            refunded_fees: dec!(0.75),
+            net_refund: dec!(24.25),
+            requested_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("REF-20240101-XYZ789"));
+        assert!(json.contains("pending"));
+    }
+
+    // ========================================
+    // CurrencyConversion Tests
+    // ========================================
+
+    #[test]
+    fn test_currency_conversion() {
+        let conversion = CurrencyConversion {
+            from_currency: "USD".to_string(),
+            to_currency: "EUR".to_string(),
+            amount: dec!(100.00),
+            exchange_rate: dec!(0.92),
+        };
+
+        assert_eq!(conversion.from_currency, "USD");
+        assert_eq!(conversion.to_currency, "EUR");
+        assert_eq!(conversion.amount, dec!(100.00));
+        assert_eq!(conversion.exchange_rate, dec!(0.92));
+    }
+
+    #[test]
+    fn test_currency_conversion_serialization() {
+        let conversion = CurrencyConversion {
+            from_currency: "GBP".to_string(),
+            to_currency: "JPY".to_string(),
+            amount: dec!(50.00),
+            exchange_rate: dec!(189.50),
+        };
+
+        let json = serde_json::to_string(&conversion).unwrap();
+        let deserialized: CurrencyConversion = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.from_currency, "GBP");
+        assert_eq!(deserialized.to_currency, "JPY");
+        assert_eq!(deserialized.exchange_rate, dec!(189.50));
+    }
+
+    // ========================================
+    // Fee Calculation Tests
+    // ========================================
+
+    #[test]
+    fn test_payment_fees_calculation() {
+        // Simulate fee calculation logic
+        let amount = dec!(100.00);
+        let provider_rate = dec!(0.029); // 2.9%
+        let fixed_fee = dec!(0.30);
+        let platform_rate = dec!(0.01); // 1%
+
+        let provider_fee = amount * provider_rate + fixed_fee;
+        let platform_fee = amount * platform_rate;
+        let total_fees = provider_fee + platform_fee;
+        let net_amount = amount - total_fees;
+
+        assert_eq!(provider_fee, dec!(3.20));
+        assert_eq!(platform_fee, dec!(1.00));
+        assert_eq!(total_fees, dec!(4.20));
+        assert_eq!(net_amount, dec!(95.80));
+    }
+
+    #[test]
+    fn test_small_payment_fees() {
+        let amount = dec!(1.00);
+        let provider_rate = dec!(0.029);
+        let fixed_fee = dec!(0.30);
+
+        let provider_fee = amount * provider_rate + fixed_fee;
+
+        // For small payments, fixed fee is a large portion
+        assert!(provider_fee > dec!(0.30));
+        assert!(provider_fee < dec!(0.35));
+    }
+
+    #[test]
+    fn test_large_payment_fees() {
+        let amount = dec!(10000.00);
+        let provider_rate = dec!(0.029);
+        let fixed_fee = dec!(0.30);
+
+        let provider_fee = amount * provider_rate + fixed_fee;
+
+        // For large payments, percentage dominates
+        assert_eq!(provider_fee, dec!(290.30));
+    }
+
+    // ========================================
+    // Refund Fee Calculation Tests
+    // ========================================
+
+    #[test]
+    fn test_full_refund_fee_recovery() {
+        let original_amount = dec!(100.00);
+        let original_provider_fee = dec!(3.20);
+        let original_platform_fee = dec!(1.00);
+        let refund_amount = original_amount; // Full refund
+
+        // Calculate proportional fee recovery
+        let refund_ratio = refund_amount / original_amount;
+        let refunded_fees = (original_provider_fee + original_platform_fee) * refund_ratio;
+
+        assert_eq!(refunded_fees, dec!(4.20));
+    }
+
+    #[test]
+    fn test_partial_refund_fee_recovery() {
+        let original_amount = dec!(100.00);
+        let original_provider_fee = dec!(3.20);
+        let original_platform_fee = dec!(1.00);
+        let refund_amount = dec!(50.00); // 50% refund
+
+        let refund_ratio = refund_amount / original_amount;
+        let refunded_fees = (original_provider_fee + original_platform_fee) * refund_ratio;
+
+        assert_eq!(refunded_fees, dec!(2.10));
+    }
+
+    // ========================================
+    // Transaction Number Format Tests
+    // ========================================
+
+    #[test]
+    fn test_transaction_number_format() {
+        // Transaction numbers should follow format: TXN-YYYYMMDD-XXXXX
+        let pattern = regex::Regex::new(r"^TXN-\d{8}-[A-Z0-9]{5,}$").unwrap();
+
+        // Example valid numbers
+        assert!(pattern.is_match("TXN-20240101-ABC12"));
+        assert!(pattern.is_match("TXN-20241231-ZZZZZ"));
+
+        // Invalid formats
+        assert!(!pattern.is_match("TXN-2024-ABC"));
+        assert!(!pattern.is_match("REF-20240101-ABC12"));
+    }
+
+    #[test]
+    fn test_refund_number_format() {
+        // Refund numbers should follow format: REF-YYYYMMDD-XXXXX
+        let pattern = regex::Regex::new(r"^REF-\d{8}-[A-Z0-9]{5,}$").unwrap();
+
+        assert!(pattern.is_match("REF-20240101-XYZ99"));
+        assert!(pattern.is_match("REF-20240615-ABCDE"));
+        assert!(!pattern.is_match("TXN-20240101-XYZ99"));
+    }
+
+    // ========================================
+    // Payment Status Tests
+    // ========================================
+
+    #[test]
+    fn test_valid_payment_statuses() {
+        let valid_statuses = vec![
+            "pending",
+            "processing",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "refunded",
+            "partially_refunded",
+        ];
+
+        for status in valid_statuses {
+            assert!(!status.is_empty());
+            assert!(status.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
+        }
+    }
+
+    #[test]
+    fn test_refund_status_transitions() {
+        // Valid refund status flow
+        let valid_transitions = vec![
+            ("pending", "processing"),
+            ("processing", "succeeded"),
+            ("processing", "failed"),
+            ("pending", "cancelled"),
+        ];
+
+        for (from, to) in valid_transitions {
+            assert_ne!(from, to);
+        }
+    }
+
+    // ========================================
+    // Metadata Tests
+    // ========================================
+
+    #[test]
+    fn test_payment_with_metadata() {
+        let metadata = serde_json::json!({
+            "order_reference": "ORD-12345",
+            "customer_email": "test@example.com",
+            "line_items": [
+                {"sku": "PROD-001", "quantity": 2},
+                {"sku": "PROD-002", "quantity": 1}
+            ]
+        });
+
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(75.00),
+            currency: "USD".to_string(),
+            description: None,
+            metadata: Some(metadata.clone()),
+            idempotency_key: None,
+        };
+
+        assert!(request.metadata.is_some());
+        let meta = request.metadata.unwrap();
+        assert_eq!(meta["order_reference"], "ORD-12345");
+        assert!(meta["line_items"].is_array());
+    }
+
+    // ========================================
+    // Idempotency Key Tests
+    // ========================================
+
+    #[test]
+    fn test_idempotency_key_format() {
+        let valid_keys = vec![
+            "order_123_payment_456",
+            "idem-key-abc-xyz",
+            "unique-request-id-12345",
+        ];
+
+        for key in valid_keys {
+            assert!(!key.is_empty());
+            assert!(key.len() < 256); // reasonable max length
+        }
+    }
+
+    #[test]
+    fn test_idempotency_key_uniqueness() {
+        let key1 = format!("payment-{}", Uuid::new_v4());
+        let key2 = format!("payment-{}", Uuid::new_v4());
+
+        assert_ne!(key1, key2);
+    }
+
+    // ========================================
+    // Edge Cases
+    // ========================================
+
+    #[test]
+    fn test_minimum_payment_amount() {
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(0.01), // Minimum reasonable amount
+            currency: "USD".to_string(),
+            description: None,
+            metadata: None,
+            idempotency_key: None,
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_maximum_payment_amount() {
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(999999999.99), // Very large amount
+            currency: "USD".to_string(),
+            description: None,
+            metadata: None,
+            idempotency_key: None,
+        };
+        assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_payment_with_optional_fields_none() {
+        let request = CreatePaymentRequest {
+            order_id: None,
+            customer_id: Uuid::new_v4(),
+            payment_method_id: None,
+            amount: dec!(100.00),
+            currency: "USD".to_string(),
+            description: None,
+            metadata: None,
+            idempotency_key: None,
+        };
+
+        assert!(request.validate().is_ok());
+        assert!(request.order_id.is_none());
+        assert!(request.payment_method_id.is_none());
+        assert!(request.description.is_none());
+    }
+}

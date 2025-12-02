@@ -18,6 +18,7 @@ fn assert_app_state_bounds() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_health_endpoint() {
     let app = TestApp::new().await;
 
@@ -27,6 +28,7 @@ async fn test_health_endpoint() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_api_status() {
     let app = TestApp::new().await;
 
@@ -46,6 +48,7 @@ async fn test_api_status() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_orders_crud() {
     let app = TestApp::new().await;
     let variant = app
@@ -130,6 +133,7 @@ async fn test_orders_crud() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_inventory_management() {
     let app = TestApp::new().await;
     let db = app.state.db.clone();
@@ -237,6 +241,7 @@ async fn test_inventory_management() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_returns_workflow() {
     let app = TestApp::new().await;
 
@@ -289,6 +294,7 @@ async fn test_returns_workflow() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_shipments_tracking() {
     let app = TestApp::new().await;
 
@@ -366,6 +372,7 @@ async fn test_shipments_tracking() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_warranties_management() {
     let app = TestApp::new().await;
 
@@ -453,6 +460,7 @@ async fn test_warranties_management() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_work_orders_manufacturing() {
     let app = TestApp::new().await;
 
@@ -525,6 +533,7 @@ async fn test_work_orders_manufacturing() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_filtering_and_pagination() {
     let app = TestApp::new().await;
 
@@ -563,6 +572,7 @@ async fn test_filtering_and_pagination() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_error_handling() {
     let app = TestApp::new().await;
 

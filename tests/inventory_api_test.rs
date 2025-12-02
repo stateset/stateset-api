@@ -15,6 +15,7 @@ async fn response_json(response: Response) -> Value {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn inventory_item_lifecycle() {
     let app = TestApp::new().await;
 

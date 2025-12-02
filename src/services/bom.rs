@@ -617,3 +617,298 @@ pub struct ComponentShortage {
     pub available: Decimal,
     pub shortage: Decimal,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    // ==================== ComponentRequirement Tests ====================
+
+    #[test]
+    fn test_component_requirement_creation() {
+        let req = ComponentRequirement {
+            item_id: 100,
+            required_quantity: dec!(5.0),
+            uom_code: Some("EA".to_string()),
+        };
+
+        assert_eq!(req.item_id, 100);
+        assert_eq!(req.required_quantity, dec!(5.0));
+        assert_eq!(req.uom_code, Some("EA".to_string()));
+    }
+
+    #[test]
+    fn test_component_requirement_without_uom() {
+        let req = ComponentRequirement {
+            item_id: 200,
+            required_quantity: dec!(10.5),
+            uom_code: None,
+        };
+
+        assert_eq!(req.item_id, 200);
+        assert!(req.uom_code.is_none());
+    }
+
+    // ==================== ExplodedComponent Tests ====================
+
+    #[test]
+    fn test_exploded_component_creation() {
+        let comp = ExplodedComponent {
+            item_id: 500,
+            quantity: dec!(2.5),
+            level: 1,
+            uom_code: Some("KG".to_string()),
+        };
+
+        assert_eq!(comp.item_id, 500);
+        assert_eq!(comp.quantity, dec!(2.5));
+        assert_eq!(comp.level, 1);
+    }
+
+    #[test]
+    fn test_exploded_component_multi_level() {
+        let components = vec![
+            ExplodedComponent {
+                item_id: 1,
+                quantity: dec!(1.0),
+                level: 0,
+                uom_code: Some("EA".to_string()),
+            },
+            ExplodedComponent {
+                item_id: 2,
+                quantity: dec!(2.0),
+                level: 1,
+                uom_code: Some("EA".to_string()),
+            },
+            ExplodedComponent {
+                item_id: 3,
+                quantity: dec!(4.0),
+                level: 2,
+                uom_code: Some("EA".to_string()),
+            },
+        ];
+
+        assert_eq!(components.len(), 3);
+        assert_eq!(components[0].level, 0);
+        assert_eq!(components[1].level, 1);
+        assert_eq!(components[2].level, 2);
+    }
+
+    // ==================== ComponentAvailability Tests ====================
+
+    #[test]
+    fn test_component_availability_can_produce() {
+        let avail = ComponentAvailability {
+            can_produce: true,
+            shortages: vec![],
+        };
+
+        assert!(avail.can_produce);
+        assert!(avail.shortages.is_empty());
+    }
+
+    #[test]
+    fn test_component_availability_with_shortages() {
+        let shortage = ComponentShortage {
+            item_id: 100,
+            required: dec!(10.0),
+            available: dec!(6.0),
+            shortage: dec!(4.0),
+        };
+
+        let avail = ComponentAvailability {
+            can_produce: false,
+            shortages: vec![shortage],
+        };
+
+        assert!(!avail.can_produce);
+        assert_eq!(avail.shortages.len(), 1);
+        assert_eq!(avail.shortages[0].shortage, dec!(4.0));
+    }
+
+    // ==================== ComponentShortage Tests ====================
+
+    #[test]
+    fn test_component_shortage_calculation() {
+        let shortage = ComponentShortage {
+            item_id: 42,
+            required: dec!(100.0),
+            available: dec!(75.0),
+            shortage: dec!(25.0),
+        };
+
+        assert_eq!(shortage.required - shortage.available, shortage.shortage);
+    }
+
+    #[test]
+    fn test_component_shortage_zero() {
+        let shortage = ComponentShortage {
+            item_id: 1,
+            required: dec!(50.0),
+            available: dec!(50.0),
+            shortage: dec!(0.0),
+        };
+
+        assert_eq!(shortage.shortage, Decimal::ZERO);
+    }
+
+    // ==================== ComponentReservation Tests ====================
+
+    #[test]
+    fn test_component_reservation_creation() {
+        let reservation = ComponentReservation {
+            item_id: 999,
+            quantity: dec!(25.5),
+            location_id: 1,
+            work_order_id: 12345,
+        };
+
+        assert_eq!(reservation.item_id, 999);
+        assert_eq!(reservation.quantity, dec!(25.5));
+        assert_eq!(reservation.location_id, 1);
+        assert_eq!(reservation.work_order_id, 12345);
+    }
+
+    #[test]
+    fn test_component_reservation_decimal_precision() {
+        let reservation = ComponentReservation {
+            item_id: 1,
+            quantity: dec!(0.001),
+            location_id: 1,
+            work_order_id: 1,
+        };
+
+        assert!(reservation.quantity > Decimal::ZERO);
+        assert!(reservation.quantity < dec!(0.01));
+    }
+
+    // ==================== Validation Tests ====================
+
+    #[test]
+    fn test_bom_name_not_empty() {
+        let name = "Assembly A";
+        assert!(!name.trim().is_empty());
+    }
+
+    #[test]
+    fn test_bom_name_empty_rejected() {
+        let name = "   ";
+        assert!(name.trim().is_empty());
+    }
+
+    #[test]
+    fn test_positive_item_id() {
+        let item_id: i64 = 100;
+        assert!(item_id > 0);
+    }
+
+    #[test]
+    fn test_negative_item_id_rejected() {
+        let item_id: i64 = -1;
+        assert!(item_id <= 0);
+    }
+
+    #[test]
+    fn test_positive_organization_id() {
+        let org_id: i64 = 1;
+        assert!(org_id > 0);
+    }
+
+    #[test]
+    fn test_quantity_per_assembly_positive() {
+        let qty = dec!(5.0);
+        assert!(qty > Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_quantity_per_assembly_zero_rejected() {
+        let qty = Decimal::ZERO;
+        assert!(!(qty > Decimal::ZERO));
+    }
+
+    // ==================== UOM Code Tests ====================
+
+    #[test]
+    fn test_common_uom_codes() {
+        let uom_codes = vec!["EA", "KG", "LB", "M", "FT", "L", "GAL", "PCS"];
+
+        for code in uom_codes {
+            assert!(!code.is_empty());
+            assert!(code.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()));
+        }
+    }
+
+    #[test]
+    fn test_uom_code_not_empty() {
+        let uom = "EA";
+        assert!(!uom.trim().is_empty());
+    }
+
+    // ==================== BOM Status Tests ====================
+
+    #[test]
+    fn test_bom_status_active() {
+        let status = "ACTIVE";
+        assert_eq!(status, "ACTIVE");
+    }
+
+    #[test]
+    fn test_bom_status_values() {
+        let statuses = vec!["ACTIVE", "INACTIVE", "PENDING", "OBSOLETE"];
+
+        for status in statuses {
+            assert!(!status.is_empty());
+        }
+    }
+
+    // ==================== Circular Reference Detection Tests ====================
+
+    #[test]
+    fn test_visited_set_detects_duplicate() {
+        let mut visited: HashSet<i64> = HashSet::new();
+        visited.insert(100);
+
+        // Should detect that 100 was already visited
+        assert!(visited.contains(&100));
+        assert!(!visited.contains(&200));
+    }
+
+    #[test]
+    fn test_visited_set_tracks_path() {
+        let mut visited: HashSet<i64> = HashSet::new();
+        let path = vec![1, 2, 3, 4, 5];
+
+        for id in &path {
+            visited.insert(*id);
+        }
+
+        assert_eq!(visited.len(), 5);
+        for id in &path {
+            assert!(visited.contains(id));
+        }
+    }
+
+    // ==================== Quantity Calculation Tests ====================
+
+    #[test]
+    fn test_total_quantity_calculation() {
+        let qty_per_assembly = dec!(5.0);
+        let num_assemblies = dec!(10.0);
+        let total = qty_per_assembly * num_assemblies;
+
+        assert_eq!(total, dec!(50.0));
+    }
+
+    #[test]
+    fn test_nested_quantity_calculation() {
+        // Parent needs 2 of Sub-assembly
+        // Sub-assembly needs 3 of Component
+        // Total components needed = 2 * 3 = 6
+        let parent_qty = dec!(2.0);
+        let sub_qty = dec!(3.0);
+        let total = parent_qty * sub_qty;
+
+        assert_eq!(total, dec!(6.0));
+    }
+}

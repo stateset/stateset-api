@@ -20,6 +20,7 @@ use uuid::Uuid;
 use common::TestApp;
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_create_order_endpoint() {
     let app = TestApp::new().await;
 
@@ -76,6 +77,7 @@ async fn test_create_order_endpoint() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_create_order_rejects_unknown_variant() {
     let app = TestApp::new().await;
     let customer_id = Uuid::new_v4();
@@ -99,6 +101,7 @@ async fn test_create_order_rejects_unknown_variant() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_create_order_accepts_sku_identifier() {
     let app = TestApp::new().await;
     let customer_id = Uuid::new_v4();
@@ -125,6 +128,7 @@ async fn test_create_order_accepts_sku_identifier() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_create_order_rejects_price_mismatch() {
     let app = TestApp::new().await;
     let customer_id = Uuid::new_v4();
@@ -151,6 +155,7 @@ async fn test_create_order_rejects_price_mismatch() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_update_order_status_to_confirmed() {
     let app = TestApp::new().await;
     let order_service = app.state.services.order.clone();
@@ -198,6 +203,7 @@ async fn test_update_order_status_to_confirmed() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_get_order_endpoint() {
     let app = TestApp::new().await;
     let order_service = app.state.services.order.clone();
@@ -241,6 +247,7 @@ async fn test_get_order_endpoint() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_list_orders_endpoint() {
     let app = TestApp::new().await;
     let order_service = app.state.services.order.clone();
@@ -290,6 +297,7 @@ async fn test_list_orders_endpoint() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_orders_list_filters_and_search() {
     let app = TestApp::new().await;
     let order_service = app.state.services.order.clone();
@@ -400,6 +408,7 @@ async fn test_orders_list_filters_and_search() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_update_order_status_endpoint() {
     let app = TestApp::new().await;
     let order_service = app.state.services.order.clone();

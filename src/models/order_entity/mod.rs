@@ -41,6 +41,10 @@ pub struct Model {
 
     pub notes: Option<String>,
 
+    pub discount_amount: Option<f64>,
+
+    pub promotion_id: Option<Uuid>,
+
     pub created_at: DateTime<Utc>,
 
     pub updated_at: DateTime<Utc>,
@@ -91,6 +95,8 @@ impl Model {
             shipping_method,
             tracking_number: None,
             notes,
+            discount_amount: None,
+            promotion_id: None,
             created_at: now,
             updated_at: now,
             version: 1,

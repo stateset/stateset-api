@@ -1,6 +1,7 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::{
     db::DbPool,
+    entities::purchase_order_headers,
     errors::ServiceError,
     models::{
         inventory_items, order, order_line_item, return_entity, suppliers,
@@ -16,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, instrument};
+use tracing::{error, info, instrument};
 use uuid::Uuid;
 
 /// Service for generating various reports and analytics
@@ -169,13 +170,60 @@ impl ReportService {
             .await
             .map_err(|e| ServiceError::db_error(e))?;
 
-        // TODO: Calculate inventory value from products and quantities
-        // This is just a placeholder
-        let inventory_value = 0.0;
+        // Calculate inventory value from available quantities and unit costs
+        let all_items = inventory_items::Entity::find()
+            .all(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
 
-        // TODO: Get top products by sales
-        // This is just a placeholder
-        let top_products = Vec::new();
+        let inventory_value: f64 = all_items
+            .iter()
+            .filter_map(|item| {
+                item.unit_cost.map(|cost| {
+                    use rust_decimal::prelude::ToPrimitive;
+                    let cost_f64 = cost.to_f64().unwrap_or(0.0);
+                    cost_f64 * (item.available as f64)
+                })
+            })
+            .sum();
+
+        // Get top products by sales (from order line items)
+        let orders_with_items = order::Entity::find()
+            .find_with_related(order_line_item::Entity)
+            .all(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
+
+        // Aggregate sales by product (product_id is a String in order_line_item)
+        let mut product_sales: HashMap<String, (String, i64, f64)> = HashMap::new();
+
+        for (_order, line_items) in &orders_with_items {
+            for item in line_items {
+                let entry = product_sales
+                    .entry(item.product_id.clone())
+                    .or_insert((item.product_name.clone(), 0, 0.0));
+                entry.1 += item.quantity as i64;
+                let line_revenue = (item.sale_price as f64 / 100.0) * item.quantity as f64;
+                entry.2 += line_revenue;
+            }
+        }
+
+        // Sort by quantity sold and take top 10
+        let mut top_products: Vec<TopProduct> = product_sales
+            .into_iter()
+            .filter_map(|(id, (name, qty, rev))| {
+                // Try to parse product_id as UUID, skip if invalid
+                Uuid::parse_str(&id).ok().map(|uuid| TopProduct {
+                    product_id: uuid,
+                    name,
+                    quantity_sold: qty,
+                    revenue: rev,
+                })
+            })
+            .collect();
+
+        top_products.sort_by(|a, b| b.quantity_sold.cmp(&a.quantity_sold));
+        top_products.truncate(10);
 
         Ok(InventoryReport {
             total_products: total_products.try_into().unwrap_or(0),
@@ -207,10 +255,28 @@ impl ReportService {
                 ServiceError::NotFound(msg)
             })?;
 
-        // TODO: Get supplier orders and calculate performance metrics
-        // This is just a placeholder
-        let total_orders = 0;
-        let on_time_delivery_rate = 0.0;
+        // Get purchase orders for this supplier within the date range
+        // Note: vendor_id in purchase_order_headers corresponds to supplier_id
+        let purchase_orders = purchase_order_headers::Entity::find()
+            .filter(purchase_order_headers::Column::VendorId.eq(supplier_id as i64))
+            .filter(purchase_order_headers::Column::CreatedAt.gte(start_date))
+            .filter(purchase_order_headers::Column::CreatedAt.lte(end_date))
+            .all(db)
+            .await
+            .map_err(|e| ServiceError::db_error(e))?;
+
+        let total_orders = purchase_orders.len() as i64;
+
+        // Calculate on-time delivery rate based on approved orders
+        // (In a full implementation, this would compare expected vs actual delivery dates)
+        let approved_orders = purchase_orders.iter().filter(|po| po.approved_flag == Some(true)).count();
+        let on_time_delivery_rate = if total_orders > 0 {
+            (approved_orders as f64 / total_orders as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Quality rating from supplier model
         let quality_rating = match supplier_model.rating {
             suppliers::SupplierRating::Unrated => 0.0,
             suppliers::SupplierRating::Bronze => 1.0,
@@ -218,8 +284,34 @@ impl ReportService {
             suppliers::SupplierRating::Gold => 3.0,
             suppliers::SupplierRating::Platinum => 4.0,
         };
-        let average_lead_time = 0.0;
+
+        // Calculate average lead time (days between created_at and updated_at as proxy)
+        // In a full implementation, this would use actual shipment/receipt dates
+        let lead_times: Vec<f64> = purchase_orders
+            .iter()
+            .map(|po| {
+                let duration = po.updated_at.signed_duration_since(po.created_at);
+                duration.num_days() as f64
+            })
+            .collect();
+
+        let average_lead_time = if !lead_times.is_empty() {
+            lead_times.iter().sum::<f64>() / lead_times.len() as f64
+        } else {
+            0.0
+        };
+
+        // Cost savings would require comparing negotiated prices to market prices
+        // This is a placeholder - in production, you'd have price comparison data
         let cost_savings = 0.0;
+
+        info!(
+            supplier_id = supplier_id,
+            total_orders = total_orders,
+            on_time_rate = on_time_delivery_rate,
+            avg_lead_time = average_lead_time,
+            "Generated supplier performance report"
+        );
 
         Ok(SupplierPerformanceReport {
             supplier_id,

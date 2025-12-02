@@ -1,6 +1,4 @@
 // Core services
-// Temporarily commented out services that depend on models module
-// pub mod fulfillment_orders;
 pub mod inventory;
 pub mod orders;
 pub mod returns;
@@ -26,11 +24,9 @@ pub mod sales_fulfillment;
 pub mod asn;
 pub mod billofmaterials;
 pub mod procurement;
-// pub mod suppliers;
 
 // Customer Management
 pub mod accounts;
-// pub mod customers;
 pub mod leads;
 pub mod notifications;
 
@@ -38,7 +34,6 @@ pub mod notifications;
 pub mod accounting;
 pub mod cash_sale;
 pub mod invoicing;
-// pub mod item_receipts;
 pub mod payments;
 pub mod promotions;
 pub mod stablepay_service;
@@ -54,31 +49,6 @@ pub mod reports;
 // External Services
 pub mod geocoding;
 
-// Legacy module aliases for backwards compatibility
-// Commented out due to depending on disabled modules
-/*
-pub mod order_service {
-    pub use super::orders::OrderService;
-}
-pub mod inventory_service {
-    pub use super::inventory::InventoryService;
-}
-pub mod return_service {
-    pub use super::returns::ReturnService;
-}
-pub mod warranty_service {
-    pub use super::warranties::WarrantyService;
-}
-pub mod shipment_service {
-    pub use super::shipments::ShipmentService;
-}
-pub mod fulfillment_order_service {
-    pub use super::fulfillment_orders::FulfillmentOrderService;
-}
-pub mod item_receipt_service {
-    pub use super::item_receipts::ItemReceiptService;
-}
-*/
-// pub mod category_service;
+// Commerce and Analytics
 pub mod analytics;
 pub mod commerce;

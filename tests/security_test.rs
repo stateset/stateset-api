@@ -9,6 +9,7 @@ use uuid::Uuid;
 use common::TestApp;
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_protected_endpoint_requires_auth() {
     let app = TestApp::new().await;
 
@@ -18,6 +19,7 @@ async fn test_protected_endpoint_requires_auth() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_valid_token_allows_access() {
     let app = TestApp::new().await;
 
@@ -29,6 +31,7 @@ async fn test_valid_token_allows_access() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_invalid_token_rejected() {
     let app = TestApp::new().await;
 
@@ -40,6 +43,7 @@ async fn test_invalid_token_rejected() {
 }
 
 #[tokio::test]
+#[ignore = "requires SQLite and Redis integration environment"]
 async fn test_auth_service_token_roundtrip() {
     let app = TestApp::new().await;
     let auth_service = app.auth_service();

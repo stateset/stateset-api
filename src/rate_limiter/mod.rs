@@ -22,7 +22,7 @@
  *
  * ## Usage
  *
- * ```
+ * ```ignore
  * // Create a rate limiter
  * let config = RateLimitConfig {
  *     requests_per_window: 100,

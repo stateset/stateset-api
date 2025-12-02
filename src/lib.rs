@@ -42,7 +42,39 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
+use std::time::Instant;
 use utoipa::ToSchema;
+
+/// Application start time for uptime calculation
+static START_TIME: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+
+/// Initialize the application start time - call this at startup
+pub fn init_start_time() {
+    let _ = START_TIME.get_or_init(Instant::now);
+}
+
+/// Get the application uptime in seconds
+fn get_uptime_secs() -> u64 {
+    START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0)
+}
+
+/// Format uptime as human-readable string
+fn format_uptime(secs: u64) -> String {
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+
+    if days > 0 {
+        format!("{}d {}h {}m {}s", days, hours, minutes, seconds)
+    } else if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, seconds)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, seconds)
+    } else {
+        format!("{}s", seconds)
+    }
+}
 
 // Tracing imports - use external tracing crate directly to avoid conflicts
 
@@ -474,16 +506,6 @@ pub fn api_v1_routes() -> Router<AppState> {
         .merge(inventory_read)
         .merge(inventory_mutate)
         .merge(inventory_delete)
-        // ASN API (auth + permissions) - temporarily disabled
-        // .route("/asns", get(handlers::asn::list_asns))
-        // .route("/asns/{id}", get(handlers::asn::get_asn))
-        // .route("/asns", post(handlers::asn::create_asn))
-        // .route("/asns/{id}", put(handlers::asn::update_asn))
-        // .route("/asns/{id}", delete(handlers::asn::delete_asn))
-        // .route("/asns/{id}/in-transit", post(handlers::asn::in_transit_asn))
-        // .route("/asns/{id}/delivered", post(handlers::asn::delivered_asn))
-        // .route("/asns/{id}/cancel", post(handlers::asn::cancel_asn))
-        // .with_permission("asn:read")
         // Returns API (auth + permissions)
         .merge(returns_read)
         .merge(returns_write)
@@ -559,6 +581,7 @@ async fn health_check(
         Err(_) => "unhealthy",
     };
 
+    let uptime_secs = get_uptime_secs();
     let health_data = json!({
         "status": if db_status == "healthy" && redis_status == "healthy" { "healthy" } else { "unhealthy" },
         "checks": {
@@ -567,7 +590,8 @@ async fn health_check(
             "message_queue": "unknown",
         },
         "timestamp": chrono::Utc::now().to_rfc3339(),
-        "uptime": "unknown", // TODO: Calculate actual uptime
+        "uptime": format_uptime(uptime_secs),
+        "uptime_seconds": uptime_secs,
     });
 
     Ok(Json(ApiResponse::success(health_data)))
