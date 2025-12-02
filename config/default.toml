@@ -8,7 +8,7 @@ database_url = "sqlite://stateset.db?mode=rwc"
 redis_url = "redis://localhost:6379"
 
 # JWT configuration
-jwt_secret = "CHANGE_THIS_SECRET_IN_PRODUCTION"  # Generate with: openssl rand -base64 32
+jwt_secret = "this_is_a_development_secret_key_that_is_at_least_64_characters_long_for_testing"  # Generate with: openssl rand -base64 32
 jwt_expiration = 3600
 refresh_token_expiration = 604800
 
