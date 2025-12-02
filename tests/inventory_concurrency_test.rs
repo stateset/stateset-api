@@ -52,6 +52,7 @@ async fn inventory_concurrency() {
         location_id,
         quantity_delta: Decimal::from(10),
         reason: Some("seed".into()),
+        expected_version: None,
     })
     .await
     .expect("seed adjust");

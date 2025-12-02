@@ -15,6 +15,7 @@ pub mod factory;
 // Inventory management services
 pub mod bom;
 pub mod inventory_adjustment_service;
+pub mod inventory_reservation_service;
 pub mod inventory_sync;
 pub mod manufacturing;
 pub mod purchase_receipt;

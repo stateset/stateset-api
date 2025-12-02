@@ -314,6 +314,19 @@ pub fn api_v1_routes() -> Router<AppState> {
             "/inventory/low-stock",
             get(handlers::inventory::get_low_stock_items::<AppState>),
         )
+        // Reservation read endpoints
+        .route(
+            "/inventory/reservations",
+            get(handlers::inventory::list_reservations),
+        )
+        .route(
+            "/inventory/reservations/stats",
+            get(handlers::inventory::get_reservation_stats),
+        )
+        .route(
+            "/inventory/reservations/{id}",
+            get(handlers::inventory::get_reservation),
+        )
         .with_permission(perm::INVENTORY_READ);
 
     let inventory_mutate = Router::new()
@@ -332,6 +345,20 @@ pub fn api_v1_routes() -> Router<AppState> {
         .route(
             "/inventory/{id}/release",
             axum::routing::post(handlers::inventory::release_inventory::<AppState>),
+        )
+        // Bulk operations
+        .route(
+            "/inventory/bulk-adjust",
+            axum::routing::post(handlers::inventory::bulk_adjust_inventory::<AppState>),
+        )
+        // Reservation management endpoints
+        .route(
+            "/inventory/reservations/cleanup",
+            axum::routing::post(handlers::inventory::cleanup_expired_reservations),
+        )
+        .route(
+            "/inventory/reservations/{id}/cancel",
+            axum::routing::post(handlers::inventory::cancel_reservation),
         )
         .with_permission(perm::INVENTORY_ADJUST);
 

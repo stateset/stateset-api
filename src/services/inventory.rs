@@ -5,7 +5,7 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -41,6 +41,8 @@ pub struct LocationBalance {
     pub quantity_allocated: Decimal,
     pub quantity_available: Decimal,
     pub updated_at: DateTime<Utc>,
+    /// Version number for optimistic locking. Use this when updating to prevent lost updates.
+    pub version: i32,
 }
 
 /// Command payload for adjusting inventory.
@@ -51,6 +53,9 @@ pub struct AdjustInventoryCommand {
     pub location_id: i32,
     pub quantity_delta: Decimal,
     pub reason: Option<String>,
+    /// Optional version for optimistic locking. If provided, the operation will fail
+    /// if the current version doesn't match, preventing lost updates.
+    pub expected_version: Option<i32>,
 }
 
 /// Command payload for reserving inventory.
@@ -62,6 +67,8 @@ pub struct ReserveInventoryCommand {
     pub quantity: Decimal,
     pub reference_id: Option<Uuid>,
     pub reference_type: Option<String>,
+    /// Optional version for optimistic locking.
+    pub expected_version: Option<i32>,
 }
 
 /// Result of a reservation operation.
@@ -370,21 +377,34 @@ impl InventoryService {
             .reason
             .unwrap_or_else(|| "MANUAL_ADJUSTMENT".to_string());
 
+        let expected_version = command.expected_version;
         let (old_on_hand, updated_balance) = db
             .transaction::<_, (Decimal, inventory_balance::Model), ServiceError>(|txn| {
                 let reason_clone = reason.clone();
                 Box::pin(async move {
                     let now = Utc::now();
+                    // Use FOR UPDATE to prevent concurrent modifications (pessimistic locking)
                     let maybe_balance = InventoryBalanceEntity::find()
                         .filter(
                             inventory_balance::Column::InventoryItemId.eq(item.inventory_item_id),
                         )
                         .filter(inventory_balance::Column::LocationId.eq(location_id))
+                        .lock_exclusive()
                         .one(txn)
                         .await
                         .map_err(ServiceError::db_error)?;
 
                     if let Some(existing) = maybe_balance {
+                        // Optimistic locking: check version if provided
+                        if let Some(expected) = expected_version {
+                            if existing.version != expected {
+                                return Err(ServiceError::Conflict(format!(
+                                    "Inventory was modified by another request. Expected version {}, found {}. Please refresh and retry.",
+                                    expected, existing.version
+                                )));
+                            }
+                        }
+
                         let new_on_hand = existing.quantity_on_hand + delta;
                         let new_available = existing.quantity_available + delta;
                         if new_on_hand < Decimal::ZERO {
@@ -400,6 +420,8 @@ impl InventoryService {
                         }
                         let mut active: inventory_balance::ActiveModel = existing.clone().into();
                         active.quantity_on_hand = Set(new_on_hand);
+                        // Increment version for optimistic locking
+                        active.version = Set(existing.version + 1);
                         // quantity_available is computed by database, don't set it
                         active.updated_at = Set(now.into());
                         let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
@@ -415,6 +437,8 @@ impl InventoryService {
                             location_id: Set(location_id),
                             quantity_on_hand: Set(delta),
                             quantity_allocated: Set(Decimal::ZERO),
+                            // Initialize version to 1 for new records
+                            version: Set(1),
                             // quantity_available is computed by database, don't set it
                             created_at: Set(now.into()),
                             updated_at: Set(now.into()),
@@ -469,6 +493,7 @@ impl InventoryService {
         }
         let location_id = command.location_id;
         let quantity = command.quantity;
+        let expected_version = command.expected_version;
 
         let (updated_balance, reservation_id) = db
             .transaction::<_, (inventory_balance::Model, Uuid), ServiceError>(|txn| {
@@ -480,11 +505,13 @@ impl InventoryService {
                     .unwrap_or_else(|| "RESERVATION".to_string());
                 Box::pin(async move {
                     let now = Utc::now();
+                    // Use FOR UPDATE to prevent concurrent reservations (pessimistic locking)
                     let existing = InventoryBalanceEntity::find()
                         .filter(
                             inventory_balance::Column::InventoryItemId.eq(item.inventory_item_id),
                         )
                         .filter(inventory_balance::Column::LocationId.eq(location_id))
+                        .lock_exclusive()
                         .one(txn)
                         .await
                         .map_err(ServiceError::db_error)?
@@ -494,6 +521,16 @@ impl InventoryService {
                                 item.inventory_item_id, location_id
                             ))
                         })?;
+
+                    // Optimistic locking: check version if provided
+                    if let Some(expected) = expected_version {
+                        if existing.version != expected {
+                            return Err(ServiceError::Conflict(format!(
+                                "Inventory was modified by another request. Expected version {}, found {}. Please refresh and retry.",
+                                expected, existing.version
+                            )));
+                        }
+                    }
 
                     if existing.quantity_available < quantity {
                         return Err(ServiceError::ValidationError(format!(
@@ -506,6 +543,8 @@ impl InventoryService {
 
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
                     active.quantity_allocated = Set(existing.quantity_allocated + quantity);
+                    // Increment version for optimistic locking
+                    active.version = Set(existing.version + 1);
                     // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
@@ -569,6 +608,7 @@ impl InventoryService {
                 quantity,
                 reference_id: None,
                 reference_type: None,
+                expected_version: None,
             })
             .await?;
         Ok(outcome.id_str())
@@ -601,11 +641,13 @@ impl InventoryService {
                 let quantity = quantity;
                 Box::pin(async move {
                     let now = Utc::now();
+                    // Use FOR UPDATE to prevent concurrent releases (pessimistic locking)
                     let existing = InventoryBalanceEntity::find()
                         .filter(
                             inventory_balance::Column::InventoryItemId.eq(item.inventory_item_id),
                         )
                         .filter(inventory_balance::Column::LocationId.eq(location_id))
+                        .lock_exclusive()
                         .one(txn)
                         .await
                         .map_err(ServiceError::db_error)?
@@ -627,6 +669,8 @@ impl InventoryService {
 
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
                     active.quantity_allocated = Set(existing.quantity_allocated - quantity);
+                    // Increment version for optimistic locking
+                    active.version = Set(existing.version + 1);
                     // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
@@ -694,9 +738,11 @@ impl InventoryService {
             Box::pin(async move {
                 let now = Utc::now();
 
+                // Use FOR UPDATE to lock both source and destination (pessimistic locking)
                 let source = InventoryBalanceEntity::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(inventory_item_id))
                     .filter(inventory_balance::Column::LocationId.eq(from_location))
+                    .lock_exclusive()
                     .one(txn)
                     .await
                     .map_err(ServiceError::db_error)?
@@ -717,6 +763,8 @@ impl InventoryService {
 
                 let mut source_active: inventory_balance::ActiveModel = source.clone().into();
                 source_active.quantity_on_hand = Set(source.quantity_on_hand - quantity);
+                // Increment version for optimistic locking
+                source_active.version = Set(source.version + 1);
                 // quantity_available is computed by database, don't set it
                 source_active.updated_at = Set(now.into());
                 source_active
@@ -724,9 +772,11 @@ impl InventoryService {
                     .await
                     .map_err(ServiceError::db_error)?;
 
+                // Lock destination as well for atomicity
                 let dest = InventoryBalanceEntity::find()
                     .filter(inventory_balance::Column::InventoryItemId.eq(inventory_item_id))
                     .filter(inventory_balance::Column::LocationId.eq(to_location))
+                    .lock_exclusive()
                     .one(txn)
                     .await
                     .map_err(ServiceError::db_error)?;
@@ -734,6 +784,8 @@ impl InventoryService {
                 if let Some(existing) = dest {
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
                     active.quantity_on_hand = Set(existing.quantity_on_hand + quantity);
+                    // Increment version for optimistic locking
+                    active.version = Set(existing.version + 1);
                     // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     active.update(txn).await.map_err(ServiceError::db_error)?;
@@ -743,6 +795,8 @@ impl InventoryService {
                         location_id: Set(to_location),
                         quantity_on_hand: Set(quantity),
                         quantity_allocated: Set(Decimal::ZERO),
+                        // Initialize version to 1 for new records
+                        version: Set(1),
                         // quantity_available is computed by database, don't set it
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
@@ -808,6 +862,7 @@ impl InventoryService {
             quantity_allocated: balance.quantity_allocated,
             quantity_available: balance.quantity_available,
             updated_at: balance.updated_at.with_timezone(&Utc),
+            version: balance.version,
         }
     }
 
@@ -947,6 +1002,7 @@ mod unit_tests {
             quantity_allocated: Decimal::from_str("10.00").unwrap(),
             quantity_available: Decimal::from_str("40.00").unwrap(),
             updated_at: now,
+            version: 1,
         };
 
         assert_eq!(balance.location_id, 456);
@@ -954,6 +1010,7 @@ mod unit_tests {
         assert_eq!(balance.quantity_on_hand, Decimal::from_str("50.00").unwrap());
         assert_eq!(balance.quantity_allocated, Decimal::from_str("10.00").unwrap());
         assert_eq!(balance.quantity_available, Decimal::from_str("40.00").unwrap());
+        assert_eq!(balance.version, 1);
     }
 
     /// Test AdjustInventoryCommand structure
@@ -965,6 +1022,7 @@ mod unit_tests {
             location_id: 5,
             quantity_delta: Decimal::from_str("25.00").unwrap(),
             reason: Some("Receiving".to_string()),
+            expected_version: Some(3),
         };
 
         assert_eq!(command.inventory_item_id, Some(100));
@@ -972,6 +1030,7 @@ mod unit_tests {
         assert_eq!(command.location_id, 5);
         assert_eq!(command.quantity_delta, Decimal::from_str("25.00").unwrap());
         assert_eq!(command.reason, Some("Receiving".to_string()));
+        assert_eq!(command.expected_version, Some(3));
     }
 
     /// Test ReserveInventoryCommand structure
@@ -985,12 +1044,14 @@ mod unit_tests {
             quantity: Decimal::from_str("15.00").unwrap(),
             reference_id: Some(ref_id),
             reference_type: Some("ORDER".to_string()),
+            expected_version: Some(5),
         };
 
         assert_eq!(command.inventory_item_id, Some(200));
         assert_eq!(command.quantity, Decimal::from_str("15.00").unwrap());
         assert_eq!(command.reference_id, Some(ref_id));
         assert_eq!(command.reference_type, Some("ORDER".to_string()));
+        assert_eq!(command.expected_version, Some(5));
     }
 
     /// Test ReservationOutcome structure and id_str method
@@ -1005,6 +1066,7 @@ mod unit_tests {
             quantity_allocated: Decimal::from_str("30.00").unwrap(),
             quantity_available: Decimal::from_str("70.00").unwrap(),
             updated_at: now,
+            version: 2,
         };
 
         let outcome = ReservationOutcome {
@@ -1015,6 +1077,7 @@ mod unit_tests {
         assert_eq!(outcome.reservation_id, res_id);
         assert_eq!(outcome.id_str(), res_id.to_string());
         assert_eq!(outcome.balance.quantity_on_hand, Decimal::from_str("100.00").unwrap());
+        assert_eq!(outcome.balance.version, 2);
     }
 
     /// Test ReleaseReservationCommand structure
@@ -1117,6 +1180,7 @@ mod unit_tests {
             quantity_allocated: Decimal::from_str("10.00").unwrap(),
             quantity_available: Decimal::from_str("50.00").unwrap(),
             updated_at: now,
+            version: 1,
         };
 
         let location2 = LocationBalance {
@@ -1126,6 +1190,7 @@ mod unit_tests {
             quantity_allocated: Decimal::from_str("10.00").unwrap(),
             quantity_available: Decimal::from_str("30.00").unwrap(),
             updated_at: now,
+            version: 1,
         };
 
         let snapshot = InventorySnapshot {

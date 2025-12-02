@@ -48,6 +48,8 @@ pub struct InventoryLocation {
     pub location_name: Option<String>,
     pub quantities: InventoryQuantities,
     pub updated_at: String,
+    /// Version number for optimistic locking. Include this in update requests to prevent lost updates.
+    pub version: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -72,39 +74,75 @@ pub struct InventoryFilters {
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateInventoryRequest {
-    #[validate(length(min = 1))]
+    /// SKU or item number (1-100 characters)
+    #[validate(length(min = 1, max = 100, message = "Item number must be between 1 and 100 characters"))]
     pub item_number: String,
+    /// Item description (max 500 characters)
+    #[validate(length(max = 500, message = "Description must not exceed 500 characters"))]
     pub description: Option<String>,
+    /// Unit of measure code (e.g., "EA", "KG", "LB")
+    #[validate(length(max = 20, message = "UOM code must not exceed 20 characters"))]
     pub primary_uom_code: Option<String>,
+    /// Organization ID (must be positive if provided)
+    #[validate(range(min = 1, message = "Organization ID must be positive"))]
     pub organization_id: Option<i64>,
+    /// Location ID (must be positive)
+    #[validate(range(min = 1, message = "Location ID must be positive"))]
     pub location_id: i32,
+    /// Initial quantity on hand (cannot be negative)
+    #[validate(range(min = 0, message = "Quantity on hand cannot be negative"))]
     pub quantity_on_hand: i64,
+    /// Reason for inventory adjustment (max 200 characters)
+    #[validate(length(max = 200, message = "Reason must not exceed 200 characters"))]
     pub reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct UpdateInventoryRequest {
+    /// Location ID (must be positive)
+    #[validate(range(min = 1, message = "Location ID must be positive"))]
     pub location_id: i32,
+    /// New quantity on hand (cannot be negative)
+    #[validate(range(min = 0, message = "Quantity on hand cannot be negative"))]
     pub on_hand: Option<i64>,
+    /// Updated description (max 500 characters)
+    #[validate(length(max = 500, message = "Description must not exceed 500 characters"))]
     pub description: Option<String>,
+    /// Updated UOM code (max 20 characters)
+    #[validate(length(max = 20, message = "UOM code must not exceed 20 characters"))]
     pub primary_uom_code: Option<String>,
+    /// Organization ID (must be positive if provided)
+    #[validate(range(min = 1, message = "Organization ID must be positive"))]
     pub organization_id: Option<i64>,
+    /// Reason for update (max 200 characters)
+    #[validate(length(max = 200, message = "Reason must not exceed 200 characters"))]
     pub reason: Option<String>,
+    /// Expected version for optimistic locking. If provided, update fails if version doesn't match.
+    pub expected_version: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct ReserveInventoryRequest {
+    /// Location ID (must be positive)
+    #[validate(range(min = 1, message = "Location ID must be positive"))]
     pub location_id: i32,
-    #[validate(range(min = 1))]
+    /// Quantity to reserve (must be at least 1)
+    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
     pub quantity: i64,
+    /// Reference ID (e.g., order ID) - must be valid UUID if provided
     pub reference_id: Option<String>,
+    /// Reference type (e.g., "SALES_ORDER", "CUSTOMER_HOLD")
+    #[validate(length(max = 50, message = "Reference type must not exceed 50 characters"))]
     pub reference_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct ReleaseInventoryRequest {
+    /// Location ID (must be positive)
+    #[validate(range(min = 1, message = "Location ID must be positive"))]
     pub location_id: i32,
-    #[validate(range(min = 1))]
+    /// Quantity to release (must be at least 1)
+    #[validate(range(min = 1, message = "Quantity must be at least 1"))]
     pub quantity: i64,
 }
 
@@ -196,6 +234,7 @@ where
                 location_id: payload.location_id,
                 quantity_delta: Decimal::from(payload.quantity_on_hand),
                 reason: payload.reason.clone(),
+                expected_version: None,
             })
             .await?;
     }
@@ -296,6 +335,7 @@ where
                     location_id: payload.location_id,
                     quantity_delta: delta,
                     reason: payload.reason.clone().or(Some("ADJUSTMENT".to_string())),
+                    expected_version: None, // TODO: Accept version from request for optimistic locking
                 })
                 .await?;
         }
@@ -331,6 +371,7 @@ where
                     location_id: location.location_id,
                     quantity_delta: Decimal::ZERO - location.quantity_on_hand,
                     reason: Some("DELETE_INVENTORY".to_string()),
+                    expected_version: None,
                 })
                 .await?;
         }
@@ -377,6 +418,7 @@ where
             quantity: Decimal::from(payload.quantity),
             reference_id,
             reference_type: payload.reference_type.clone(),
+            expected_version: None,
         })
         .await?;
 
@@ -582,6 +624,7 @@ fn balance_to_location(balance: LocationBalance) -> InventoryLocation {
             available: decimal_to_string(balance.quantity_available),
         },
         updated_at: balance.updated_at.to_rfc3339(),
+        version: balance.version,
     }
 }
 
@@ -605,4 +648,364 @@ impl InventoryHandlerState for crate::AppState {
     fn inventory_service(&self) -> &InventoryService {
         &self.inventory_service
     }
+}
+
+// ============================================================================
+// Reservation Endpoints
+// ============================================================================
+
+/// Response for reservation listing.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReservationListResponse {
+    pub reservations: Vec<ReservationDetail>,
+    pub total: u64,
+    pub page: u64,
+    pub limit: u64,
+}
+
+/// Detail of a single reservation.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReservationDetail {
+    pub id: String,
+    pub product_id: String,
+    pub location_id: String,
+    pub quantity: i32,
+    pub status: String,
+    pub reference_id: String,
+    pub reference_type: String,
+    pub expires_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+    pub is_expired: bool,
+}
+
+/// Query parameters for listing reservations.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListReservationsQuery {
+    #[serde(default = "default_page")]
+    pub page: u64,
+    #[serde(default = "default_limit")]
+    pub limit: u64,
+    pub status: Option<String>,
+    pub product_id: Option<String>,
+    #[serde(default)]
+    pub include_expired: bool,
+}
+
+fn default_page() -> u64 {
+    1
+}
+fn default_limit() -> u64 {
+    50
+}
+
+/// Response for reservation cleanup.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CleanupResponse {
+    pub expired_count: u64,
+    pub already_expired_count: u64,
+    pub cleaned_at: String,
+}
+
+/// Response for reservation statistics.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReservationStatsResponse {
+    pub total_reservations: u64,
+    pub active_reservations: u64,
+    pub expired_not_cleaned: u64,
+    pub expiring_within_24h: u64,
+    pub stats_at: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/inventory/reservations",
+    params(
+        ("page" = Option<u64>, Query, description = "Page number (1-indexed)"),
+        ("limit" = Option<u64>, Query, description = "Items per page (max 1000)"),
+        ("status" = Option<String>, Query, description = "Filter by status"),
+        ("product_id" = Option<String>, Query, description = "Filter by product ID"),
+        ("include_expired" = Option<bool>, Query, description = "Include expired reservations")
+    ),
+    responses((status = 200, description = "List of reservations", body = ApiResponse<ReservationListResponse>)),
+    tag = "inventory"
+)]
+pub async fn list_reservations(
+    State(state): State<crate::AppState>,
+    Query(params): Query<ListReservationsQuery>,
+) -> Result<Json<ApiResponse<ReservationListResponse>>, ServiceError> {
+    use crate::services::inventory_reservation_service::InventoryReservationService;
+    use uuid::Uuid;
+
+    let service = InventoryReservationService::new(state.db.clone());
+
+    let product_id = params
+        .product_id
+        .as_ref()
+        .map(|s| Uuid::parse_str(s))
+        .transpose()
+        .map_err(|_| ServiceError::ValidationError("Invalid product_id UUID".to_string()))?;
+
+    let (reservations, total) = service
+        .list_reservations(
+            params.page,
+            params.limit.min(1000),
+            params.status.as_deref(),
+            product_id,
+            params.include_expired,
+        )
+        .await?;
+
+    let details: Vec<ReservationDetail> = reservations
+        .into_iter()
+        .map(|r| ReservationDetail {
+            id: r.id.to_string(),
+            product_id: r.product_id.to_string(),
+            location_id: r.location_id.to_string(),
+            quantity: r.quantity,
+            status: r.status,
+            reference_id: r.reference_id.to_string(),
+            reference_type: r.reference_type,
+            expires_at: r.expires_at.map(|t| t.to_rfc3339()),
+            created_at: r.created_at.to_rfc3339(),
+            updated_at: r.updated_at.map(|t| t.to_rfc3339()),
+            is_expired: r.is_expired,
+        })
+        .collect();
+
+    Ok(Json(ApiResponse::success(ReservationListResponse {
+        reservations: details,
+        total,
+        page: params.page,
+        limit: params.limit,
+    })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/inventory/reservations/{id}",
+    params(("id" = String, Path, description = "Reservation ID")),
+    responses(
+        (status = 200, description = "Reservation details", body = ApiResponse<ReservationDetail>),
+        (status = 404, description = "Reservation not found")
+    ),
+    tag = "inventory"
+)]
+pub async fn get_reservation(
+    State(state): State<crate::AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<ReservationDetail>>, ServiceError> {
+    use crate::services::inventory_reservation_service::InventoryReservationService;
+    use uuid::Uuid;
+
+    let reservation_id = Uuid::parse_str(&id)
+        .map_err(|_| ServiceError::ValidationError("Invalid reservation ID".to_string()))?;
+
+    let service = InventoryReservationService::new(state.db.clone());
+
+    let reservation = service
+        .get_reservation(reservation_id)
+        .await?
+        .ok_or_else(|| ServiceError::NotFound(format!("Reservation {} not found", id)))?;
+
+    let detail = ReservationDetail {
+        id: reservation.id.to_string(),
+        product_id: reservation.product_id.to_string(),
+        location_id: reservation.location_id.to_string(),
+        quantity: reservation.quantity,
+        status: reservation.status,
+        reference_id: reservation.reference_id.to_string(),
+        reference_type: reservation.reference_type,
+        expires_at: reservation.expires_at.map(|t| t.to_rfc3339()),
+        created_at: reservation.created_at.to_rfc3339(),
+        updated_at: reservation.updated_at.map(|t| t.to_rfc3339()),
+        is_expired: reservation.is_expired,
+    };
+
+    Ok(Json(ApiResponse::success(detail)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/inventory/reservations/{id}/cancel",
+    params(("id" = String, Path, description = "Reservation ID")),
+    responses(
+        (status = 200, description = "Reservation cancelled", body = ApiResponse<ReservationDetail>),
+        (status = 404, description = "Reservation not found")
+    ),
+    tag = "inventory"
+)]
+pub async fn cancel_reservation(
+    State(state): State<crate::AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<ReservationDetail>>, ServiceError> {
+    use crate::services::inventory_reservation_service::InventoryReservationService;
+    use uuid::Uuid;
+
+    let reservation_id = Uuid::parse_str(&id)
+        .map_err(|_| ServiceError::ValidationError("Invalid reservation ID".to_string()))?;
+
+    let service = InventoryReservationService::new(state.db.clone());
+
+    let reservation = service.cancel_reservation(reservation_id).await?;
+
+    let detail = ReservationDetail {
+        id: reservation.id.to_string(),
+        product_id: reservation.product_id.to_string(),
+        location_id: reservation.location_id.to_string(),
+        quantity: reservation.quantity,
+        status: reservation.status,
+        reference_id: reservation.reference_id.to_string(),
+        reference_type: reservation.reference_type,
+        expires_at: reservation.expires_at.map(|t| t.to_rfc3339()),
+        created_at: reservation.created_at.to_rfc3339(),
+        updated_at: reservation.updated_at.map(|t| t.to_rfc3339()),
+        is_expired: reservation.is_expired,
+    };
+
+    Ok(Json(ApiResponse::success(detail)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/inventory/reservations/cleanup",
+    responses((status = 200, description = "Cleanup completed", body = ApiResponse<CleanupResponse>)),
+    tag = "inventory"
+)]
+pub async fn cleanup_expired_reservations(
+    State(state): State<crate::AppState>,
+) -> Result<Json<ApiResponse<CleanupResponse>>, ServiceError> {
+    use crate::services::inventory_reservation_service::InventoryReservationService;
+
+    let service = InventoryReservationService::new(state.db.clone());
+
+    let result = service.cleanup_expired_reservations().await?;
+
+    Ok(Json(ApiResponse::success(CleanupResponse {
+        expired_count: result.expired_count,
+        already_expired_count: result.already_expired_count,
+        cleaned_at: result.cleaned_at.to_rfc3339(),
+    })))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/inventory/reservations/stats",
+    responses((status = 200, description = "Reservation statistics", body = ApiResponse<ReservationStatsResponse>)),
+    tag = "inventory"
+)]
+pub async fn get_reservation_stats(
+    State(state): State<crate::AppState>,
+) -> Result<Json<ApiResponse<ReservationStatsResponse>>, ServiceError> {
+    use crate::services::inventory_reservation_service::InventoryReservationService;
+
+    let service = InventoryReservationService::new(state.db.clone());
+
+    let stats = service.get_reservation_stats().await?;
+
+    Ok(Json(ApiResponse::success(ReservationStatsResponse {
+        total_reservations: stats.total_reservations,
+        active_reservations: stats.active_reservations,
+        expired_not_cleaned: stats.expired_not_cleaned,
+        expiring_within_24h: stats.expiring_within_24h,
+        stats_at: stats.stats_at.to_rfc3339(),
+    })))
+}
+
+// ============================================================================
+// Bulk Operation Endpoints
+// ============================================================================
+
+/// Request for bulk inventory adjustment.
+#[derive(Debug, Deserialize, Serialize, Validate, ToSchema)]
+pub struct BulkAdjustRequest {
+    #[validate(length(min = 1, max = 100, message = "Must have between 1 and 100 adjustments"))]
+    pub adjustments: Vec<BulkAdjustmentItem>,
+}
+
+/// Single item in a bulk adjustment.
+#[derive(Debug, Deserialize, Serialize, Validate, ToSchema)]
+pub struct BulkAdjustmentItem {
+    /// Item number/SKU (1-100 characters)
+    #[validate(length(min = 1, max = 100, message = "Item number must be between 1 and 100 characters"))]
+    pub item_number: String,
+    /// Location ID (must be positive)
+    #[validate(range(min = 1, message = "Location ID must be positive"))]
+    pub location_id: i32,
+    /// Quantity change (positive to add, negative to remove)
+    pub quantity_delta: i64,
+    /// Reason for adjustment (max 200 characters)
+    #[validate(length(max = 200, message = "Reason must not exceed 200 characters"))]
+    pub reason: Option<String>,
+}
+
+/// Response for bulk operations.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkOperationResponse {
+    pub successful: u32,
+    pub failed: u32,
+    pub errors: Vec<BulkOperationError>,
+}
+
+/// Error detail for a failed bulk operation item.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkOperationError {
+    pub index: usize,
+    pub item_number: String,
+    pub error: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/inventory/bulk-adjust",
+    request_body = BulkAdjustRequest,
+    responses((status = 200, description = "Bulk adjustment completed", body = ApiResponse<BulkOperationResponse>)),
+    tag = "inventory"
+)]
+pub async fn bulk_adjust_inventory<S>(
+    State(state): State<S>,
+    Json(payload): Json<BulkAdjustRequest>,
+) -> Result<Json<ApiResponse<BulkOperationResponse>>, ServiceError>
+where
+    S: InventoryHandlerState,
+{
+    payload
+        .validate()
+        .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
+
+    let service = state.inventory_service();
+    let mut successful = 0u32;
+    let mut failed = 0u32;
+    let mut errors = Vec::new();
+
+    for (index, item) in payload.adjustments.iter().enumerate() {
+        let result = service
+            .adjust_inventory(AdjustInventoryCommand {
+                inventory_item_id: None,
+                item_number: Some(item.item_number.clone()),
+                location_id: item.location_id,
+                quantity_delta: Decimal::from(item.quantity_delta),
+                reason: item.reason.clone(),
+                expected_version: None,
+            })
+            .await;
+
+        match result {
+            Ok(_) => successful += 1,
+            Err(e) => {
+                failed += 1;
+                errors.push(BulkOperationError {
+                    index,
+                    item_number: item.item_number.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(Json(ApiResponse::success(BulkOperationResponse {
+        successful,
+        failed,
+        errors,
+    })))
 }

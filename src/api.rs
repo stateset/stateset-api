@@ -500,6 +500,7 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 location_id: req.location_id,
                 quantity_delta,
                 reason: (!req.reason.is_empty()).then(|| req.reason.clone()),
+                expected_version: None, // TODO: Support optimistic locking via gRPC
             })
             .await
             .map_err(|e| {
@@ -756,6 +757,7 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 quantity,
                 reference_id,
                 reference_type,
+                expected_version: None, // TODO: Support optimistic locking via gRPC
             })
             .await
             .map_err(|e| {
