@@ -2,16 +2,19 @@ use super::common::{created_response, map_service_error, success_response, valid
 use crate::{
     auth::AuthenticatedUser,
     commands::advancedshippingnotice::{
+        cancel_asn_command::CancelASNCommand,
         create_asn_command::{
             CarrierDetails as CreateCarrierDetails, CreateASNCommand,
             CreateASNItemRequest as CommandAsnItem, DimensionUnit as CommandDimensionUnit,
             Dimensions as CommandDimensions, Package as CommandPackage,
             ShippingAddress as CommandShippingAddress, WeightUnit as CommandWeightUnit,
         },
+        hold_asn_command::HoldASNCommand,
         mark_asn_delivered_command::MarkASNDeliveredCommand,
         mark_asn_in_transit_command::{
             CarrierDetails as TransitCarrierDetails, MarkASNInTransitCommand,
         },
+        release_asn_from_hold_command::ReleaseASNFromHoldCommand,
     },
     errors::ApiError,
     handlers::AppState,
@@ -21,10 +24,10 @@ use crate::{
 use axum::{
     extract::{Path, Query, State},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -36,8 +39,18 @@ pub fn asn_routes() -> Router<AppState> {
         .route("/", post(create_asn))
         .route("/", get(list_asns))
         .route("/{id}", get(get_asn))
+        .route("/{id}", put(update_asn))
+        .route("/{id}", delete(delete_asn))
         .route("/{id}/in-transit", post(mark_in_transit))
         .route("/{id}/delivered", post(mark_delivered))
+        .route("/{id}/cancel", post(cancel_asn))
+        .route("/{id}/hold", post(hold_asn))
+        .route("/{id}/release", post(release_asn_from_hold))
+        .route("/{id}/items", post(add_item_to_asn))
+        .route("/{id}/items/{item_id}", delete(remove_item_from_asn))
+        .route("/supplier/{supplier_id}", get(get_asns_by_supplier))
+        .route("/status/{status}", get(get_asns_by_status))
+        .route("/delivery-date", get(get_asns_by_delivery_date))
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
@@ -507,4 +520,538 @@ fn parse_dimension_unit(value: &str) -> Result<CommandDimensionUnit, String> {
         "IN" => Ok(CommandDimensionUnit::IN),
         other => Err(format!("Unsupported dimension unit '{}'", other)),
     }
+}
+
+// ============================================================================
+// Update ASN
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct UpdateAsnRequest {
+    pub version: i32,
+    pub expected_delivery_date: Option<String>,
+    #[validate]
+    pub shipping_address: Option<ShippingAddressRequest>,
+    #[validate]
+    pub carrier: Option<CarrierDetailsRequest>,
+    pub notes: Option<String>,
+}
+
+/// Update an ASN
+#[utoipa::path(
+    put,
+    path = "/api/v1/asns/{id}",
+    request_body = UpdateAsnRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN updated", body = crate::ApiResponse<AsnSummary>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse),
+        (status = 409, description = "Version conflict", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn update_asn(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpdateAsnRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    let expected_delivery_date = match payload.expected_delivery_date {
+        Some(ref value) => Some(parse_datetime(value)?),
+        None => None,
+    };
+
+    let shipping_address = payload.shipping_address.map(|addr| {
+        format!(
+            "{}, {}, {} {}, {}",
+            addr.street, addr.city, addr.state, addr.postal_code, addr.country
+        )
+    });
+
+    let tracking_number = payload.carrier.as_ref().and_then(|c| c.tracking_number.clone());
+
+    state
+        .services
+        .asn
+        .update_asn(
+            &id,
+            payload.version,
+            expected_delivery_date,
+            shipping_address,
+            tracking_number,
+            payload.notes,
+        )
+        .await
+        .map_err(map_service_error)?;
+
+    let asn = state
+        .services
+        .asn
+        .get_asn(&id)
+        .await
+        .map_err(map_service_error)?
+        .ok_or_else(|| ApiError::NotFound(format!("ASN {} not found", id)))?;
+
+    Ok(success_response(AsnSummary::from(asn)))
+}
+
+// ============================================================================
+// Cancel ASN
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CancelAsnRequest {
+    pub version: i32,
+    #[validate(length(min = 1, max = 500, message = "Reason must be between 1 and 500 characters"))]
+    pub reason: String,
+    #[serde(default)]
+    pub notify_supplier: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CancelAsnResponse {
+    pub id: Uuid,
+    pub status: String,
+    pub version: i32,
+    pub cancellation_reason: String,
+    pub cancellation_timestamp: DateTime<Utc>,
+    pub supplier_notified: bool,
+}
+
+/// Cancel an ASN
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns/{id}/cancel",
+    request_body = CancelAsnRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN cancelled", body = crate::ApiResponse<CancelAsnResponse>),
+        (status = 400, description = "Invalid request or status", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse),
+        (status = 409, description = "Version conflict", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn cancel_asn(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<CancelAsnRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    let command = CancelASNCommand {
+        asn_id: id,
+        reason: payload.reason.clone(),
+        version: payload.version,
+        notify_supplier: payload.notify_supplier,
+    };
+
+    let result = state
+        .services
+        .asn
+        .cancel_asn(command)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(success_response(CancelAsnResponse {
+        id: result.id,
+        status: result.status,
+        version: result.version,
+        cancellation_reason: result.cancellation_reason,
+        cancellation_timestamp: result.cancellation_timestamp,
+        supplier_notified: result.supplier_notified,
+    }))
+}
+
+// ============================================================================
+// Hold ASN
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct HoldAsnRequest {
+    pub version: i32,
+    #[validate(length(min = 1, max = 500, message = "Reason must be between 1 and 500 characters"))]
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HoldAsnResponse {
+    pub id: Uuid,
+    pub status: String,
+    pub version: i32,
+    pub hold_reason: String,
+}
+
+/// Place an ASN on hold
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns/{id}/hold",
+    request_body = HoldAsnRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN placed on hold", body = crate::ApiResponse<HoldAsnResponse>),
+        (status = 400, description = "Invalid request or status", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse),
+        (status = 409, description = "Version conflict", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn hold_asn(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<HoldAsnRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    let command = HoldASNCommand {
+        asn_id: id,
+        reason: payload.reason.clone(),
+        version: payload.version,
+    };
+
+    let result = state
+        .services
+        .asn
+        .hold_asn(command)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(success_response(HoldAsnResponse {
+        id: result.id,
+        status: result.status,
+        version: result.version,
+        hold_reason: result.hold_reason,
+    }))
+}
+
+// ============================================================================
+// Release ASN from Hold
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct ReleaseAsnFromHoldRequest {
+    pub version: i32,
+    #[validate(length(min = 1))]
+    pub target_status: String,
+    #[validate(length(max = 500))]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ReleaseAsnFromHoldResponse {
+    pub id: Uuid,
+    pub status: String,
+    pub version: i32,
+}
+
+/// Release an ASN from hold
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns/{id}/release",
+    request_body = ReleaseAsnFromHoldRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN released from hold", body = crate::ApiResponse<ReleaseAsnFromHoldResponse>),
+        (status = 400, description = "Invalid request or status", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse),
+        (status = 409, description = "Version conflict", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn release_asn_from_hold(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<ReleaseAsnFromHoldRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    let target_status = parse_status(&payload.target_status)?;
+
+    let command = ReleaseASNFromHoldCommand {
+        asn_id: id,
+        version: payload.version,
+        target_status,
+        notes: payload.notes,
+    };
+
+    let result = state
+        .services
+        .asn
+        .release_asn_from_hold(command)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(success_response(ReleaseAsnFromHoldResponse {
+        id: result.id,
+        status: result.status,
+        version: result.version,
+    }))
+}
+
+// ============================================================================
+// Delete ASN
+// ============================================================================
+
+/// Delete an ASN (only draft ASNs can be deleted)
+#[utoipa::path(
+    delete,
+    path = "/api/v1/asns/{id}",
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 200, description = "ASN deleted", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Cannot delete non-draft ASN", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn delete_asn(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    state
+        .services
+        .asn
+        .delete_asn(&id)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(success_response(serde_json::json!({
+        "message": "ASN deleted successfully",
+        "id": id
+    })))
+}
+
+// ============================================================================
+// Add Item to ASN
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct AddItemToAsnRequest {
+    pub purchase_order_item_id: Uuid,
+    #[validate(range(min = 1))]
+    pub quantity_shipped: i32,
+    pub package_number: Option<String>,
+    pub lot_number: Option<String>,
+    pub serial_numbers: Option<Vec<String>>,
+    pub expiration_date: Option<String>,
+    #[validate(range(min = 0.0))]
+    pub customs_value: Option<f64>,
+    pub country_of_origin: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AddItemToAsnResponse {
+    pub id: Uuid,
+    pub asn_id: Uuid,
+    pub purchase_order_item_id: Uuid,
+    pub quantity_shipped: i32,
+    pub package_number: Option<String>,
+    pub lot_number: Option<String>,
+    pub serial_numbers: Option<Vec<String>>,
+    pub status: String,
+}
+
+/// Add an item to an ASN
+#[utoipa::path(
+    post,
+    path = "/api/v1/asns/{id}/items",
+    request_body = AddItemToAsnRequest,
+    params(
+        ("id" = Uuid, Path, description = "ASN ID")
+    ),
+    responses(
+        (status = 201, description = "Item added to ASN", body = crate::ApiResponse<AddItemToAsnResponse>),
+        (status = 400, description = "Invalid request", body = crate::errors::ErrorResponse),
+        (status = 404, description = "ASN not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn add_item_to_asn(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<AddItemToAsnRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    use crate::commands::advancedshippingnotice::add_item_to_asn_command::AddItemToASNCommand;
+
+    let command = AddItemToASNCommand {
+        asn_id: id,
+        purchase_order_item_id: payload.purchase_order_item_id,
+        quantity_shipped: payload.quantity_shipped,
+        package_number: payload.package_number,
+        lot_number: payload.lot_number,
+        serial_numbers: payload.serial_numbers,
+        expiration_date: payload.expiration_date,
+        customs_value: payload.customs_value,
+        country_of_origin: payload.country_of_origin,
+    };
+
+    let result = state
+        .services
+        .asn
+        .add_item_to_asn(command)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(created_response(AddItemToAsnResponse {
+        id: result.id,
+        asn_id: result.asn_id,
+        purchase_order_item_id: result.purchase_order_item_id,
+        quantity_shipped: result.quantity_shipped,
+        package_number: result.package_number,
+        lot_number: result.lot_number,
+        serial_numbers: result.serial_numbers,
+        status: result.status,
+    }))
+}
+
+// ============================================================================
+// Remove Item from ASN
+// ============================================================================
+
+/// Remove an item from an ASN
+#[utoipa::path(
+    delete,
+    path = "/api/v1/asns/{id}/items/{item_id}",
+    params(
+        ("id" = Uuid, Path, description = "ASN ID"),
+        ("item_id" = Uuid, Path, description = "Item ID to remove")
+    ),
+    responses(
+        (status = 200, description = "Item removed from ASN", body = crate::ApiResponse<serde_json::Value>),
+        (status = 404, description = "ASN or item not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn remove_item_from_asn(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path((id, item_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    state
+        .services
+        .asn
+        .remove_item_from_asn(&id, &item_id)
+        .await
+        .map_err(map_service_error)?;
+
+    Ok(success_response(serde_json::json!({
+        "message": "Item removed from ASN successfully",
+        "asn_id": id,
+        "item_id": item_id
+    })))
+}
+
+// ============================================================================
+// Query Endpoints
+// ============================================================================
+
+/// Get ASNs by supplier
+#[utoipa::path(
+    get,
+    path = "/api/v1/asns/supplier/{supplier_id}",
+    params(
+        ("supplier_id" = Uuid, Path, description = "Supplier ID")
+    ),
+    responses(
+        (status = 200, description = "ASNs by supplier", body = crate::ApiResponse<Vec<AsnSummary>>)
+    ),
+    tag = "asns"
+)]
+pub async fn get_asns_by_supplier(
+    State(state): State<AppState>,
+    Path(supplier_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let asns = state
+        .services
+        .asn
+        .get_asns_by_supplier(&supplier_id)
+        .await
+        .map_err(map_service_error)?;
+
+    let summaries: Vec<AsnSummary> = asns.into_iter().map(AsnSummary::from).collect();
+    Ok(success_response(summaries))
+}
+
+/// Get ASNs by status
+#[utoipa::path(
+    get,
+    path = "/api/v1/asns/status/{status}",
+    params(
+        ("status" = String, Path, description = "ASN status")
+    ),
+    responses(
+        (status = 200, description = "ASNs by status", body = crate::ApiResponse<Vec<AsnSummary>>)
+    ),
+    tag = "asns"
+)]
+pub async fn get_asns_by_status(
+    State(state): State<AppState>,
+    Path(status): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let status = parse_status(&status)?;
+    let asns = state
+        .services
+        .asn
+        .get_asns_by_status(status)
+        .await
+        .map_err(map_service_error)?;
+
+    let summaries: Vec<AsnSummary> = asns.into_iter().map(AsnSummary::from).collect();
+    Ok(success_response(summaries))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct AsnDateRangeParams {
+    pub start_date: String,
+    pub end_date: String,
+}
+
+/// Get ASNs by expected delivery date range
+#[utoipa::path(
+    get,
+    path = "/api/v1/asns/delivery-date",
+    params(AsnDateRangeParams),
+    responses(
+        (status = 200, description = "ASNs by delivery date", body = crate::ApiResponse<Vec<AsnSummary>>),
+        (status = 400, description = "Invalid date format", body = crate::errors::ErrorResponse)
+    ),
+    tag = "asns"
+)]
+pub async fn get_asns_by_delivery_date(
+    State(state): State<AppState>,
+    Query(params): Query<AsnDateRangeParams>,
+) -> Result<impl IntoResponse, ApiError> {
+    let start_date = parse_datetime(&params.start_date)?;
+    let end_date = parse_datetime(&params.end_date)?;
+
+    let asns = state
+        .services
+        .asn
+        .get_asns_by_delivery_date(start_date, end_date)
+        .await
+        .map_err(map_service_error)?;
+
+    let summaries: Vec<AsnSummary> = asns.into_iter().map(AsnSummary::from).collect();
+    Ok(success_response(summaries))
 }

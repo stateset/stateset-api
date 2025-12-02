@@ -1,8 +1,11 @@
 use crate::circuit_breaker::CircuitBreaker;
 use crate::commands::purchaseorders::{
     ApprovePurchaseOrderCommand, CancelPurchaseOrderCommand, CreatePurchaseOrderCommand,
-    ReceivePurchaseOrderCommand, UpdatePurchaseOrderCommand,
+    ReceivePurchaseOrderCommand, RejectPurchaseOrderCommand, SubmitPurchaseOrderCommand,
+    UpdatePurchaseOrderCommand,
 };
+use crate::commands::purchaseorders::reject_purchase_order_command::RejectPurchaseOrderResult;
+use crate::commands::purchaseorders::submit_purchase_order_command::SubmitPurchaseOrderResult;
 use crate::message_queue::MessageQueue;
 use crate::{
     // commands::purchaseorders::{
@@ -116,6 +119,28 @@ impl ProcurementService {
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await?;
         Ok(())
+    }
+
+    /// Submits a purchase order for approval
+    #[instrument(skip(self))]
+    pub async fn submit_purchase_order(
+        &self,
+        command: SubmitPurchaseOrderCommand,
+    ) -> Result<SubmitPurchaseOrderResult, ServiceError> {
+        command
+            .execute(self.db_pool.clone(), self.event_sender.clone())
+            .await
+    }
+
+    /// Rejects a purchase order
+    #[instrument(skip(self))]
+    pub async fn reject_purchase_order(
+        &self,
+        command: RejectPurchaseOrderCommand,
+    ) -> Result<RejectPurchaseOrderResult, ServiceError> {
+        command
+            .execute(self.db_pool.clone(), self.event_sender.clone())
+            .await
     }
 
     /// Gets a purchase order by ID

@@ -10,6 +10,8 @@ use crate::{
             ShippingAddress as CommandShippingAddress,
         },
         receive_purchase_order_command::ReceivePurchaseOrderCommand,
+        reject_purchase_order_command::RejectPurchaseOrderCommand,
+        submit_purchase_order_command::SubmitPurchaseOrderCommand,
         update_purchase_order_command::UpdatePurchaseOrderCommand,
     },
     errors::ApiError,
@@ -102,6 +104,21 @@ pub struct ItemReceivedRequest {
 
     pub quantity_received: i32,
     pub condition: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct SubmitPurchaseOrderRequest {
+    #[validate(length(max = 1000))]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+pub struct RejectPurchaseOrderRequest {
+    pub rejector_id: Uuid,
+    #[validate(length(min = 1, max = 500, message = "Rejection reason is required"))]
+    pub reason: String,
+    #[validate(length(max = 1000))]
+    pub notes: Option<String>,
 }
 
 // Re-export DateRangeParams from common module
@@ -521,13 +538,108 @@ pub async fn get_total_purchase_value(
     })))
 }
 
+/// Submit a purchase order for approval
+#[utoipa::path(
+    post,
+    path = "/api/v1/purchase-orders/{id}/submit",
+    request_body = SubmitPurchaseOrderRequest,
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order submitted for approval", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request or status", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn submit_purchase_order(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<SubmitPurchaseOrderRequest>,
+) -> Result<impl axum::response::IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    let command = SubmitPurchaseOrderCommand {
+        id,
+        notes: payload.notes,
+    };
+
+    let result = state
+        .services
+        .procurement
+        .submit_purchase_order(command)
+        .await
+        .map_err(map_service_error)?;
+
+    info!("Purchase order submitted: {} (status: {})", result.id, result.status);
+
+    Ok(success_response(serde_json::json!({
+        "id": result.id,
+        "status": result.status,
+        "submitted_at": result.submitted_at,
+        "message": "Purchase order submitted for approval"
+    })))
+}
+
+/// Reject a purchase order
+#[utoipa::path(
+    post,
+    path = "/api/v1/purchase-orders/{id}/reject",
+    request_body = RejectPurchaseOrderRequest,
+    params(
+        ("id" = Uuid, Path, description = "Purchase order ID")
+    ),
+    responses(
+        (status = 200, description = "Purchase order rejected", body = crate::ApiResponse<serde_json::Value>),
+        (status = 400, description = "Invalid request or status", body = crate::errors::ErrorResponse),
+        (status = 404, description = "Purchase order not found", body = crate::errors::ErrorResponse)
+    ),
+    tag = "purchase-orders"
+)]
+pub async fn reject_purchase_order(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<RejectPurchaseOrderRequest>,
+) -> Result<impl axum::response::IntoResponse, ApiError> {
+    validate_input(&payload)?;
+
+    let command = RejectPurchaseOrderCommand {
+        id,
+        rejector_id: payload.rejector_id,
+        reason: payload.reason.clone(),
+        notes: payload.notes,
+    };
+
+    let result = state
+        .services
+        .procurement
+        .reject_purchase_order(command)
+        .await
+        .map_err(map_service_error)?;
+
+    info!("Purchase order rejected: {} (reason: {})", result.id, result.rejection_reason);
+
+    Ok(success_response(serde_json::json!({
+        "id": result.id,
+        "status": result.status,
+        "rejected_at": result.rejected_at,
+        "rejection_reason": result.rejection_reason,
+        "message": "Purchase order rejected"
+    })))
+}
+
 /// Creates the router for purchase order endpoints
 pub fn purchase_order_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_purchase_order))
         .route("/{id}", get(get_purchase_order))
         .route("/{id}", put(update_purchase_order))
+        .route("/{id}/submit", post(submit_purchase_order))
         .route("/{id}/approve", post(approve_purchase_order))
+        .route("/{id}/reject", post(reject_purchase_order))
         .route("/{id}/cancel", post(cancel_purchase_order))
         .route("/{id}/receive", post(receive_purchase_order))
         .route(

@@ -309,6 +309,10 @@ pub enum Event {
     ASNOnHold(Uuid),
     ASNReleasedFromHold(Uuid),
     ASNItemAdded(Uuid),
+    ASNItemRemoved {
+        asn_id: Uuid,
+        item_id: Uuid,
+    },
     ASNItemsUpdated(Uuid, Vec<Uuid>),
     ASNCancellationNotificationRequested(Uuid),
 
