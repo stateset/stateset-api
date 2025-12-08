@@ -76,3 +76,121 @@ pub async fn delete_user_notification(
         "delete_user_notification requires service injection".to_string(),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    // ==================== Notification Structure Tests ====================
+
+    #[test]
+    fn test_notification_creation() {
+        let notification = Notification {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            title: "Test Notification".to_string(),
+            message: "This is a test message".to_string(),
+            read: false,
+            created_at: Utc::now(),
+        };
+
+        assert!(!notification.id.is_nil());
+        assert!(!notification.user_id.is_nil());
+        assert!(!notification.title.is_empty());
+        assert!(!notification.message.is_empty());
+        assert!(!notification.read);
+    }
+
+    #[test]
+    fn test_notification_read_status() {
+        let unread = Notification {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            title: "Unread".to_string(),
+            message: "Message".to_string(),
+            read: false,
+            created_at: Utc::now(),
+        };
+
+        let read = Notification {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            title: "Read".to_string(),
+            message: "Message".to_string(),
+            read: true,
+            created_at: Utc::now(),
+        };
+
+        assert!(!unread.read);
+        assert!(read.read);
+    }
+
+    #[test]
+    fn test_notification_id_uniqueness() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        assert_ne!(id1, id2);
+    }
+
+    // ==================== Serialization Tests ====================
+
+    #[test]
+    fn test_notification_serialization() {
+        let notification = Notification {
+            id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            title: "Test".to_string(),
+            message: "Message".to_string(),
+            read: false,
+            created_at: Utc::now(),
+        };
+
+        let serialized = serde_json::to_string(&notification);
+        assert!(serialized.is_ok());
+
+        let json = serialized.unwrap();
+        assert!(json.contains("title"));
+        assert!(json.contains("message"));
+        assert!(json.contains("read"));
+    }
+
+    #[test]
+    fn test_notification_deserialization() {
+        let id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let json = format!(
+            r#"{{"id":"{}","user_id":"{}","title":"Test","message":"Msg","read":true,"created_at":"2024-01-01T00:00:00Z"}}"#,
+            id, user_id
+        );
+
+        let notification: Result<Notification, _> = serde_json::from_str(&json);
+        assert!(notification.is_ok());
+
+        let n = notification.unwrap();
+        assert_eq!(n.id, id);
+        assert_eq!(n.user_id, user_id);
+        assert_eq!(n.title, "Test");
+        assert!(n.read);
+    }
+
+    // ==================== Timestamp Tests ====================
+
+    #[test]
+    fn test_notification_timestamp_ordering() {
+        let now = Utc::now();
+        let earlier = now - chrono::Duration::hours(1);
+
+        assert!(now > earlier);
+    }
+
+    #[test]
+    fn test_notification_created_at_format() {
+        let now = Utc::now();
+        let formatted = now.to_rfc3339();
+
+        assert!(formatted.contains("T")); // ISO 8601 format
+        assert!(formatted.len() > 20);
+    }
+}

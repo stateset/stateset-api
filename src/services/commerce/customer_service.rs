@@ -234,11 +234,11 @@ impl CustomerService {
 
         // Update customer default addresses if requested
         if input.is_default_shipping.unwrap_or(false) || input.is_default_billing.unwrap_or(false) {
-            let mut customer: customer::ActiveModel = Customer::find_by_id(customer_id)
+            let customer_model = Customer::find_by_id(customer_id)
                 .one(&txn)
                 .await?
-                .unwrap()
-                .into();
+                .ok_or_else(|| ServiceError::NotFound(format!("Customer {} not found", customer_id)))?;
+            let mut customer: customer::ActiveModel = customer_model.into();
 
             if input.is_default_shipping.unwrap_or(false) {
                 customer.default_shipping_address_id = Set(Some(address_id));

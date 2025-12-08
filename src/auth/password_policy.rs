@@ -300,12 +300,12 @@ impl PasswordPolicy {
                 
                 // Check numerical sequences
                 if a.is_numeric() && b.is_numeric() && c.is_numeric() {
-                    let a_digit = a.to_digit(10).unwrap();
-                    let b_digit = b.to_digit(10).unwrap();
-                    let c_digit = c.to_digit(10).unwrap();
-                    
-                    if (a_digit.abs_diff(b_digit) == 1) && (b_digit.abs_diff(c_digit) == 1) {
-                        return true;
+                    if let (Some(a_digit), Some(b_digit), Some(c_digit)) =
+                        (a.to_digit(10), b.to_digit(10), c.to_digit(10))
+                    {
+                        if (a_digit.abs_diff(b_digit) == 1) && (b_digit.abs_diff(c_digit) == 1) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -347,21 +347,23 @@ impl PasswordPolicy {
         let mut rng = thread_rng();
         let mut password = String::new();
         
-        // Ensure we meet all requirements
-        password.push(LOWERCASE.chars().choose(&mut rng).unwrap());
-        password.push(UPPERCASE.chars().choose(&mut rng).unwrap());
-        password.push(NUMBERS.chars().choose(&mut rng).unwrap());
-        password.push(SPECIAL.chars().choose(&mut rng).unwrap());
-        
+        // Ensure we meet all requirements - charsets are compile-time constants so choose() always succeeds
+        if let Some(c) = LOWERCASE.chars().choose(&mut rng) { password.push(c); }
+        if let Some(c) = UPPERCASE.chars().choose(&mut rng) { password.push(c); }
+        if let Some(c) = NUMBERS.chars().choose(&mut rng) { password.push(c); }
+        if let Some(c) = SPECIAL.chars().choose(&mut rng) { password.push(c); }
+
         // Fill the rest randomly
         let mut charset = String::new();
         charset.push_str(LOWERCASE);
         charset.push_str(UPPERCASE);
         charset.push_str(NUMBERS);
         charset.push_str(SPECIAL);
-        
+
         while password.len() < self.min_length {
-            password.push(charset.chars().choose(&mut rng).unwrap());
+            if let Some(c) = charset.chars().choose(&mut rng) {
+                password.push(c);
+            }
         }
         
         // Shuffle the password

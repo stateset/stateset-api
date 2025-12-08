@@ -73,7 +73,7 @@ impl AgenticCommerceWebhookService {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(10))
                 .build()
-                .unwrap(),
+                .unwrap_or_else(|_| reqwest::Client::new()),
             signature_generator: webhook_secret
                 .map(|secret| Arc::new(SignatureGenerator::new(secret))),
             max_retries: 3,

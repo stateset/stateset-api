@@ -824,15 +824,20 @@ impl StateSetBlockchainService {
     /// Generate a mock settlement ID
     fn generate_settlement_id(&self) -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        duration.as_nanos() as u64 % 1_000_000_000
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64 % 1_000_000_000)
+            .unwrap_or(0)
     }
 
     /// Generate a mock transaction hash
     fn generate_tx_hash(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        format!("{:064X}", duration.as_nanos())
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!("{:064X}", nanos)
     }
 
     /// Get current blockchain height (mock)

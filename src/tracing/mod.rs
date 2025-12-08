@@ -748,7 +748,7 @@ where
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .header("content-type", "application/json")
                         .body(Body::from(serde_json::to_vec(&body).unwrap_or_default()))
-                        .unwrap())
+                        .unwrap_or_else(|_| Response::new(Body::empty())))
                 }
             }?;
 

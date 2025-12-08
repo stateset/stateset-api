@@ -192,10 +192,17 @@ impl<T> CacheWarmingEngine<T> {
         for pattern in patterns.values() {
             if let Some(avg_interval) = pattern.average_access_interval {
                 let time_since_last_access = now.signed_duration_since(pattern.last_accessed);
-                let expected_access_time = pattern.last_accessed + chrono::Duration::from_std(avg_interval).unwrap();
-                
+                let expected_access_time = match chrono::Duration::from_std(avg_interval) {
+                    Ok(duration) => pattern.last_accessed + duration,
+                    Err(_) => continue, // Skip if duration conversion fails
+                };
+
                 // If we're within 80% of the expected access time, predict this will be accessed soon
-                if now > expected_access_time - chrono::Duration::from_std(avg_interval * 8 / 10).unwrap() {
+                let threshold_interval = match chrono::Duration::from_std(avg_interval * 8 / 10) {
+                    Ok(duration) => duration,
+                    Err(_) => continue, // Skip if duration conversion fails
+                };
+                if now > expected_access_time - threshold_interval {
                     predictions.push(pattern.key.clone());
                 }
             }

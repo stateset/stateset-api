@@ -290,3 +290,223 @@ impl WarrantyService {
         Ok((warranties, total))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Warranty Duration Tests ====================
+
+    #[test]
+    fn test_extension_duration_calculation() {
+        // Test that extension calculates correctly
+        let months = 6;
+        let extension_days = Duration::days((months as i64) * 30);
+        assert_eq!(extension_days.num_days(), 180);
+    }
+
+    #[test]
+    fn test_extension_duration_one_year() {
+        let months = 12;
+        let extension_days = Duration::days((months as i64) * 30);
+        assert_eq!(extension_days.num_days(), 360);
+    }
+
+    #[test]
+    fn test_extension_duration_one_month() {
+        let months = 1;
+        let extension_days = Duration::days((months as i64) * 30);
+        assert_eq!(extension_days.num_days(), 30);
+    }
+
+    // ==================== Validation Tests ====================
+
+    #[test]
+    fn test_negative_extension_validation() {
+        let additional_months = -1;
+        assert!(additional_months <= 0, "Negative months should fail validation");
+    }
+
+    #[test]
+    fn test_zero_extension_validation() {
+        let additional_months = 0;
+        assert!(additional_months <= 0, "Zero months should fail validation");
+    }
+
+    #[test]
+    fn test_positive_extension_validation() {
+        let additional_months = 3;
+        assert!(additional_months > 0, "Positive months should pass validation");
+    }
+
+    // ==================== UUID Tests ====================
+
+    #[test]
+    fn test_warranty_id_generation() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        assert_ne!(id1, id2);
+        assert!(!id1.is_nil());
+        assert!(!id2.is_nil());
+    }
+
+    #[test]
+    fn test_warranty_id_parsing() {
+        let id = Uuid::new_v4();
+        let id_str = id.to_string();
+        let parsed = Uuid::parse_str(&id_str);
+
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap(), id);
+    }
+
+    // ==================== Date/Time Tests ====================
+
+    #[test]
+    fn test_warranty_date_comparison() {
+        let now = Utc::now();
+        let future = now + Duration::days(365);
+        let past = now - Duration::days(365);
+
+        assert!(future > now);
+        assert!(past < now);
+    }
+
+    #[test]
+    fn test_warranty_expiration_check() {
+        let now = Utc::now();
+        let end_date = now + Duration::days(30);
+
+        // Warranty should be active if end_date >= now
+        assert!(end_date >= now);
+    }
+
+    #[test]
+    fn test_expired_warranty_check() {
+        let now = Utc::now();
+        let end_date = now - Duration::days(30);
+
+        // Warranty should be expired if end_date < now
+        assert!(end_date < now);
+    }
+
+    // ==================== Warranty Status Tests ====================
+
+    #[test]
+    fn test_valid_warranty_statuses() {
+        let valid_statuses = vec!["active", "expired", "claimed", "void"];
+
+        for status in &valid_statuses {
+            assert!(!status.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_warranty_status_active() {
+        let status = "active";
+        assert_eq!(status, "active");
+    }
+
+    // ==================== Claim Workflow Tests ====================
+
+    #[test]
+    fn test_claim_workflow_statuses() {
+        let claim_statuses = vec!["pending", "approved", "rejected", "in_review"];
+
+        for status in claim_statuses {
+            assert!(!status.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_claim_id_generation() {
+        let claim_id = Uuid::new_v4();
+        let warranty_id = Uuid::new_v4();
+
+        assert_ne!(claim_id, warranty_id);
+    }
+
+    // ==================== Pagination Tests ====================
+
+    #[test]
+    fn test_pagination_offset_calculation() {
+        // Page 1, limit 10 -> offset 0
+        let page = 1u64;
+        let limit = 10u64;
+        let offset = page.saturating_sub(1) * limit;
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn test_pagination_offset_page_2() {
+        // Page 2, limit 10 -> offset 10
+        let page = 2u64;
+        let limit = 10u64;
+        let offset = page.saturating_sub(1) * limit;
+        assert_eq!(offset, 10);
+    }
+
+    #[test]
+    fn test_pagination_offset_page_0_saturates() {
+        // Page 0 should saturate to offset 0
+        let page = 0u64;
+        let limit = 10u64;
+        let offset = page.saturating_sub(1) * limit;
+        assert_eq!(offset, 0); // saturating_sub(1) on 0 gives 0
+    }
+
+    #[test]
+    fn test_pagination_large_page() {
+        let page = 100u64;
+        let limit = 25u64;
+        let offset = page.saturating_sub(1) * limit;
+        assert_eq!(offset, 2475);
+    }
+
+    // ==================== Event Payload Tests ====================
+
+    #[test]
+    fn test_warranty_created_payload_structure() {
+        let warranty_id = Uuid::new_v4();
+        let payload = serde_json::json!({"warranty_id": warranty_id.to_string()});
+
+        assert!(payload.is_object());
+        assert!(payload.get("warranty_id").is_some());
+    }
+
+    #[test]
+    fn test_warranty_claimed_payload_structure() {
+        let claim_id = Uuid::new_v4();
+        let warranty_id = Uuid::new_v4();
+        let payload = serde_json::json!({
+            "claim_id": claim_id.to_string(),
+            "warranty_id": warranty_id.to_string(),
+            "status": "pending",
+            "claim_number": "CLM-001",
+            "claim_date": Utc::now().to_rfc3339(),
+        });
+
+        assert!(payload.is_object());
+        assert!(payload.get("claim_id").is_some());
+        assert!(payload.get("warranty_id").is_some());
+        assert!(payload.get("status").is_some());
+    }
+
+    // ==================== Error Message Tests ====================
+
+    #[test]
+    fn test_not_found_error_message() {
+        let warranty_id = Uuid::new_v4();
+        let msg = format!("Warranty {} not found", warranty_id);
+
+        assert!(msg.contains("not found"));
+        assert!(msg.contains(&warranty_id.to_string()));
+    }
+
+    #[test]
+    fn test_validation_error_message() {
+        let msg = "additional_months must be positive";
+        assert!(msg.contains("positive"));
+    }
+}

@@ -125,7 +125,10 @@ impl CircuitBreaker {
 
     /// Check if the circuit breaker allows execution
     fn can_execute(&self) -> bool {
-        let mut state = self.state.lock().unwrap();
+        let mut state = match self.state.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(), // Recover from poisoned mutex
+        };
 
         match state.state {
             CircuitState::Closed => true,
@@ -149,7 +152,10 @@ impl CircuitBreaker {
 
     /// Handle successful execution
     fn on_success(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = match self.state.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         match state.state {
             CircuitState::Closed => {
@@ -177,7 +183,10 @@ impl CircuitBreaker {
 
     /// Handle failed execution
     fn on_failure(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = match self.state.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         state.failure_count += 1;
         state.last_failure_time = Some(Instant::now());
@@ -201,12 +210,18 @@ impl CircuitBreaker {
 
     /// Get the current state of the circuit breaker
     pub fn state(&self) -> CircuitState {
-        self.state.lock().unwrap().state.clone()
+        match self.state.lock() {
+            Ok(guard) => guard.state.clone(),
+            Err(poisoned) => poisoned.into_inner().state.clone(),
+        }
     }
 
     /// Get circuit breaker metrics
     pub fn metrics(&self) -> CircuitBreakerMetrics {
-        let state = self.state.lock().unwrap();
+        let state = match self.state.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         CircuitBreakerMetrics {
             state: state.state.clone(),
             failure_count: state.failure_count,
@@ -243,7 +258,10 @@ impl CircuitBreakerRegistry {
 
     /// Get or create a circuit breaker for the given service
     pub fn get(&self, service_name: &str) -> Arc<CircuitBreaker> {
-        let mut breakers = self.breakers.lock().unwrap();
+        let mut breakers = match self.breakers.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         if let Some(breaker) = breakers.get(service_name) {
             breaker.clone()
@@ -260,7 +278,10 @@ impl CircuitBreakerRegistry {
 
     /// Get all circuit breaker metrics
     pub fn metrics(&self) -> HashMap<String, CircuitBreakerMetrics> {
-        let breakers = self.breakers.lock().unwrap();
+        let breakers = match self.breakers.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         breakers
             .iter()
             .map(|(name, breaker)| (name.clone(), breaker.metrics()))

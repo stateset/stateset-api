@@ -359,7 +359,10 @@ impl MockMessageQueue {
     }
 
     pub fn get_published_messages(&self) -> Vec<Message> {
-        self.published_messages.lock().unwrap().clone()
+        match self.published_messages.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
     }
 }
 
@@ -367,7 +370,10 @@ impl MockMessageQueue {
 #[async_trait]
 impl MessageQueue for MockMessageQueue {
     async fn publish(&self, message: Message) -> Result<(), MessageQueueError> {
-        self.published_messages.lock().unwrap().push(message);
+        match self.published_messages.lock() {
+            Ok(mut guard) => guard.push(message),
+            Err(poisoned) => poisoned.into_inner().push(message),
+        }
         Ok(())
     }
 

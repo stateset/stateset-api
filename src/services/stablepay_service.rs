@@ -567,7 +567,7 @@ impl StablePayService {
             .to_string()
             .split('-')
             .next()
-            .unwrap()
+            .unwrap_or("XXXXXXXX")
             .to_uppercase();
         Ok(format!("PAY-{}-{}", timestamp, random))
     }
@@ -578,7 +578,7 @@ impl StablePayService {
             .to_string()
             .split('-')
             .next()
-            .unwrap()
+            .unwrap_or("XXXXXXXX")
             .to_uppercase();
         Ok(format!("REF-{}-{}", timestamp, random))
     }

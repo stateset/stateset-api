@@ -348,7 +348,9 @@ impl QueryOptimizer {
 
         // Analyze plan type
         if plan.plan_type == "Seq Scan" && plan.rows > 1000 {
-            suggested_indexes.push(format!("CREATE INDEX ON {} (id)", plan.relation_name.as_ref().unwrap()));
+            if let Some(relation_name) = plan.relation_name.as_ref() {
+                suggested_indexes.push(format!("CREATE INDEX ON {} (id)", relation_name));
+            }
             recommendations.push("Consider adding an index for better performance".to_string());
             performance_score -= 0.3;
         }

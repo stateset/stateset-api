@@ -279,27 +279,25 @@ pub mod middleware {
         
         // Add version headers
         let headers = response.headers_mut();
-        headers.insert(
-            "X-API-Version",
-            version.as_str().parse().unwrap()
-        );
-        headers.insert(
-            header::CONTENT_TYPE,
-            version.to_header_value().parse().unwrap()
-        );
-        
+        if let Ok(version_value) = version.as_str().parse() {
+            headers.insert("X-API-Version", version_value);
+        }
+        if let Ok(content_type_value) = version.to_header_value().parse() {
+            headers.insert(header::CONTENT_TYPE, content_type_value);
+        }
+
         // Add deprecation warning if needed
         if versioning_service.is_deprecated(&version) {
             if let Some(sunset_date) = version.sunset_date() {
-                headers.insert(
-                    "X-API-Deprecated",
-                    format!("true; sunset={}", sunset_date).parse().unwrap()
-                );
-                headers.insert(
-                    "Warning",
-                    format!("299 stateset \"API version {} is deprecated and will be sunset on {}\"",
-                           version.as_str(), sunset_date).parse().unwrap()
-                );
+                if let Ok(deprecated_value) = format!("true; sunset={}", sunset_date).parse() {
+                    headers.insert("X-API-Deprecated", deprecated_value);
+                }
+                if let Ok(warning_value) = format!(
+                    "299 stateset \"API version {} is deprecated and will be sunset on {}\"",
+                    version.as_str(), sunset_date
+                ).parse() {
+                    headers.insert("Warning", warning_value);
+                }
             }
         }
         
@@ -319,25 +317,27 @@ pub mod handlers {
         let versions: Vec<serde_json::Value> = versioning_service.get_supported_versions()
             .iter()
             .filter_map(|v| versioning_service.get_version_info(v))
-            .map(|info| serde_json::to_value(info).unwrap())
+            .filter_map(|info| serde_json::to_value(info).ok())
             .collect();
-        
+
         Json(serde_json::json!({
             "versions": versions,
             "default_version": versioning_service.config.default_version.as_str(),
             "current_version": versioning_service.config.default_version.as_str()
         }))
     }
-    
+
     /// Get information about a specific version
     pub async fn get_version(
         State(versioning_service): State<Arc<ApiVersioningService>>,
         Path(version_str): Path<String>,
     ) -> Result<Json<serde_json::Value>, VersioningError> {
         let version = ApiVersion::from_string(&version_str)?;
-        
+
         if let Some(info) = versioning_service.get_version_info(&version) {
-            Ok(Json(serde_json::to_value(info).unwrap()))
+            serde_json::to_value(info)
+                .map(Json)
+                .map_err(|_| VersioningError::UnsupportedVersion { version: version_str })
         } else {
             Err(VersioningError::UnsupportedVersion { version: version_str })
         }

@@ -35,8 +35,8 @@ impl CachedResponse {
             body,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
         }
     }
 }
@@ -51,7 +51,12 @@ impl IntoResponse for CachedResponse {
             }
         }
 
-        response.body(Body::from(self.body)).unwrap()
+        response.body(Body::from(self.body)).unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::empty())
+                .expect("building error response should never fail")
+        })
     }
 }
 
