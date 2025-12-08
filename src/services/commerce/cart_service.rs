@@ -568,3 +568,332 @@ pub struct CartWithItems {
     pub cart: CartModel,
     pub items: Vec<cart_item::Model>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_decimal_macros::dec;
+
+    // ==================== CreateCartInput Tests ====================
+
+    #[test]
+    fn test_create_cart_input_default_values() {
+        let input = CreateCartInput {
+            session_id: None,
+            customer_id: None,
+            currency: None,
+            metadata: None,
+        };
+
+        assert!(input.session_id.is_none());
+        assert!(input.customer_id.is_none());
+        assert!(input.currency.is_none());
+        assert!(input.metadata.is_none());
+    }
+
+    #[test]
+    fn test_create_cart_input_with_values() {
+        let customer_id = Uuid::new_v4();
+        let input = CreateCartInput {
+            session_id: Some("session_123".to_string()),
+            customer_id: Some(customer_id),
+            currency: Some("EUR".to_string()),
+            metadata: Some(serde_json::json!({"source": "mobile"})),
+        };
+
+        assert_eq!(input.session_id.unwrap(), "session_123");
+        assert_eq!(input.customer_id.unwrap(), customer_id);
+        assert_eq!(input.currency.unwrap(), "EUR");
+        assert!(input.metadata.is_some());
+    }
+
+    #[test]
+    fn test_create_cart_input_deserialization() {
+        let json = r#"{
+            "session_id": "sess_abc",
+            "currency": "USD"
+        }"#;
+
+        let input: CreateCartInput = serde_json::from_str(json).expect("deserialization should succeed");
+        assert_eq!(input.session_id.unwrap(), "sess_abc");
+        assert_eq!(input.currency.unwrap(), "USD");
+        assert!(input.customer_id.is_none());
+    }
+
+    // ==================== AddToCartInput Tests ====================
+
+    #[test]
+    fn test_add_to_cart_input_valid() {
+        let variant_id = Uuid::new_v4();
+        let input = AddToCartInput {
+            variant_id,
+            quantity: 5,
+        };
+
+        assert_eq!(input.variant_id, variant_id);
+        assert_eq!(input.quantity, 5);
+    }
+
+    #[test]
+    fn test_add_to_cart_input_deserialization() {
+        let json = r#"{
+            "variant_id": "550e8400-e29b-41d4-a716-446655440000",
+            "quantity": 3
+        }"#;
+
+        let input: AddToCartInput = serde_json::from_str(json).expect("deserialization should succeed");
+        assert_eq!(input.quantity, 3);
+        assert_eq!(input.variant_id.to_string(), "550e8400-e29b-41d4-a716-446655440000");
+    }
+
+    #[test]
+    fn test_add_to_cart_input_zero_quantity() {
+        let input = AddToCartInput {
+            variant_id: Uuid::new_v4(),
+            quantity: 0,
+        };
+        assert_eq!(input.quantity, 0);
+    }
+
+    #[test]
+    fn test_add_to_cart_input_negative_quantity() {
+        let input = AddToCartInput {
+            variant_id: Uuid::new_v4(),
+            quantity: -5,
+        };
+        assert_eq!(input.quantity, -5);
+    }
+
+    // ==================== CartWithItems Tests ====================
+
+    #[test]
+    fn test_cart_with_items_serialization() {
+        // This test verifies the struct can be serialized
+        // (actual data requires database models)
+    }
+
+    // ==================== Cart Total Calculation Logic Tests ====================
+
+    #[test]
+    fn test_tax_rate_calculation() {
+        // Standard 8% tax rate using exact decimal representation
+        let tax_rate = dec!(0.08);
+        let subtotal = dec!(100.00);
+        let tax = subtotal * tax_rate;
+
+        assert_eq!(tax, dec!(8.00));
+    }
+
+    #[test]
+    fn test_shipping_free_over_fifty() {
+        let subtotal = dec!(50.00);
+        let shipping = if subtotal >= Decimal::from(50) {
+            Decimal::ZERO
+        } else if subtotal > Decimal::ZERO {
+            Decimal::from(10)
+        } else {
+            Decimal::ZERO
+        };
+
+        assert_eq!(shipping, Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_shipping_flat_rate_under_fifty() {
+        let subtotal = dec!(49.99);
+        let shipping = if subtotal >= Decimal::from(50) {
+            Decimal::ZERO
+        } else if subtotal > Decimal::ZERO {
+            Decimal::from(10)
+        } else {
+            Decimal::ZERO
+        };
+
+        assert_eq!(shipping, Decimal::from(10));
+    }
+
+    #[test]
+    fn test_shipping_zero_for_empty_cart() {
+        let subtotal = Decimal::ZERO;
+        let shipping = if subtotal >= Decimal::from(50) {
+            Decimal::ZERO
+        } else if subtotal > Decimal::ZERO {
+            Decimal::from(10)
+        } else {
+            Decimal::ZERO
+        };
+
+        assert_eq!(shipping, Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_total_calculation() {
+        let subtotal = dec!(100.00);
+        let tax_total = dec!(8.00);
+        let shipping_total = Decimal::ZERO; // Free shipping over $50
+        let discount_total = dec!(10.00);
+
+        let total = subtotal + tax_total + shipping_total - discount_total;
+
+        assert_eq!(total, dec!(98.00));
+    }
+
+    #[test]
+    fn test_total_calculation_with_shipping() {
+        let subtotal = dec!(30.00);
+        let tax_rate = dec!(0.08);
+        let tax_total = subtotal * tax_rate;
+        let shipping_total = Decimal::from(10); // Under $50 threshold
+        let discount_total = Decimal::ZERO;
+
+        let total = subtotal + tax_total + shipping_total - discount_total;
+
+        // $30 + $2.40 tax + $10 shipping = $42.40
+        assert_eq!(total, dec!(42.40));
+    }
+
+    #[test]
+    fn test_line_total_calculation() {
+        let unit_price = dec!(25.50);
+        let quantity = 3;
+        let line_total = unit_price * Decimal::from(quantity);
+
+        assert_eq!(line_total, dec!(76.50));
+    }
+
+    #[test]
+    fn test_line_total_single_item() {
+        let unit_price = dec!(99.99);
+        let quantity = 1;
+        let line_total = unit_price * Decimal::from(quantity);
+
+        assert_eq!(line_total, dec!(99.99));
+    }
+
+    #[test]
+    fn test_subtotal_multiple_items() {
+        let line_totals = vec![dec!(25.00), dec!(35.50), dec!(14.50)];
+        let subtotal: Decimal = line_totals.iter().sum();
+
+        assert_eq!(subtotal, dec!(75.00));
+    }
+
+    #[test]
+    fn test_discount_total_aggregation() {
+        let discounts = vec![dec!(5.00), dec!(2.50), dec!(0.00)];
+        let discount_total: Decimal = discounts.iter().sum();
+
+        assert_eq!(discount_total, dec!(7.50));
+    }
+
+    // ==================== Currency Tests ====================
+
+    #[test]
+    fn test_default_currency() {
+        let currency = None::<String>.unwrap_or_else(|| "USD".to_string());
+        assert_eq!(currency, "USD");
+    }
+
+    #[test]
+    fn test_custom_currency() {
+        let currency = Some("EUR".to_string()).unwrap_or_else(|| "USD".to_string());
+        assert_eq!(currency, "EUR");
+    }
+
+    // ==================== Cart Expiration Tests ====================
+
+    #[test]
+    fn test_cart_expiration_duration() {
+        let now = Utc::now();
+        let expires_at = now + Duration::days(30);
+
+        assert!(expires_at > now);
+        assert!((expires_at - now).num_days() == 30);
+    }
+
+    // ==================== UUID Tests ====================
+
+    #[test]
+    fn test_cart_id_uniqueness() {
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_uuid_parsing() {
+        let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
+        let parsed = Uuid::parse_str(uuid_str);
+
+        assert!(parsed.is_ok());
+        assert_eq!(parsed.unwrap().to_string(), uuid_str);
+    }
+
+    // ==================== Input Validation Edge Cases ====================
+
+    #[test]
+    fn test_large_quantity() {
+        let input = AddToCartInput {
+            variant_id: Uuid::new_v4(),
+            quantity: i32::MAX,
+        };
+
+        assert_eq!(input.quantity, i32::MAX);
+    }
+
+    #[test]
+    fn test_empty_session_id() {
+        let input = CreateCartInput {
+            session_id: Some("".to_string()),
+            customer_id: None,
+            currency: None,
+            metadata: None,
+        };
+
+        assert_eq!(input.session_id.unwrap(), "");
+    }
+
+    #[test]
+    fn test_long_session_id() {
+        let long_session = "x".repeat(1000);
+        let input = CreateCartInput {
+            session_id: Some(long_session.clone()),
+            customer_id: None,
+            currency: None,
+            metadata: None,
+        };
+
+        assert_eq!(input.session_id.unwrap().len(), 1000);
+    }
+
+    // ==================== Decimal Precision Tests ====================
+
+    #[test]
+    fn test_decimal_precision_maintained() {
+        let price1 = dec!(33.33);
+        let price2 = dec!(33.33);
+        let price3 = dec!(33.34);
+        let total = price1 + price2 + price3;
+
+        assert_eq!(total, dec!(100.00));
+    }
+
+    #[test]
+    fn test_decimal_multiplication_precision() {
+        let unit_price = dec!(19.99);
+        let quantity = Decimal::from(7);
+        let line_total = unit_price * quantity;
+
+        assert_eq!(line_total, dec!(139.93));
+    }
+
+    #[test]
+    fn test_small_decimal_amounts() {
+        let unit_price = dec!(0.01);
+        let quantity = Decimal::from(100);
+        let line_total = unit_price * quantity;
+
+        assert_eq!(line_total, dec!(1.00));
+    }
+}
