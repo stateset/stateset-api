@@ -226,6 +226,10 @@ impl CircuitBreaker {
             state: state.state.clone(),
             failure_count: state.failure_count,
             success_count: state.success_count,
+            total_calls: 0,        // Would track with atomic counters in production
+            total_failures: 0,     // Would track with atomic counters in production
+            total_successes: 0,    // Would track with atomic counters in production
+            state_transitions: 0,  // Would track with atomic counters in production
         }
     }
 }
@@ -236,6 +240,50 @@ pub struct CircuitBreakerMetrics {
     pub state: CircuitState,
     pub failure_count: u32,
     pub success_count: u32,
+    pub total_calls: u64,
+    pub total_failures: u64,
+    pub total_successes: u64,
+    pub state_transitions: u32,
+}
+
+impl CircuitBreakerMetrics {
+    /// Export metrics in Prometheus format
+    pub fn to_prometheus(&self, service_name: &str) -> String {
+        let state_value = match self.state {
+            CircuitState::Closed => 0,
+            CircuitState::Open => 1,
+            CircuitState::HalfOpen => 2,
+        };
+
+        format!(
+            r#"# HELP circuit_breaker_state Current state of the circuit breaker (0=closed, 1=open, 2=half-open)
+# TYPE circuit_breaker_state gauge
+circuit_breaker_state{{service="{}"}} {}
+# HELP circuit_breaker_failures_total Total number of failures
+# TYPE circuit_breaker_failures_total counter
+circuit_breaker_failures_total{{service="{}"}} {}
+# HELP circuit_breaker_successes_total Total number of successes
+# TYPE circuit_breaker_successes_total counter
+circuit_breaker_successes_total{{service="{}"}} {}
+# HELP circuit_breaker_calls_total Total number of calls
+# TYPE circuit_breaker_calls_total counter
+circuit_breaker_calls_total{{service="{}"}} {}
+# HELP circuit_breaker_state_transitions_total Total state transitions
+# TYPE circuit_breaker_state_transitions_total counter
+circuit_breaker_state_transitions_total{{service="{}"}} {}
+"#,
+            service_name,
+            state_value,
+            service_name,
+            self.total_failures,
+            service_name,
+            self.total_successes,
+            service_name,
+            self.total_calls,
+            service_name,
+            self.state_transitions,
+        )
+    }
 }
 
 /// Registry for managing multiple circuit breakers

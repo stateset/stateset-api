@@ -134,6 +134,85 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2
 
+  rust-security:
+    name: Rust Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-clippy-sarif and clippy-sarif
+        run: |
+          cargo install clippy-sarif sarif-fmt
+
+      - name: Run Clippy with security lints
+        run: |
+          cargo clippy \
+            --all-targets \
+            --all-features \
+            --message-format=json \
+            -- \
+            -D warnings \
+            -W clippy::unwrap_used \
+            -W clippy::expect_used \
+            -W clippy::panic \
+            -W clippy::integer_arithmetic \
+            -W clippy::indexing_slicing \
+            2>&1 | clippy-sarif | tee clippy-results.sarif | sarif-fmt
+        continue-on-error: true
+
+      - name: Upload Clippy SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: clippy-results.sarif
+          wait-for-processing: true
+
+      - name: Run cargo-geiger (unsafe code detection)
+        run: |
+          cargo install cargo-geiger || true
+          cargo geiger --all-features --all-targets 2>&1 | tee geiger-report.txt || true
+
+      - name: Upload Geiger report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: geiger-report
+          path: geiger-report.txt
+
+  sbom-generation:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate CycloneDX SBOM
+        uses: CycloneDX/gh-rust-generate-sbom@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom-cyclonedx
+          path: bom.xml
+
   secret-scan:
     name: Secret Scanning
     runs-on: ubuntu-latest

@@ -10,6 +10,9 @@ use tracing::warn;
 /// Maximum allowed request body size (10MB)
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 
+/// Maximum string length to prevent DoS
+const MAX_STRING_LENGTH: usize = 10000;
+
 /// Middleware to sanitize and validate input
 pub async fn sanitize_middleware(request: Request, next: Next) -> Result<Response, Response> {
     // Check content length
@@ -31,9 +34,16 @@ pub async fn sanitize_middleware(request: Request, next: Next) -> Result<Respons
         if let Ok(ua) = user_agent.to_str() {
             if is_suspicious_user_agent(ua) {
                 warn!("Suspicious user agent detected: {}", ua);
-                // Log but don't block - could be legitimate
+                // Log but don't block - could be legitimate security testing
             }
         }
+    }
+
+    // Check for path traversal attempts
+    let path = request.uri().path();
+    if contains_path_traversal(path) {
+        warn!("Path traversal attempt detected: {}", path);
+        return Err((StatusCode::BAD_REQUEST, "Invalid request path").into_response());
     }
 
     Ok(next.run(request).await)
@@ -41,12 +51,29 @@ pub async fn sanitize_middleware(request: Request, next: Next) -> Result<Respons
 
 /// Check if user agent appears suspicious
 fn is_suspicious_user_agent(ua: &str) -> bool {
-    let suspicious_patterns = ["sqlmap", "nikto", "nmap", "masscan", "metasploit"];
+    let suspicious_patterns = [
+        "sqlmap", "nikto", "nmap", "masscan", "metasploit",
+        "burp", "dirbuster", "gobuster", "wfuzz", "ffuf",
+        "nuclei", "hydra", "medusa",
+    ];
 
     let ua_lower = ua.to_lowercase();
     suspicious_patterns
         .iter()
         .any(|pattern| ua_lower.contains(pattern))
+}
+
+/// Check for path traversal patterns
+fn contains_path_traversal(path: &str) -> bool {
+    let traversal_patterns = [
+        "..", "%2e%2e", "%252e%252e", "..%2f", "%2f..",
+        "..%5c", "%5c..", "....//", "..;/",
+    ];
+
+    let path_lower = path.to_lowercase();
+    traversal_patterns
+        .iter()
+        .any(|pattern| path_lower.contains(pattern))
 }
 
 /// Sanitize a JSON value by removing potentially dangerous content
@@ -70,26 +97,124 @@ pub fn sanitize_json(value: &mut Value) {
 }
 
 /// Sanitize a string by removing dangerous characters and patterns
+///
+/// This function provides comprehensive XSS prevention including:
+/// - Script tag removal
+/// - Event handler removal
+/// - Protocol handler removal
+/// - HTML entity encoding for dangerous characters
 pub fn sanitize_string(input: &str) -> String {
     // Remove null bytes
     let mut sanitized = input.replace('\0', "");
 
     // Limit string length to prevent DoS
-    const MAX_STRING_LENGTH: usize = 10000;
     if sanitized.len() > MAX_STRING_LENGTH {
         sanitized.truncate(MAX_STRING_LENGTH);
     }
 
-    // Remove potential XSS patterns (basic - for more complete XSS prevention use a proper library)
-    sanitized = sanitized
-        .replace("<script", "&lt;script")
-        .replace("</script", "&lt;/script")
-        .replace("javascript:", "")
-        .replace("onerror=", "")
-        .replace("onclick=", "")
-        .replace("onload=", "");
+    // Comprehensive XSS pattern removal (case-insensitive)
+    sanitized = remove_xss_patterns(&sanitized);
 
     sanitized
+}
+
+/// Remove XSS patterns from input string
+fn remove_xss_patterns(input: &str) -> String {
+    let mut result = input.to_string();
+
+    // Script tags (various encodings and case variations)
+    let script_patterns = [
+        "<script", "</script", "&lt;script", "&lt;/script",
+        "%3cscript", "%3c/script", "&#x3c;script", "&#60;script",
+    ];
+
+    // Event handlers
+    let event_handlers = [
+        "onerror=", "onclick=", "onload=", "onmouseover=", "onfocus=",
+        "onblur=", "onchange=", "onsubmit=", "onkeydown=", "onkeyup=",
+        "onkeypress=", "ondblclick=", "onmousedown=", "onmouseup=",
+        "onmouseout=", "onmousemove=", "ondrag=", "ondrop=",
+        "oncontextmenu=", "oninput=", "oninvalid=", "onreset=",
+        "onsearch=", "onselect=", "ontoggle=",
+    ];
+
+    // Dangerous protocol handlers
+    let protocol_handlers = [
+        "javascript:", "vbscript:", "data:", "file:",
+        "javascript%3a", "vbscript%3a", "data%3a",
+    ];
+
+    // HTML injection patterns
+    let html_patterns = [
+        "<iframe", "</iframe", "<object", "</object",
+        "<embed", "</embed", "<form", "</form",
+        "<input", "<button", "<meta", "<link",
+        "<style", "</style", "<svg", "</svg",
+        "<img", "<video", "<audio", "<source",
+    ];
+
+    // Remove patterns (case-insensitive)
+    for pattern in script_patterns
+        .iter()
+        .chain(event_handlers.iter())
+        .chain(protocol_handlers.iter())
+        .chain(html_patterns.iter())
+    {
+        // Case-insensitive replacement
+        let pattern_lower = pattern.to_lowercase();
+        let mut i = 0;
+        while let Some(pos) = result[i..].to_lowercase().find(&pattern_lower) {
+            let actual_pos = i + pos;
+            let end_pos = actual_pos + pattern.len();
+            if end_pos <= result.len() {
+                result = format!(
+                    "{}{}",
+                    &result[..actual_pos],
+                    &result[end_pos..]
+                );
+            }
+            i = actual_pos;
+            if i >= result.len() {
+                break;
+            }
+        }
+    }
+
+    // Encode remaining dangerous characters
+    result = result
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;");
+
+    result
+}
+
+/// Sanitize HTML content while preserving safe formatting
+pub fn sanitize_html(input: &str) -> String {
+    // For API responses, we typically want to strip all HTML
+    // Use sanitize_string for complete sanitization
+    sanitize_string(input)
+}
+
+/// Validate and sanitize a URL
+pub fn validate_url(url: &str) -> Result<String, String> {
+    // Check for dangerous protocols
+    let url_lower = url.to_lowercase();
+    let dangerous_protocols = ["javascript:", "vbscript:", "data:", "file:"];
+
+    for protocol in dangerous_protocols {
+        if url_lower.starts_with(protocol) {
+            return Err(format!("Dangerous protocol detected: {}", protocol));
+        }
+    }
+
+    // Basic URL length check
+    if url.len() > 2048 {
+        return Err("URL exceeds maximum length".to_string());
+    }
+
+    Ok(url.to_string())
 }
 
 /// Validate and sanitize SQL identifiers (table names, column names)

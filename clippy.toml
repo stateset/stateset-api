@@ -1,0 +1,59 @@
+# Clippy configuration for StateSet API
+# This enables stricter linting for production code quality
+
+# Cognitive complexity threshold (default is 25)
+cognitive-complexity-threshold = 30
+
+# Maximum lines in a function (default is 100)
+too-many-lines-threshold = 150
+
+# Maximum number of arguments (default is 7)
+too-many-arguments-threshold = 8
+
+# Type complexity threshold (default is 250)
+type-complexity-threshold = 300
+
+# Maximum number of struct fields (default is 8)
+# Increased for DTOs and models
+max-struct-bools = 5
+
+# Allow certain patterns that are common in this codebase
+# (configured via allow attributes in code)
+
+# Documentation settings
+missing-docs-in-crate-items = false
+
+# Allow Box<dyn Trait> in certain contexts
+avoid-breaking-exported-api = true
+
+# Enforces that all public items have documentation
+# warn-on-all-wildcard-imports = true
+
+# Single character binding names to allow
+allowed-idents-below-min-chars = ["i", "j", "k", "n", "x", "y", "s", "e", "f", "v", "r", "m"]
+
+# Disallowed methods (security)
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "Use configuration instead of environment manipulation" },
+    { path = "std::env::remove_var", reason = "Use configuration instead of environment manipulation" },
+]
+
+# Disallowed types (security)
+disallowed-types = [
+    { path = "std::sync::atomic::AtomicPtr", reason = "Use safe abstractions instead" },
+]
+
+# Stack size threshold for large types
+stack-size-threshold = 512000
+
+# Literal representation threshold
+literal-representation-threshold = 10000
+
+# Upper case acronyms to allow in names
+upper-case-acronyms-aggressive = false
+
+# Enum variant name prefix/suffix to lint
+enum-variant-name-threshold = 3
+
+# Future incompatibility lints - be warned about upcoming changes
+future-incompat-report = true

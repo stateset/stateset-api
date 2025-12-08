@@ -1,0 +1,82 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/**/*.rs'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutation-test:
+    name: Cargo Mutants
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: stateset
+          POSTGRES_PASSWORD: stateset
+          POSTGRES_DB: stateset_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+
+      - name: Run mutation testing
+        env:
+          DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
+          REDIS_URL: redis://localhost:6379
+          APP__DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
+          APP__REDIS_URL: redis://localhost:6379
+          APP__JWT_SECRET: test-secret-key-min-32-characters-long
+        run: |
+          cargo mutants --timeout 300 --jobs 2 \
+            --package stateset-api \
+            --exclude-re "test|mock|bench" \
+            -- --all-features
+
+      - name: Upload mutation results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: mutation-results
+          path: mutants.out/

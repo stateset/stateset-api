@@ -294,10 +294,16 @@ impl AppMetrics {
 pub struct BusinessMetrics {
     pub orders_created: Counter,
     pub orders_completed: Counter,
+    pub orders_cancelled: Counter,
     pub revenue_total: Gauge,
     pub inventory_items: Gauge,
+    pub inventory_reservations: Gauge,
     pub shipments_created: Counter,
+    pub shipments_delivered: Counter,
     pub returns_processed: Counter,
+    pub warranties_claimed: Counter,
+    pub payments_processed: Counter,
+    pub payments_failed: Counter,
 }
 
 impl BusinessMetrics {
@@ -305,10 +311,16 @@ impl BusinessMetrics {
         Self {
             orders_created: METRICS.get_or_create_counter("orders_created_total"),
             orders_completed: METRICS.get_or_create_counter("orders_completed_total"),
-            revenue_total: METRICS.get_or_create_gauge("revenue_total"),
+            orders_cancelled: METRICS.get_or_create_counter("orders_cancelled_total"),
+            revenue_total: METRICS.get_or_create_gauge("revenue_total_usd"),
             inventory_items: METRICS.get_or_create_gauge("inventory_items_count"),
+            inventory_reservations: METRICS.get_or_create_gauge("inventory_reservations_active"),
             shipments_created: METRICS.get_or_create_counter("shipments_created_total"),
+            shipments_delivered: METRICS.get_or_create_counter("shipments_delivered_total"),
             returns_processed: METRICS.get_or_create_counter("returns_processed_total"),
+            warranties_claimed: METRICS.get_or_create_counter("warranties_claimed_total"),
+            payments_processed: METRICS.get_or_create_counter("payments_processed_total"),
+            payments_failed: METRICS.get_or_create_counter("payments_failed_total"),
         }
     }
 
@@ -320,6 +332,10 @@ impl BusinessMetrics {
         self.orders_completed.inc();
     }
 
+    pub fn record_order_cancelled(&self) {
+        self.orders_cancelled.inc();
+    }
+
     pub fn set_revenue(&self, amount: f64) {
         self.revenue_total.set(amount);
     }
@@ -328,12 +344,198 @@ impl BusinessMetrics {
         self.inventory_items.set(count as f64);
     }
 
+    pub fn set_inventory_reservations(&self, count: u64) {
+        self.inventory_reservations.set(count as f64);
+    }
+
     pub fn record_shipment_created(&self) {
         self.shipments_created.inc();
     }
 
+    pub fn record_shipment_delivered(&self) {
+        self.shipments_delivered.inc();
+    }
+
     pub fn record_return_processed(&self) {
         self.returns_processed.inc();
+    }
+
+    pub fn record_warranty_claimed(&self) {
+        self.warranties_claimed.inc();
+    }
+
+    pub fn record_payment_processed(&self) {
+        self.payments_processed.inc();
+    }
+
+    pub fn record_payment_failed(&self) {
+        self.payments_failed.inc();
+    }
+}
+
+// Database metrics for performance monitoring
+pub struct DatabaseMetrics {
+    pub queries_total: Counter,
+    pub query_duration: Histogram,
+    pub connections_active: Gauge,
+    pub connections_idle: Gauge,
+    pub connection_pool_size: Gauge,
+    pub transactions_total: Counter,
+    pub transaction_duration: Histogram,
+    pub slow_queries: Counter,
+    pub query_errors: Counter,
+}
+
+impl DatabaseMetrics {
+    pub fn new() -> Self {
+        Self {
+            queries_total: METRICS.get_or_create_counter("db_queries_total"),
+            query_duration: METRICS.get_or_create_histogram("db_query_duration_seconds"),
+            connections_active: METRICS.get_or_create_gauge("db_connections_active"),
+            connections_idle: METRICS.get_or_create_gauge("db_connections_idle"),
+            connection_pool_size: METRICS.get_or_create_gauge("db_connection_pool_size"),
+            transactions_total: METRICS.get_or_create_counter("db_transactions_total"),
+            transaction_duration: METRICS.get_or_create_histogram("db_transaction_duration_seconds"),
+            slow_queries: METRICS.get_or_create_counter("db_slow_queries_total"),
+            query_errors: METRICS.get_or_create_counter("db_query_errors_total"),
+        }
+    }
+
+    pub fn record_query(&self, duration: Duration) {
+        self.queries_total.inc();
+        self.query_duration.observe(duration.as_secs_f64());
+
+        // Track slow queries (> 1 second)
+        if duration.as_secs() >= 1 {
+            self.slow_queries.inc();
+        }
+    }
+
+    pub fn record_query_error(&self) {
+        self.query_errors.inc();
+    }
+
+    pub fn record_transaction(&self, duration: Duration) {
+        self.transactions_total.inc();
+        self.transaction_duration.observe(duration.as_secs_f64());
+    }
+
+    pub fn set_connection_stats(&self, active: u64, idle: u64, pool_size: u64) {
+        self.connections_active.set(active as f64);
+        self.connections_idle.set(idle as f64);
+        self.connection_pool_size.set(pool_size as f64);
+    }
+}
+
+// Security metrics for monitoring threats and access patterns
+pub struct SecurityMetrics {
+    pub auth_success: Counter,
+    pub auth_failures: Counter,
+    pub rate_limit_hits: Counter,
+    pub rate_limit_exceeded: Counter,
+    pub suspicious_requests: Counter,
+    pub blocked_requests: Counter,
+    pub active_sessions: Gauge,
+    pub token_refreshes: Counter,
+    pub permission_denials: Counter,
+    pub api_key_usage: Counter,
+}
+
+impl SecurityMetrics {
+    pub fn new() -> Self {
+        Self {
+            auth_success: METRICS.get_or_create_counter("auth_success_total"),
+            auth_failures: METRICS.get_or_create_counter("auth_failures_total"),
+            rate_limit_hits: METRICS.get_or_create_counter("rate_limit_hits_total"),
+            rate_limit_exceeded: METRICS.get_or_create_counter("rate_limit_exceeded_total"),
+            suspicious_requests: METRICS.get_or_create_counter("suspicious_requests_total"),
+            blocked_requests: METRICS.get_or_create_counter("blocked_requests_total"),
+            active_sessions: METRICS.get_or_create_gauge("active_sessions"),
+            token_refreshes: METRICS.get_or_create_counter("token_refreshes_total"),
+            permission_denials: METRICS.get_or_create_counter("permission_denials_total"),
+            api_key_usage: METRICS.get_or_create_counter("api_key_usage_total"),
+        }
+    }
+
+    pub fn record_auth_success(&self) {
+        self.auth_success.inc();
+    }
+
+    pub fn record_auth_failure(&self) {
+        self.auth_failures.inc();
+    }
+
+    pub fn record_rate_limit_hit(&self) {
+        self.rate_limit_hits.inc();
+    }
+
+    pub fn record_rate_limit_exceeded(&self) {
+        self.rate_limit_exceeded.inc();
+    }
+
+    pub fn record_suspicious_request(&self) {
+        self.suspicious_requests.inc();
+    }
+
+    pub fn record_blocked_request(&self) {
+        self.blocked_requests.inc();
+    }
+
+    pub fn set_active_sessions(&self, count: u64) {
+        self.active_sessions.set(count as f64);
+    }
+
+    pub fn record_token_refresh(&self) {
+        self.token_refreshes.inc();
+    }
+
+    pub fn record_permission_denial(&self) {
+        self.permission_denials.inc();
+    }
+
+    pub fn record_api_key_usage(&self) {
+        self.api_key_usage.inc();
+    }
+}
+
+// HTTP endpoint-specific metrics
+pub struct EndpointMetrics {
+    pub requests_by_endpoint: Counter,
+    pub latency_by_endpoint: Histogram,
+    pub errors_by_endpoint: Counter,
+    pub status_2xx: Counter,
+    pub status_4xx: Counter,
+    pub status_5xx: Counter,
+}
+
+impl EndpointMetrics {
+    pub fn new() -> Self {
+        Self {
+            requests_by_endpoint: METRICS.get_or_create_counter("http_requests_by_endpoint"),
+            latency_by_endpoint: METRICS.get_or_create_histogram("http_latency_by_endpoint"),
+            errors_by_endpoint: METRICS.get_or_create_counter("http_errors_by_endpoint"),
+            status_2xx: METRICS.get_or_create_counter("http_status_2xx_total"),
+            status_4xx: METRICS.get_or_create_counter("http_status_4xx_total"),
+            status_5xx: METRICS.get_or_create_counter("http_status_5xx_total"),
+        }
+    }
+
+    pub fn record_request(&self, duration: Duration, status_code: u16) {
+        self.requests_by_endpoint.inc();
+        self.latency_by_endpoint.observe(duration.as_secs_f64());
+
+        match status_code {
+            200..=299 => self.status_2xx.inc(),
+            400..=499 => {
+                self.status_4xx.inc();
+                self.errors_by_endpoint.inc();
+            }
+            500..=599 => {
+                self.status_5xx.inc();
+                self.errors_by_endpoint.inc();
+            }
+            _ => {}
+        }
     }
 }
 
@@ -341,6 +543,9 @@ impl BusinessMetrics {
 lazy_static::lazy_static! {
     pub static ref APP_METRICS: AppMetrics = AppMetrics::new();
     pub static ref BUSINESS_METRICS: BusinessMetrics = BusinessMetrics::new();
+    pub static ref DATABASE_METRICS: DatabaseMetrics = DatabaseMetrics::new();
+    pub static ref SECURITY_METRICS: SecurityMetrics = SecurityMetrics::new();
+    pub static ref ENDPOINT_METRICS: EndpointMetrics = EndpointMetrics::new();
 }
 
 // Middleware for automatic metrics collection
