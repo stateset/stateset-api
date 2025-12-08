@@ -4,6 +4,7 @@ FROM rust:${RUST_VERSION} AS builder
 
 ARG API_BIN=stateset-api
 ARG MIGRATION_BIN=migration
+ARG SEED_BIN=seed-data
 ENV CARGO_TERM_COLOR=always
 
 # Install protobuf compiler for proto files
@@ -43,13 +44,14 @@ RUN rm -rf src migrations/src
 COPY . .
 
 # Build the application
-RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN}
+RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN} --bin ${SEED_BIN}
 
 # Runtime stage
 FROM debian:bookworm-slim
 
 ARG API_BIN=stateset-api
 ARG MIGRATION_BIN=migration
+ARG SEED_BIN=seed-data
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -66,6 +68,7 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /usr/src/app/target/release/${API_BIN} /app/${API_BIN}
 COPY --from=builder /usr/src/app/target/release/${MIGRATION_BIN} /app/${MIGRATION_BIN}
+COPY --from=builder /usr/src/app/target/release/${SEED_BIN} /app/${SEED_BIN}
 
 # Copy migrations if needed at runtime
 COPY --from=builder /usr/src/app/migrations /app/migrations

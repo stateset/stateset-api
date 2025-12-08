@@ -149,6 +149,10 @@ path = "src/bin/openapi_export.rs"
 name = "stateset-cli"
 path = "src/bin/stateset_cli.rs"
 
+[[bin]]
+name = "seed-data"
+path = "src/bin/seed_data.rs"
+
 [[bench]]
 name = "api_benchmarks"
 harness = false

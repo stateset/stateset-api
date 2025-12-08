@@ -74,6 +74,22 @@ services:
     command: ["./migration"]
     restart: "no"
 
+  # One-off seed data job - populates database with demo data
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/stateset_db
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - stateset-network
+    command: ["./seed-data"]
+    restart: "no"
+
 volumes:
   redis-data:
   postgres-data:
