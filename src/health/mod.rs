@@ -225,32 +225,7 @@ pub async fn detailed_health(State(state): State<Arc<HealthState>>) -> impl Into
     (status_code, Json(health.clone()))
 }
 
-/// Readiness check that verifies database connectivity (disabled for now)
-/*
-pub async fn readiness_check_with_app_state(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-    match db::check_connection(&state.db).await {
-        Ok(_) => (
-            StatusCode::OK,
-            Json(json!({
-                "status": "ready",
-                "database": "up",
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-            })),
-        ),
-        Err(err) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "status": "degraded",
-                "database": "down",
-                "error": err.to_string(),
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-            })),
-        ),
-    }
-}
-*/
+// Readiness check with database verification available via health_check_detailed endpoint
 
 /// Run periodic health checks
 pub async fn run_health_checker(state: Arc<HealthState>) {

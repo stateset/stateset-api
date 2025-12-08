@@ -122,8 +122,10 @@ impl CheckoutService {
         method: ShippingMethod,
     ) -> Result<ShippingRate, ServiceError> {
         // Calculate shipping rate based on method and address
-        let rate =
-            self.calculate_shipping_rate(&method, session.shipping_address.as_ref().unwrap())?;
+        let shipping_address = session.shipping_address.as_ref().ok_or_else(|| {
+            ServiceError::InvalidOperation("Shipping address required".to_string())
+        })?;
+        let rate = self.calculate_shipping_rate(&method, shipping_address)?;
 
         session.shipping_method = Some(method);
         session.step = CheckoutStep::Payment;
@@ -150,15 +152,20 @@ impl CheckoutService {
             ));
         }
 
+        // Extract validated fields (already checked for Some above)
+        let shipping_method = session.shipping_method.as_ref().ok_or_else(|| {
+            ServiceError::InvalidOperation("Shipping method required".to_string())
+        })?;
+        let shipping_address = session.shipping_address.as_ref().ok_or_else(|| {
+            ServiceError::InvalidOperation("Shipping address required".to_string())
+        })?;
+
         // Calculate totals
         let subtotal = session.cart.subtotal;
         let shipping_total = self
-            .calculate_shipping_rate(
-                session.shipping_method.as_ref().unwrap(),
-                session.shipping_address.as_ref().unwrap(),
-            )?
+            .calculate_shipping_rate(shipping_method, shipping_address)?
             .amount;
-        let tax_total = self.calculate_tax(subtotal, session.shipping_address.as_ref().unwrap())?;
+        let tax_total = self.calculate_tax(subtotal, shipping_address)?;
         let total = subtotal + shipping_total + tax_total;
 
         // Create order

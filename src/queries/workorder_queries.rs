@@ -199,8 +199,8 @@ impl Query for GetTopTechniciansPerformanceQuery {
     type Result = Vec<TechnicianPerformance>;
 
     async fn execute(&self, _db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement when technician entity is available
-        // For now, return empty results
+        // Technician performance tracking requires technician entity
+        // Returns empty until technician assignment tracking is implemented
         Ok(vec![])
     }
 }

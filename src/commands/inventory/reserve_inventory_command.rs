@@ -251,26 +251,27 @@ impl ReserveInventoryCommand {
                             self.reservation_strategy,
                             ReservationStrategy::WithSubstitutes | ReservationStrategy::BestEffort
                         )
-                        && request.substitutes.is_some()
                     {
-                        let remaining_quantity = request.quantity - reserved_quantity;
-                        for substitute_id in request.substitutes.as_ref().unwrap() {
-                            let substitute_available = self
-                                .check_available_quantity(txn, *substitute_id, remaining_quantity)
-                                .await?;
-                            if substitute_available > 0 {
-                                let substitute_reservation = self
-                                    .create_reservation(
-                                        txn,
-                                        *substitute_id,
-                                        substitute_available,
-                                        &request,
-                                    )
+                        if let Some(substitutes) = &request.substitutes {
+                            let remaining_quantity = request.quantity - reserved_quantity;
+                            for substitute_id in substitutes {
+                                let substitute_available = self
+                                    .check_available_quantity(txn, *substitute_id, remaining_quantity)
                                     .await?;
-                                reserved_quantity += substitute_reservation.reserved_quantity;
-                                product_id = *substitute_id;
-                                if reserved_quantity >= request.quantity {
-                                    break;
+                                if substitute_available > 0 {
+                                    let substitute_reservation = self
+                                        .create_reservation(
+                                            txn,
+                                            *substitute_id,
+                                            substitute_available,
+                                            &request,
+                                        )
+                                        .await?;
+                                    reserved_quantity += substitute_reservation.reserved_quantity;
+                                    product_id = *substitute_id;
+                                    if reserved_quantity >= request.quantity {
+                                        break;
+                                    }
                                 }
                             }
                         }

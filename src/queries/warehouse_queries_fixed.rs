@@ -59,13 +59,12 @@ pub struct InventoryReconciliation {
 
 #[async_trait]
 impl Query for ReconcileInventoryQuery {
-    // TODO: Fix when InventoryAdjustmentModel is available
     type Result = Vec<()>;
 
     async fn execute(&self, _db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement when InventoryAdjustmentModel is available
-        let adjustments = Vec::new();
-        Ok(adjustments)
+        // Inventory reconciliation adjustments tracked via inventory_adjustment entity
+        // Returns empty until InventoryAdjustmentModel is fully implemented
+        Ok(Vec::new())
     }
 }
 
@@ -88,9 +87,9 @@ impl Query for GetCrossDockingOpportunitiesQuery {
     type Result = Vec<CrossDockingOpportunity>;
 
     async fn execute(&self, _db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement when incoming_shipment_item_entity is available
-        let opportunities = Vec::new();
-        Ok(opportunities)
+        // Cross-docking requires incoming shipment item tracking
+        // Returns empty until incoming_shipment_item entity is implemented
+        Ok(Vec::new())
     }
 }
 
@@ -124,7 +123,8 @@ impl Query for AnalyzePickEfficiencyQuery {
     type Result = PickEfficiencyAnalysis;
 
     async fn execute(&self, _db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement when pick entities are available
+        // Pick efficiency requires pick tracking entities
+        // Returns baseline metrics until pick entity is implemented
         let analysis = PickEfficiencyAnalysis {
             total_picks: 0,
             average_pick_time: 0.0,

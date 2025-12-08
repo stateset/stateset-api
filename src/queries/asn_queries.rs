@@ -83,9 +83,7 @@ pub struct ASNDetails {
     pub asn: ASNModel,
     pub supplier: crate::models::suppliers::Model,
     pub warehouse: crate::models::warehouse::Model,
-    // TODO: Add proper types for packages and purchase_order when they're available
-    // pub packages: Vec<(ASNPackage, Vec<(ASNLineItem, Product)>)>,
-    // pub purchase_order: Option<PurchaseOrder>,
+    // Package and PO relations available via separate queries
 }
 
 /// Query to get detailed ASN information

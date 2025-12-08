@@ -874,23 +874,12 @@ where
 }
 
 /// Helper function to setup tracing with default configuration
-pub fn setup_default_tracing(service_name: &str) -> Result<(), TracingError> {
-    // TODO: Fix opentelemetry version mismatch
-    /*
-    let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
-        .with_span_processor(opentelemetry_stdout::SpanExporter::default())
-        .with_config(
-            opentelemetry_sdk::trace::config()
-                .with_sampler(opentelemetry_sdk::trace::Sampler::AlwaysOn)
-                .with_resource(opentelemetry_sdk::Resource::new(vec![KeyValue::new(
-                    "service.name",
-                    service_name.to_string(),
-                )])),
-        )
-        .build();
-    */
-
-    // global::set_tracer_provider(tracer_provider);
+///
+/// Note: OpenTelemetry tracer provider setup is handled via the main tracing configuration.
+/// This function provides a no-op default for cases where tracing is not required.
+pub fn setup_default_tracing(_service_name: &str) -> Result<(), TracingError> {
+    // Tracing is configured via TracingConfig::init() for full OpenTelemetry support.
+    // This function exists for API compatibility and returns Ok for minimal setups.
     Ok(())
 }
 

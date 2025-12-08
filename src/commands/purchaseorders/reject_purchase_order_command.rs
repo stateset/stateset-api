@@ -136,7 +136,12 @@ impl RejectPurchaseOrderCommand {
         po.updated_at = Set(Utc::now());
 
         // Add rejection reason to notes
-        let existing_notes = po.notes.clone().unwrap().unwrap_or_default();
+        let existing_notes = match po.notes.clone() {
+            sea_orm::ActiveValue::Set(opt) | sea_orm::ActiveValue::Unchanged(opt) => {
+                opt.unwrap_or_default()
+            }
+            sea_orm::ActiveValue::NotSet => String::new(),
+        };
         let rejection_note = format!(
             "[REJECTED by {}] Reason: {}{}",
             self.rejector_id,

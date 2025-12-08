@@ -261,7 +261,7 @@ impl Query for GetShipmentPerformanceMetricsQuery {
     }
 }
 
-/* TODO: Implement GetTopCarrierPerformanceQuery once Carrier entity is created
+/* Carrier performance query - requires Carrier entity implementation
 
 /// Struct to get top-performing carriers within a date range.
 #[derive(Debug, Serialize, Deserialize)]

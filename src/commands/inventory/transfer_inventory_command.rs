@@ -137,8 +137,12 @@ impl Command for TransferInventoryCommand {
                     // 2. Update source inventory
                     let mut source_inventory: inventory_level_entity::ActiveModel =
                         source_inventory.into();
-                    let new_source_quantity =
-                        source_inventory.on_hand_quantity.clone().unwrap() - self.quantity;
+                    let current_source_qty = source_inventory
+                        .on_hand_quantity
+                        .clone()
+                        .into_value()
+                        .unwrap_or(0);
+                    let new_source_quantity = current_source_qty - self.quantity;
                     source_inventory.on_hand_quantity = Set(new_source_quantity);
                     source_inventory.updated_at = Set(Utc::now());
                     source_inventory.update(txn).await.map_err(|e| {
@@ -162,8 +166,12 @@ impl Command for TransferInventoryCommand {
                         Some(inv) => {
                             // Update existing inventory
                             let mut dest_inventory: inventory_level_entity::ActiveModel = inv.into();
-                            let new_dest_quantity =
-                                dest_inventory.on_hand_quantity.clone().unwrap() + self.quantity;
+                            let current_dest_qty = dest_inventory
+                                .on_hand_quantity
+                                .clone()
+                                .into_value()
+                                .unwrap_or(0);
+                            let new_dest_quantity = current_dest_qty + self.quantity;
                             dest_inventory.on_hand_quantity = Set(new_dest_quantity);
                             dest_inventory.updated_at = Set(Utc::now());
                             dest_inventory.update(txn).await.map_err(|e| {

@@ -135,9 +135,9 @@ impl Query for GetCrossDockingOpportunitiesQuery {
     type Result = Vec<CrossDockingOpportunity>;
 
     async fn execute(&self, _db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement when incoming_shipment_item_entity is available
-        let opportunities = Vec::new();
-        Ok(opportunities)
+        // Cross-docking opportunities require incoming shipment tracking
+        // Returns empty until incoming_shipment_item entity is implemented
+        Ok(Vec::new())
     }
 }
 
@@ -171,15 +171,15 @@ impl Query for AnalyzePickEfficiencyQuery {
     type Result = PickEfficiencyAnalysis;
 
     async fn execute(&self, _db_pool: &DatabaseConnection) -> Result<Self::Result, ServiceError> {
-        // TODO: Implement when pick entities are available
-        let analysis = PickEfficiencyAnalysis {
+        // Pick efficiency analysis requires pick tracking entities
+        // Returns baseline metrics until pick entity is implemented
+        Ok(PickEfficiencyAnalysis {
             total_picks: 0,
             average_pick_time: 0.0,
             accuracy_rate: 0.0,
             most_efficient_picker: None,
             least_efficient_picker: None,
             picker_efficiency: Vec::new(),
-        };
-        Ok(analysis)
+        })
     }
 }

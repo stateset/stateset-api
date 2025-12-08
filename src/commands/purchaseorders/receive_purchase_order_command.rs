@@ -34,11 +34,6 @@ impl Command for ReceivePurchaseOrderCommand {
             .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
         info!(purchase_order_id = %self.id, "Purchase order received");
-        // TODO: Add PurchaseOrderReceived event when available
-        // event_sender
-        //     .send(Event::PurchaseOrderReceived(self.id))
-        //     .await
-        //     .map_err(ServiceError::EventError)?;
 
         Ok(ReceivePurchaseOrderResult { id: self.id })
     }

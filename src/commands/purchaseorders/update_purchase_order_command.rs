@@ -36,11 +36,6 @@ impl Command for UpdatePurchaseOrderCommand {
             .map_err(|e| ServiceError::ValidationError(e.to_string()))?;
 
         info!(purchase_order_id = %self.id, "Purchase order updated");
-        // TODO: Add PurchaseOrderUpdated event when available
-        // event_sender
-        //     .send(Event::PurchaseOrderUpdated(self.id))
-        //     .await
-        //     .map_err(ServiceError::EventError)?;
 
         Ok(UpdatePurchaseOrderResult { id: self.id })
     }

@@ -197,37 +197,7 @@ pub struct Model {
 
 /// Database relations
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    // TODO: Add these relations when the related entities have proper belongs_to relations
-    // #[sea_orm(has_many = "super::product::Entity")]
-    // Products,
-
-    // #[sea_orm(has_many = "super::purchase_order::Entity")]
-    // PurchaseOrders,
-
-    // #[sea_orm(has_many = "super::supplier_contact::Entity")]
-    // Contacts,
-}
-
-// Remove invalid impls that rely on commented variants
-// impl Related<super::product::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::Products.def()
-//     }
-// }
-
-// TODO: Uncomment when purchase_order entity is implemented
-// impl Related<super::purchase_order::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::PurchaseOrders.def()
-//     }
-// }
-
-// impl Related<super::supplier_contact::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::Contacts.def()
-//     }
-// }
+pub enum Relation {}
 
 /// Custom validation for birthdates
 fn validate_birthdate(date: &NaiveDate) -> Result<(), ValidationError> {

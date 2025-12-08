@@ -23,22 +23,7 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    // TODO: Add this relation when product_entity has a category_id field
-    // #[sea_orm(
-    //     belongs_to = "super::product_entity::Entity",
-    //     from = "Column::Id",
-    //     to = "super::product_entity::Column::CategoryId"
-    // )]
-    // Product,
-}
-
-// TODO: Uncomment when the relation is added
-// impl Related<super::product_entity::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::Product.def()
-//     }
-// }
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 

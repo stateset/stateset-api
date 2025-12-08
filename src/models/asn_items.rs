@@ -31,15 +31,6 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     ASN,
-    // TODO: Uncomment when purchase_order_item_entity is implemented
-    // #[sea_orm(
-    //     belongs_to = "super::purchase_order_item_entity::Entity",
-    //     from = "Column::PurchaseOrderItemId",
-    //     to = "super::purchase_order_item_entity::Column::Id",
-    //     on_update = "Cascade",
-    //     on_delete = "Restrict"
-    // )]
-    // PurchaseOrderItem,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

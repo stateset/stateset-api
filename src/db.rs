@@ -300,25 +300,9 @@ impl DatabaseAccess {
     }
 
     /// Find entity by ID with metrics
-    // TODO: Fix generic constraints for find_by_id
-    /*
-    pub async fn find_by_id<E: EntityTrait>(
-        &self,
-        id: E::PrimaryKey,
-    ) -> Result<Option<E::Model>, ServiceError>
-    where
-        E::Model: Send + Sync,
-    {
-        let entity_name = std::any::type_name::<E>()
-            .split("::")
-            .last()
-            .unwrap_or("Unknown");
-        self.execute(&format!("find_by_id:{}", entity_name), |db| {
-            E::find_by_id(id).one(db)
-        })
-        .await
-    }
-    */
+    ///
+    /// Note: Use entity-specific repository methods for type-safe queries.
+    /// Generic find_by_id requires additional trait bounds that vary per entity.
 
     /// Get the underlying connection - helper for compatibility
     pub async fn get(&self) -> Result<&DatabaseConnection, ServiceError> {

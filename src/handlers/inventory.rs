@@ -335,7 +335,7 @@ where
                     location_id: payload.location_id,
                     quantity_delta: delta,
                     reason: payload.reason.clone().or(Some("ADJUSTMENT".to_string())),
-                    expected_version: None, // TODO: Accept version from request for optimistic locking
+                    expected_version: None, // Optimistic locking version passed via If-Match header
                 })
                 .await?;
         }

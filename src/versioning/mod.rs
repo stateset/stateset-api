@@ -123,53 +123,9 @@ impl IntoResponse for ApiVersionError {
 }
 
 /// Extractor for API version from request
-// TODO: Fix lifetime issues with FromRequestParts implementation
-// Commenting out for now to get basic compilation working
-/*
-#[async_trait]
-impl<S> FromRequestParts<S> for ApiVersion
-where
-    S: Send + Sync,
-{
-    type Rejection = ApiVersionError;
-
-    async fn from_request_parts<'life0, 'life1, 'async_trait>(
-        parts: &'life0 mut axum::http::request::Parts,
-        _state: &'life1 S,
-    ) -> core::pin::Pin<Box<dyn core::future::Future<Output = Result<Self, Self::Rejection>> + core::marker::Send + 'async_trait>>
-    where
-        'life0: 'async_trait,
-        'life1: 'async_trait,
-        Self: 'async_trait,
-    {
-        Box::pin(async move {
-        // 1. Try to extract from URL path
-        if let Some(version) = extract_version_from_path(&parts.uri.path()) {
-            return Ok(version);
-        }
-
-        // 2. Try to extract from Accept header
-        if let Some(accept) = parts.headers.get(ACCEPT) {
-            if let Ok(accept_str) = accept.to_str() {
-                if let Some(version) = extract_version_from_accept(accept_str) {
-                    return Ok(version);
-                }
-            }
-        }
-
-        // 3. Try to extract from custom version header
-        if let Some(version_header) = parts.headers.get("X-API-Version") {
-            if let Ok(version_str) = version_header.to_str() {
-                return ApiVersion::try_from(version_str);
-            }
-        }
-
-        // 4. Default to latest version
-        Ok(ApiVersion::latest())
-        })
-    }
-}
-*/
+///
+/// Note: API versioning is handled via URL path prefix (e.g., /api/v1/).
+/// Use `extract_version_from_path` for manual version extraction when needed.
 
 /// Extract version from URL path (e.g., /api/v1/...)
 fn extract_version_from_path(path: &str) -> Option<ApiVersion> {

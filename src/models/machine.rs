@@ -255,13 +255,6 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::maintenance_record::Entity")]
     MaintenanceRecords,
-    // TODO: Uncomment when machine_part entity is implemented
-    // #[sea_orm(has_many = "super::machine_part::Entity")]
-    // MachineParts,
-
-    // TODO: Uncomment when machine_document entity is implemented
-    // #[sea_orm(has_many = "super::machine_document::Entity")]
-    // Documents,
 }
 
 impl Related<super::maintenance_record::Entity> for Entity {
@@ -269,20 +262,6 @@ impl Related<super::maintenance_record::Entity> for Entity {
         Relation::MaintenanceRecords.def()
     }
 }
-
-// TODO: Uncomment when machine_part entity is implemented
-// impl Related<super::machine_part::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::MachineParts.def()
-//     }
-// }
-
-// TODO: Uncomment when machine_document entity is implemented
-// impl Related<super::machine_document::Entity> for Entity {
-//     fn to() -> RelationDef {
-//         Relation::Documents.def()
-//     }
-// }
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {

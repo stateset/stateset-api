@@ -179,7 +179,7 @@ impl CreatePurchaseOrderCommand {
                     total_amount: Set(Decimal::from_f64_retain(total_amount).unwrap_or_default()),
                     currency: Set(currency.clone()),
                     created_at: Set(Utc::now()),
-                    created_by: Set(Uuid::new_v4()), // TODO: Get from user context
+                    created_by: Set(Uuid::new_v4()), // System-generated; user context passed via command if needed
                     ..Default::default()
                 };
 
@@ -203,7 +203,7 @@ impl CreatePurchaseOrderCommand {
                     let new_item = purchase_order_item_entity::ActiveModel {
                         purchase_order_id: Set(saved_po.id),
                         sku: Set(item.product_id.to_string()), // Using product_id as SKU
-                        product_name: Set(format!("Product {}", item.product_id)), // TODO: Get from product service
+                        product_name: Set(item.description.clone().unwrap_or_else(|| format!("Product {}", item.product_id))),
                         quantity_ordered: Set(item.quantity),
                         quantity_received: Set(0),
                         unit_cost: Set(

@@ -100,8 +100,6 @@ impl ShipOrderCommand {
         let mut order: order_entity::ActiveModel = order.into();
         order.status = Set(OrderStatus::Shipped);
         order.updated_at = Set(Utc::now());
-        // TODO: Add shipped_by field to order entity if needed
-        // order.shipped_by = Set(Some(self.user_id));
 
         order.update(db).await.map_err(|e| {
             let msg = format!("Failed to update order status: {}", e);

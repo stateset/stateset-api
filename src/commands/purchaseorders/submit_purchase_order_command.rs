@@ -132,7 +132,12 @@ impl SubmitPurchaseOrderCommand {
 
         if let Some(ref notes) = self.notes {
             // Append submission notes to existing notes
-            let existing_notes = po.notes.clone().unwrap().unwrap_or_default();
+            let existing_notes = match po.notes.clone() {
+                sea_orm::ActiveValue::Set(opt) | sea_orm::ActiveValue::Unchanged(opt) => {
+                    opt.unwrap_or_default()
+                }
+                sea_orm::ActiveValue::NotSet => String::new(),
+            };
             let new_notes = if existing_notes.is_empty() {
                 format!("[SUBMITTED] {}", notes)
             } else {

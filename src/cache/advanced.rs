@@ -164,7 +164,9 @@ impl<T> LRUCache<T> {
         }
 
         // Add to new priority queue
-        self.priority_queues.get_mut(&priority).unwrap().push_front(key.clone());
+        if let Some(queue) = self.priority_queues.get_mut(&priority) {
+            queue.push_front(key.clone());
+        }
 
         // Update access order
         if let Some(pos) = self.access_order.iter().position(|k| k == &key) {
