@@ -12,7 +12,7 @@
 
 StateSet API is a comprehensive, scalable, and robust backend system for order management, inventory control, returns processing, warranty management, shipment tracking, and work order handling. Built with Rust, it leverages modern web technologies and best practices to provide a high-performance, reliable solution for e-commerce and manufacturing businesses.
 
-**Stats**: 547 Rust source files • ~97,000 lines of code • 100% safe Rust
+**Stats**: 584 Rust source files • ~113,000 lines of code • 100% safe Rust
 
 **Quick Links**: [Getting Started](#getting-started) | [Documentation](#documentation) | [API Endpoints](#api-endpoints) | [Deployment](docs/DEPLOYMENT.md) | [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md)
 
@@ -139,28 +139,39 @@ stateset-api/
 ├── simple_api/           # Lightweight API variant
 ├── proto/                # Protocol Buffer definitions (gRPC)
 ├── src/
+│   ├── main.rs           # Server entry point
+│   ├── lib.rs            # Library exports & route composition
+│   ├── config.rs         # Application configuration
 │   ├── bin/              # Binary executables (15+ targets)
 │   │   ├── stateset-api  # Main HTTP/REST API server
 │   │   ├── stateset-cli  # Command-line interface
 │   │   ├── grpc-server   # gRPC service endpoint
 │   │   └── ...           # Additional utilities and servers
+│   ├── auth/             # Authentication & authorization (JWT, API keys, RBAC, MFA)
 │   ├── commands/         # Command handlers (write operations, 27 modules)
-│   ├── entities/         # Database entity definitions (SeaORM)
+│   ├── entities/         # Database entity definitions (SeaORM, 30+ entities)
 │   ├── errors/           # Error types and handling
-│   ├── events/           # Event definitions and processing
-│   ├── handlers/         # HTTP request handlers (REST API)
-│   ├── models/           # Domain models
+│   ├── events/           # Event definitions and processing (outbox pattern)
+│   ├── handlers/         # HTTP request handlers (35+ modules)
+│   │   ├── orders.rs     # Order CRUD & operations
+│   │   ├── inventory.rs  # Inventory management
+│   │   ├── commerce/     # E-commerce (products, carts, checkout, customers)
+│   │   └── ...           # Returns, shipments, warranties, work orders, etc.
+│   ├── models/           # Domain models (90+ types)
 │   ├── queries/          # Query handlers (read operations)
-│   ├── repositories/     # Data access layer
-│   ├── services/         # Business logic services (40+ services)
-│   ├── auth/             # Authentication and authorization (JWT, API keys, RBAC)
+│   ├── services/         # Business logic services (55+ services)
+│   │   ├── commerce/     # Cart, checkout, product catalog, pricing
+│   │   └── ...           # Orders, inventory, payments, analytics, etc.
 │   ├── cache/            # Caching layer (Redis)
 │   ├── rate_limiter/     # Rate limiting middleware
 │   ├── webhooks/         # Webhook management
-│   └── config.rs         # Application configuration
+│   ├── health/           # Health check endpoints
+│   ├── metrics/          # Prometheus metrics
+│   └── tracing/          # Distributed tracing (OpenTelemetry)
 ├── tests/                # Integration tests
 ├── benches/              # Performance benchmarks
 ├── docs/                 # Comprehensive documentation
+├── config/               # Configuration files (default.toml)
 └── examples/             # Usage examples (cURL, JavaScript, Python)
 ```
 
@@ -387,8 +398,8 @@ cargo test
 
 StateSet API provides a rich set of RESTful endpoints:
 
-### Authentication
-- `POST /auth/login` - Authenticate user and get JWT token
+### Authentication (`/api/v1/auth`)
+- `POST /auth/login` - Authenticate user and get JWT tokens
 - `POST /auth/register` - Register a new user
 - `POST /auth/logout` - Revoke the current access token and all associated refresh tokens
 - `POST /auth/password/change` - Change the password for the authenticated user
@@ -404,78 +415,161 @@ StateSet API provides a rich set of RESTful endpoints:
 - Endpoints are permission-gated (e.g., `orders:read`, `orders:create`). Admins have full access.
 - Standard error responses include JSON with `error.code` and HTTP status; `X-Request-Id` is included on responses for tracing.
 
-### Orders
-- `GET /orders` - List all orders
-- `GET /orders/:id` - Get order details
+### Orders (`/api/v1/orders`)
+- `GET /orders` - List all orders (paginated, filterable)
+- `GET /orders/{id}` - Get order details by ID
+- `GET /orders/by-number/{order_number}` - Get order by order number
+- `GET /orders/{id}/items` - Get order line items
 - `POST /orders` - Create a new order
-- `PUT /orders/:id` - Update an order
-- `POST /orders/:id/hold` - Place an order on hold
-- `POST /orders/:id/cancel` - Cancel an order
-- `POST /orders/:id/archive` - Archive an order
+- `PUT /orders/{id}` - Update an order
+- `POST /orders/{id}/items` - Add item to order
+- `PUT /orders/{id}/status` - Update order status
+- `POST /orders/{id}/cancel` - Cancel an order
+- `POST /orders/{id}/archive` - Archive an order
+- `DELETE /orders/{id}` - Delete an order
 
-### Inventory
-- `GET /inventory` - Get current inventory levels
-- `POST /inventory/adjust` - Adjust inventory quantity
-- `POST /inventory/allocate` - Allocate inventory
-- `POST /inventory/reserve` - Reserve inventory
-- `POST /inventory/release` - Release reserved inventory
+### Inventory (`/api/v1/inventory`)
+- `GET /inventory` - List all inventory items (paginated)
+- `GET /inventory/{id}` - Get inventory item details
+- `GET /inventory/low-stock` - Get low-stock items
+- `POST /inventory` - Create inventory item
+- `PUT /inventory/{id}` - Update inventory item
+- `DELETE /inventory/{id}` - Delete inventory item
+- `POST /inventory/{id}/reserve` - Reserve inventory for order
+- `POST /inventory/{id}/release` - Release inventory reservation
+- `POST /inventory/bulk-adjust` - Bulk adjust quantities (recount, damage, loss, etc.)
+- `GET /inventory/reservations` - List all reservations
+- `GET /inventory/reservations/{id}` - Get reservation details
+- `GET /inventory/reservations/stats` - Get reservation statistics
+- `POST /inventory/reservations/{id}/cancel` - Cancel a reservation
+- `POST /inventory/reservations/cleanup` - Cleanup expired reservations
 
-### Returns
+### Returns (`/api/v1/returns`)
+- `GET /returns` - List all returns (paginated)
+- `GET /returns/{id}` - Get return details
 - `POST /returns` - Create a return request
-- `GET /returns/:id` - Get return details
-- `POST /returns/:id/approve` - Approve a return
-- `POST /returns/:id/reject` - Reject a return
-- `POST /returns/:id/restock` - Restock returned items
+- `POST /returns/{id}/approve` - Approve a return
+- `POST /returns/{id}/restock` - Mark returned items as restocked
 
-### Warranties
+### Shipments (`/api/v1/shipments`)
+- `GET /shipments` - List all shipments
+- `GET /shipments/{id}` - Get shipment details
+- `GET /shipments/{id}/track` - Track shipment by ID
+- `GET /shipments/track/{tracking_number}` - Track by tracking number
+- `POST /shipments` - Create new shipment
+- `POST /shipments/{id}/ship` - Mark shipment as shipped
+- `POST /shipments/{id}/deliver` - Mark shipment as delivered
+
+### Warranties (`/api/v1/warranties`)
+- `GET /warranties` - List all warranties
+- `GET /warranties/{id}` - Get warranty details
 - `POST /warranties` - Create a warranty
-- `POST /warranties/claim` - Submit a warranty claim
-- `POST /warranties/claims/:id/approve` - Approve a warranty claim
-- `POST /warranties/claims/:id/reject` - Reject a warranty claim
+- `POST /warranties/{id}/extend` - Extend warranty period
+- `POST /warranties/claims` - Submit a warranty claim
+- `POST /warranties/claims/{id}/approve` - Approve a warranty claim
 
-### Work Orders
+### Work Orders (`/api/v1/work-orders`)
+- `GET /work-orders` - List all work orders
+- `GET /work-orders/{id}` - Get work order details
 - `POST /work-orders` - Create a work order
-- `GET /work-orders/:id` - Get work order details
-- `POST /work-orders/:id/start` - Start a work order
-- `POST /work-orders/:id/complete` - Complete a work order
+- `PUT /work-orders/{id}` - Update a work order
+- `POST /work-orders/{id}/assign` - Assign work order to technician
+- `POST /work-orders/{id}/complete` - Mark work order complete
+- `PUT /work-orders/{id}/status` - Update work order status
+- `DELETE /work-orders/{id}` - Delete a work order
 
-### Bill of Materials (BOM)
-- `POST /bom` - Create a bill of materials
-- `GET /bom/:id` - Get BOM details
-- `PUT /bom/:id` - Update a BOM
-- `POST /bom/:id/components` - Add components to BOM
+### Bill of Materials (`/api/v1/manufacturing/boms`)
+- `GET /manufacturing/boms` - List all BOMs
+- `GET /manufacturing/boms/{id}` - Get BOM details
+- `POST /manufacturing/boms` - Create a bill of materials
+- `PUT /manufacturing/boms/{id}` - Update a BOM
+- `POST /manufacturing/boms/{id}/components` - Add components to BOM
+- `DELETE /manufacturing/boms/{id}/components` - Remove components from BOM
+- `GET /manufacturing/boms/{id}/components` - Get BOM components
+- `POST /manufacturing/boms/{id}/audit` - Audit BOM changes
 
-### Purchase Orders
+### Purchase Orders (`/api/v1/purchase-orders`)
+- `GET /purchase-orders` - List purchase orders
+- `GET /purchase-orders/{id}` - Get purchase order details
 - `POST /purchase-orders` - Create a purchase order
-- `GET /purchase-orders/:id` - Get purchase order details
-- `PUT /purchase-orders/:id` - Update a purchase order
-- `POST /purchase-orders/:id/receive` - Record receipt of goods
+- `PUT /purchase-orders/{id}` - Update a purchase order
+- `POST /purchase-orders/{id}/receive` - Record receipt of goods
 
-### Suppliers
-- `POST /suppliers` - Create a supplier
-- `GET /suppliers` - List suppliers
-- `GET /suppliers/:id` - Get supplier details
-- `PUT /suppliers/:id` - Update supplier information
+### Advanced Shipping Notice (`/api/v1/asns`)
+- `GET /asns` - List all ASNs
+- `GET /asns/{id}` - Get ASN details
+- `POST /asns` - Create an ASN
+- `PUT /asns/{id}` - Update an ASN
+- `POST /asns/{id}/mark-in-transit` - Mark ASN as in transit
+- `POST /asns/{id}/mark-delivered` - Mark ASN as delivered
+- `POST /asns/{id}/hold` - Place ASN on hold
+- `POST /asns/{id}/release` - Release ASN from hold
+- `DELETE /asns/{id}` - Cancel an ASN
+- `POST /asns/{id}/items` - Add item to ASN
+- `DELETE /asns/{id}/items/{item_id}` - Remove item from ASN
+- `GET /asns/by-supplier/{supplier_id}` - Get ASNs by supplier
+- `GET /asns/by-status/{status}` - Get ASNs by status
+- `GET /asns/by-delivery-date` - Get ASNs by delivery date
 
-### Advanced Shipping Notice (ASN)
-- `POST /asn` - Create an ASN
-- `GET /asn/:id` - Get ASN details
-- `POST /asn/:id/receive` - Record ASN receipt
+### Products (`/api/v1/products`)
+- `GET /products` - List products (searchable, filterable, paginated)
+- `GET /products/{id}` - Get product details
+- `POST /products` - Create a product
+- `PUT /products/{id}` - Update a product
+- `GET /products/{id}/variants` - Get product variants
+- `POST /products/{id}/variants` - Add product variant
 
-### Analytics
-- `GET /analytics/orders` - Order analytics and metrics
-- `GET /analytics/inventory` - Inventory analytics
-- `GET /analytics/reports` - Custom report generation
+### Shopping Carts (`/api/v1/carts`)
+- `POST /carts` - Create a shopping cart
+- `GET /carts/{id}` - Get cart details
+- `POST /carts/{id}/items` - Add item to cart
+- `PUT /carts/{id}/items/{item_id}` - Update cart item quantity
+- `DELETE /carts/{id}/items/{item_id}` - Remove item from cart
 
-### Crypto Payments (StablePay)
-- `POST /stablepay/payment` - Create a crypto payment
-- `GET /stablepay/payment/:id` - Get payment status
-- `POST /stablepay/reconcile` - Reconcile crypto transactions
+### Checkout (`/api/v1/checkout`)
+- `POST /checkout` - Initiate checkout process
+
+### Customers (`/api/v1/customers`)
+- `GET /customers` - List customers (searchable)
+- `GET /customers/{id}` - Get customer details
+- `POST /customers` - Create customer account
+- `PUT /customers/{id}` - Update customer
+- `POST /customers/{id}/addresses` - Add customer address
+- `GET /customers/{id}/addresses` - List customer addresses
+
+### Payments (`/api/v1/payments`)
+- `POST /payments` - Create a payment
+- `GET /payments/{id}` - Get payment status
+- `POST /payments/refund` - Refund a payment
+- `POST /payments/webhook` - Process payment webhook (signature-verified, no auth required)
+
+### Agents API (`/api/v1/agents`)
+- `GET /agents/recommendations` - Get product recommendations
+- `POST /agents/customers/{customer_id}/carts/{cart_id}/items` - Agent adds item to customer's cart
+
+### Agentic Checkout (`/api/v1/agentic-checkout`)
+- `POST /agentic-checkout/sessions` - Create checkout session (ChatGPT integration)
+- `GET /agentic-checkout/sessions/{id}` - Get session details
+- `POST /agentic-checkout/sessions/{id}/submit` - Submit order from checkout
+- `POST /agentic-checkout/sessions/{id}/payment` - Handle payment
+- `GET /agentic-checkout/order-status/{id}` - Get order status
+
+### Analytics (`/api/v1/analytics`)
+- `GET /analytics/dashboard` - Get dashboard metrics
+- `GET /analytics/sales/trends` - Get sales trends
+- `GET /analytics/sales/metrics` - Get sales metrics
+- `GET /analytics/inventory` - Get inventory analytics
+- `GET /analytics/shipments` - Get shipment metrics
+- `GET /analytics/carts` - Get cart analytics
+
+### Admin (`/api/v1/admin`)
+- `GET /admin/outbox` - List outbox events (requires `admin:outbox`)
+- `POST /admin/outbox/{id}/retry` - Retry failed event
+- `DELETE /admin/outbox/{id}` - Delete outbox event
 
 ### Health & Metrics
-- `GET /health` - Basic health check
-- `GET /health/readiness` - Database readiness check
-- `GET /health/version` - Build and version information
+- `GET /status` - API status and version information
+- `GET /health` - Health check (DB, Redis, cache status)
 - `GET /metrics` - Prometheus metrics (text format)
 - `GET /metrics/json` - Metrics in JSON format
 
