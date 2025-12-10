@@ -633,9 +633,11 @@ Environment variables:
 ### 📚 Complete Documentation Suite
 
 **Start Here:**
+- **[Business Getting Started Guide](docs/GETTING_STARTED_BUSINESS.md)** 🚀 - Complete guide for businesses launching ecommerce on Stateset
+- **[Business Quick Reference Card](docs/BUSINESS_QUICK_REFERENCE.md)** ⚡ - One-page cheat sheet with all essential commands and endpoints
 - **[API Overview](API_OVERVIEW.md)** 🎯 - Comprehensive platform overview with architecture, capabilities, and production readiness details
 - **[Production Ready Report](PRODUCTION_READY_REPORT.md)** ✅ - 10/10 production readiness achievements and deployment checklist
-- **[Quick Start Guide](docs/QUICK_START.md)** ⚡ - Get running in 5 minutes
+- **[Quick Start Guide](docs/QUICK_START.md)** ⚡ - Technical quick start - get running in 5 minutes
 - **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** 🗂️ - Complete documentation map
 - **[FAQ](docs/FAQ.md)** ❓ - Frequently asked questions
 

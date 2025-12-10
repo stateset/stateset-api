@@ -185,6 +185,31 @@ Cryptocurrency payment integration:
 
 ## Quick Reference Guides
 
+### [Business Getting Started Guide](./GETTING_STARTED_BUSINESS.md) 🚀
+**Complete guide for businesses launching ecommerce on Stateset!** Perfect for founders, product managers, and business stakeholders:
+- What is Stateset API and who should use it
+- 15-minute quick start from zero to first order
+- Core capabilities explained for non-technical audiences
+- Complete checkout flow implementation
+- Common business scenarios (D2C, B2B, subscription, manufacturing)
+- Production deployment guide
+- Pricing and scaling recommendations
+
+**Best for**: Business decision-makers, founders, product managers planning to use Stateset
+
+### [Business Quick Reference Card](./BUSINESS_QUICK_REFERENCE.md) ⚡
+**One-page cheat sheet** with all essential commands, endpoints, and configurations:
+- Quick start commands
+- All essential API endpoints with examples
+- Environment variables reference
+- CLI tool commands
+- Monitoring endpoints
+- Rate limits and performance benchmarks
+- Troubleshooting tips
+- Common business scenarios
+
+**Best for**: Quick reference during development and operations
+
 ### [API Examples](../examples/api-examples.md)
 Practical examples in cURL, JavaScript, and Python covering:
 - Authentication flows
@@ -228,24 +253,30 @@ Quick start guide for running the code examples
 
 ## Documentation by Audience
 
-### For Business Stakeholders
+### For Business Stakeholders & Founders
 Start here to understand what the API can do:
-1. [API Overview](./API_OVERVIEW.md) - Capabilities section
-2. [Use Cases Guide](./USE_CASES.md) - Relevant scenarios for your business
-3. Main [README](../README.md) - Feature overview
+1. **[Business Getting Started Guide](./GETTING_STARTED_BUSINESS.md)** - Complete business overview 🚀
+2. [API Overview](./API_OVERVIEW.md) - Capabilities section
+3. [Use Cases Guide](./USE_CASES.md) - Relevant scenarios for your business
+4. Main [README](../README.md) - Feature overview
+5. [Business Quick Reference](./BUSINESS_QUICK_REFERENCE.md) - Handy cheat sheet
 
 ### For Product Managers
 Learn about features and workflows:
-1. [API Overview](./API_OVERVIEW.md) - Core capabilities
-2. [Use Cases Guide](./USE_CASES.md) - Complete workflows
-3. [Roadmap](../ROADMAP.md) - Upcoming features
+1. **[Business Getting Started Guide](./GETTING_STARTED_BUSINESS.md)** - Business-focused overview 🚀
+2. [API Overview](./API_OVERVIEW.md) - Core capabilities
+3. [Use Cases Guide](./USE_CASES.md) - Complete workflows
+4. [Roadmap](../ROADMAP.md) - Upcoming features
+5. [Business Quick Reference](./BUSINESS_QUICK_REFERENCE.md) - Quick lookup
 
 ### For Developers (New to StateSet)
 Get started building:
-1. [Getting Started](../GETTING_STARTED.md) - Setup
-2. [API Examples](../examples/api-examples.md) - Quick examples
-3. [Use Cases Guide](./USE_CASES.md) - Implementation patterns
-4. Interactive [Swagger UI](http://localhost:8080/swagger-ui) - Try the API
+1. [Getting Started](../GETTING_STARTED.md) - Technical setup
+2. **[Business Getting Started Guide](./GETTING_STARTED_BUSINESS.md)** - Business context 🚀
+3. [API Examples](../examples/api-examples.md) - Quick examples
+4. [Use Cases Guide](./USE_CASES.md) - Implementation patterns
+5. Interactive [Swagger UI](http://localhost:8080/swagger-ui) - Try the API
+6. [Business Quick Reference](./BUSINESS_QUICK_REFERENCE.md) - Cheat sheet
 
 ### For Developers (Building Integrations)
 Build production-ready integrations:
@@ -385,11 +416,18 @@ We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ## Next Steps
 
-**If you're new to StateSet API:**
+**If you're a business evaluating Stateset:**
+1. **[Business Getting Started Guide](./GETTING_STARTED_BUSINESS.md)** - Understand the platform 🚀
+2. **[Use Cases Guide](./USE_CASES.md)** - See your scenario 💡
+3. **[Business Quick Reference](./BUSINESS_QUICK_REFERENCE.md)** - Quick lookup ⚡
+4. **[API Overview](./API_OVERVIEW.md)** - Deep dive into capabilities 📖
+
+**If you're new to StateSet API (technical):**
 1. **[Quick Start](./QUICK_START.md)** - Get running in 5 minutes ⚡
-2. **[API Overview](./API_OVERVIEW.md)** - Understand what it can do 📖
-3. **[API Examples](../examples/api-examples.md)** - Make your first API calls 💻
-4. **[FAQ](./FAQ.md)** - Get answers to common questions ❓
+2. **[Business Getting Started Guide](./GETTING_STARTED_BUSINESS.md)** - Business context 🚀
+3. **[API Overview](./API_OVERVIEW.md)** - Understand what it can do 📖
+4. **[API Examples](../examples/api-examples.md)** - Make your first API calls 💻
+5. **[FAQ](./FAQ.md)** - Get answers to common questions ❓
 
 **If you're building an integration:**
 1. **[Integration Guide](./INTEGRATION_GUIDE.md)** - Production patterns 🔧
