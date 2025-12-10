@@ -99,8 +99,7 @@ impl AgenticCommerceWebhookService {
             },
         };
 
-        self.send_async(webhook_url.to_string(), event);
-        Ok(())
+        self.send_webhook(webhook_url, event).await
     }
 
     /// Send order updated webhook to OpenAI
@@ -123,8 +122,7 @@ impl AgenticCommerceWebhookService {
             },
         };
 
-        self.send_async(webhook_url.to_string(), event);
-        Ok(())
+        self.send_webhook(webhook_url, event).await
     }
 
     /// Send webhook with retry logic

@@ -383,6 +383,7 @@ mod tests {
     use mockall::mock;
     use mockall::predicate::*;
     use std::str::FromStr;
+    use sea_orm::DatabaseConnection;
 
     mock! {
         pub Database {}
@@ -394,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn test_generate_order_summary_report() {
         // Setup
-        let db_pool = Arc::new(MockDatabase::new());
+        let db_pool = Arc::new(DatabaseConnection::Disconnected);
         let redis_client = Arc::new(redis::Client::open("redis://localhost").unwrap());
         let circuit_breaker = Arc::new(CircuitBreaker::new(
             5,

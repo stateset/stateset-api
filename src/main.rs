@@ -21,9 +21,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Init DB
     let db_pool = api::db::establish_connection_from_app_config(&cfg).await?;
     if cfg.auto_migrate {
-        if let Err(e) = api::db::run_migrations(&db_pool).await {
-            error!("Failed running migrations: {}", e);
-        }
+        api::db::run_migrations(&db_pool)
+            .await
+            .map_err(|e| {
+                error!("Failed running migrations: {}", e);
+                e
+            })?;
     }
 
     // Init Redis client (construction only; connection checked in health)

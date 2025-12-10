@@ -13,6 +13,7 @@
 
 use axum::{
     extract::{Path, Query, State},
+    http::header,
     response::{IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
@@ -252,16 +253,18 @@ pub async fn handle_callback(
         "OAuth2 authentication successful"
     );
 
-    // Redirect to frontend with tokens
-    let redirect_url = format!(
-        "{}?access_token={}&refresh_token={}&provider={}",
-        state.frontend_url,
-        urlencoding::encode(&access_token),
-        urlencoding::encode(&refresh_token),
-        provider
+    // Redirect to frontend without exposing tokens in the URL; deliver via HttpOnly cookies
+    let redirect_url = format!("{}?provider={}&status=success", state.frontend_url, provider);
+    let mut response = Redirect::temporary(&redirect_url).into_response();
+    append_token_cookies(
+        &mut response,
+        &access_token,
+        &refresh_token,
+        state.jwt_expiration,
+        state.frontend_url.starts_with("https://"),
     );
 
-    Ok(Redirect::temporary(&redirect_url).into_response())
+    Ok(response)
 }
 
 /// Exchange authorization code for tokens (SPA flow)
@@ -371,6 +374,45 @@ fn generate_tokens(state: &OAuth2State, user_info: &OAuth2UserInfo) -> Result<(S
     let refresh_token = Uuid::new_v4().to_string();
 
     Ok((access_token, refresh_token))
+}
+
+/// Append HttpOnly cookies for the tokens to the response
+fn append_token_cookies(
+    response: &mut axum::response::Response,
+    access_token: &str,
+    refresh_token: &str,
+    access_max_age: i64,
+    secure: bool,
+) {
+    const REFRESH_COOKIE_MAX_AGE_SECS: i64 = 30 * 24 * 60 * 60; // 30 days
+
+    for (name, value, max_age) in [
+        ("stateset_access_token", access_token, access_max_age),
+        ("stateset_refresh_token", refresh_token, REFRESH_COOKIE_MAX_AGE_SECS),
+    ] {
+        if let Ok(header_value) = build_cookie(name, value, max_age, secure) {
+            response.headers_mut().append(header::SET_COOKIE, header_value);
+        } else {
+            warn!(cookie = %name, "Failed to set auth cookie");
+        }
+    }
+}
+
+/// Build a secure-ish cookie string with HttpOnly and SameSite=Lax
+fn build_cookie(
+    name: &str,
+    value: &str,
+    max_age_secs: i64,
+    secure: bool,
+) -> Result<axum::http::HeaderValue, axum::http::Error> {
+    let mut cookie = format!(
+        "{}={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
+        name, value, max_age_secs
+    );
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    axum::http::HeaderValue::from_str(&cookie)
 }
 
 /// URL encoding helper

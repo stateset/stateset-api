@@ -421,10 +421,14 @@ impl AuthService {
     /// Validate a JWT token and extract the claims
     pub async fn validate_token(&self, token: &str) -> Result<Claims, AuthError> {
         // Decode and validate the token
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.set_audience(&[self.config.jwt_audience.clone()]);
+        validation.set_issuer(&[self.config.jwt_issuer.clone()]);
+
         let claims = decode::<Claims>(
             token,
             &DecodingKey::from_secret(self.config.jwt_secret.as_bytes()),
-            &Validation::new(Algorithm::HS256),
+            &validation,
         )
         .map_err(|e| match e.kind() {
             jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::TokenExpired,

@@ -21,7 +21,7 @@ pub fn agents_routes() -> Router<AppState> {
     Router::new()
         .route("/recommendations", get(get_recommendations))
         .route(
-            "/customers/:customer_id/carts/:cart_id}/items",
+            "/customers/:customer_id/carts/:cart_id/items",
             post(agent_add_to_cart),
         )
         .with_permission("agents:access")

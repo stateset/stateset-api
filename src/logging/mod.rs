@@ -107,10 +107,11 @@ mod tests {
     use super::*;
     use axum::{
         body::{to_bytes, Body},
+        http::{Request, StatusCode},
         routing::get,
+        ServiceExt,
         Router,
     };
-    use http::{Request, StatusCode};
     use tower::ServiceExt;
 
     async fn test_handler() -> &'static str {
