@@ -1,0 +1,158 @@
+# StateSet API - Development Environment
+# Docker Compose configuration for local development and testing
+#
+# This configuration starts:
+# - StateSet API server
+# - PostgreSQL database
+# - Redis cache
+# - Adminer (database UI)
+# - RedisInsight (Redis UI)
+#
+# Usage:
+#   docker-compose -f docker-compose.dev.yml up
+#   docker-compose -f docker-compose.dev.yml down
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: stateset-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: stateset
+      POSTGRES_USER: stateset
+      POSTGRES_PASSWORD: stateset_dev_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stateset"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stateset-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: stateset-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redis_dev_password
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stateset-network
+
+  # StateSet API Server
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: stateset-api
+    ports:
+      - "8080:8080"
+      - "50051:50051"  # gRPC
+    environment:
+      # Database
+      APP__DATABASE_URL: postgresql://stateset:stateset_dev_password@postgres:5432/stateset
+
+      # Redis
+      APP__REDIS_URL: redis://:redis_dev_password@redis:6379
+
+      # Server
+      APP__HOST: 0.0.0.0
+      APP__PORT: 8080
+      APP__GRPC_PORT: 50051
+
+      # Security
+      APP__JWT_SECRET: your-development-jwt-secret-min-64-chars-long-for-security-purposes
+      APP__JWT_EXPIRATION: 3600
+      APP__REFRESH_TOKEN_EXPIRATION: 2592000
+
+      # CORS
+      APP__CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:3001"
+      APP__CORS_ALLOW_CREDENTIALS: "true"
+
+      # Rate Limiting
+      APP__RATE_LIMIT_REQUESTS_PER_WINDOW: 1000
+      APP__RATE_LIMIT_WINDOW_SECONDS: 60
+      APP__RATE_LIMIT_USE_REDIS: "true"
+
+      # Webhooks
+      APP__PAYMENT_WEBHOOK_SECRET: your-webhook-secret
+
+      # Logging
+      RUST_LOG: info,stateset_api=debug
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../target:/app/target  # Cache Rust build artifacts
+      - ../Cargo.lock:/app/Cargo.lock
+      - ../Cargo.toml:/app/Cargo.toml
+    networks:
+      - stateset-network
+    command: ["cargo", "run", "--release"]
+
+  # Adminer - Database Management UI
+  adminer:
+    image: adminer:latest
+    container_name: stateset-adminer
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    depends_on:
+      - postgres
+    networks:
+      - stateset-network
+
+  # RedisInsight - Redis Management UI
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: stateset-redisinsight
+    ports:
+      - "8001:8001"
+    volumes:
+      - redisinsight_data:/db
+    depends_on:
+      - redis
+    networks:
+      - stateset-network
+
+  # MailHog - Email Testing Server
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: stateset-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - stateset-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  redisinsight_data:
+    driver: local
+
+networks:
+  stateset-network:
+    driver: bridge

@@ -24,12 +24,25 @@ This directory contains practical examples for using the StateSet API in differe
 #### Ruby
 - **[ruby-example.rb](./ruby-example.rb)** - Complete Ruby client with HTTParty
 
+#### PHP
+- **[php-example.php](./php-example.php)** - Full-featured PHP client using Guzzle
+
 #### Shell Scripts
 - **[curl-examples.sh](./curl-examples.sh)** - Bash script demonstrating API workflows with cURL
 
 ### 🧪 Testing Tools
 
 - **[StateSet-API.postman_collection.json](./StateSet-API.postman_collection.json)** - Complete Postman collection for interactive API testing
+
+### 🔧 Integration Examples
+
+- **[react-nextjs-integration.tsx](./react-nextjs-integration.tsx)** - Complete React/Next.js integration with hooks, context, and TypeScript
+- **[WEBHOOK_HANDLERS.md](./WEBHOOK_HANDLERS.md)** - Webhook handler implementations for Express, Next.js, Flask, FastAPI, PHP, Go, and Ruby
+
+### 🐳 Development Tools
+
+- **[docker-compose.dev.yml](./docker-compose.dev.yml)** - Docker Compose configuration for local development
+- **[DOCKER_DEVELOPMENT.md](./DOCKER_DEVELOPMENT.md)** - Complete guide to using Docker for local development
 
 ## Quick Start
 
@@ -116,6 +129,21 @@ ruby ruby-example.rb
 Before running, update the credentials in the script:
 ```ruby
 client.login('admin@stateset.com', 'your-password')
+```
+
+### PHP
+
+```bash
+# Install dependencies
+composer require guzzlehttp/guzzle
+
+# Run the example
+php php-example.php
+```
+
+Before running, update the credentials in the script:
+```php
+$client->login('admin@stateset.com', 'your-password');
 ```
 
 ### cURL (Bash)
@@ -232,6 +260,73 @@ require './ruby-example'
 client = StateSetClient.new('http://localhost:8080/api/v1')
 client.login('user@example.com', 'password')
 orders = client.list_orders(page: 1, limit: 10)
+```
+
+### PHP
+```php
+<?php
+require 'vendor/autoload.php';
+
+$client = new StateSetClient('http://localhost:8080/api/v1');
+$client->login('user@example.com', 'password');
+$orders = $client->listOrders(['page' => 1, 'limit' => 10]);
+```
+
+## React/Next.js Integration
+
+For React and Next.js applications, see [react-nextjs-integration.tsx](./react-nextjs-integration.tsx) which includes:
+
+- **Auth Context** - Complete authentication state management
+- **Custom Hooks** - `useOrders()`, `useCart()`, `useProducts()`, etc.
+- **Example Components** - Login form, order list, shopping cart, product grid
+- **TypeScript Support** - Fully typed API client and responses
+- **SWR Integration** - Automatic caching and revalidation
+
+```typescript
+import { AuthProvider, useOrders, useCart } from './react-nextjs-integration';
+
+// Wrap your app
+function App() {
+  return (
+    <AuthProvider>
+      <YourApp />
+    </AuthProvider>
+  );
+}
+
+// Use hooks in your components
+function OrdersPage() {
+  const { orders, isLoading, error } = useOrders({ page: 1, limit: 10 });
+  // ...
+}
+```
+
+## Webhook Handlers
+
+For webhook integration, see [WEBHOOK_HANDLERS.md](./WEBHOOK_HANDLERS.md) with implementations for:
+
+- Express.js/Node.js
+- Next.js API Routes
+- Python (Flask & FastAPI)
+- PHP
+- Go
+- Ruby/Sinatra
+
+All examples include proper signature verification and event handling.
+
+## Docker Development
+
+For local development with Docker, see [DOCKER_DEVELOPMENT.md](./DOCKER_DEVELOPMENT.md):
+
+```bash
+# Start the complete development environment
+docker-compose -f docker-compose.dev.yml up
+
+# Access services:
+# - API: http://localhost:8080
+# - Database UI: http://localhost:8081
+# - Redis UI: http://localhost:8001
+# - Email Testing: http://localhost:8025
 ```
 
 ## Important Notes
