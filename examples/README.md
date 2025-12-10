@@ -7,14 +7,49 @@ This directory contains practical examples for using the StateSet API in differe
 ### 📚 Documentation
 
 - **[api-examples.md](./api-examples.md)** - Comprehensive guide with examples in cURL, JavaScript, and Python covering all major API endpoints
+- **[ADVANCED_WORKFLOWS.md](./ADVANCED_WORKFLOWS.md)** - Advanced workflow examples including complete checkout flows, order fulfillment, returns processing, and more
 
 ### 💻 Code Examples
 
+#### JavaScript/TypeScript
+- **[typescript-example.ts](./typescript-example.ts)** - Modern TypeScript client with comprehensive type definitions and async/await patterns
 - **[javascript-example.js](./javascript-example.js)** - Complete Node.js client with working examples
+
+#### Python
 - **[python-example.py](./python-example.py)** - Complete Python client with working examples
+
+#### Go
+- **[go-example.go](./go-example.go)** - Full-featured Go client implementation
+
+#### Ruby
+- **[ruby-example.rb](./ruby-example.rb)** - Complete Ruby client with HTTParty
+
+#### Shell Scripts
 - **[curl-examples.sh](./curl-examples.sh)** - Bash script demonstrating API workflows with cURL
 
+### 🧪 Testing Tools
+
+- **[StateSet-API.postman_collection.json](./StateSet-API.postman_collection.json)** - Complete Postman collection for interactive API testing
+
 ## Quick Start
+
+### TypeScript/Node.js (Recommended)
+
+```bash
+# Install dependencies
+npm install axios uuid @types/node @types/uuid
+
+# If using ts-node
+npm install -g ts-node
+
+# Run the example
+ts-node typescript-example.ts
+```
+
+Before running, update the credentials in the script:
+```typescript
+await client.login('admin@stateset.com', 'your-password');
+```
 
 ### JavaScript/Node.js
 
@@ -50,6 +85,39 @@ EMAIL = 'your-email@example.com'
 PASSWORD = 'your-password'
 ```
 
+### Go
+
+```bash
+# Install dependencies
+go get github.com/google/uuid
+
+# Run the example
+go run go-example.go
+```
+
+Before running, update the credentials in the script:
+```go
+client.Login("admin@stateset.com", "your-password")
+```
+
+### Ruby
+
+```bash
+# Install dependencies
+gem install httparty
+
+# Make the script executable
+chmod +x ruby-example.rb
+
+# Run the example
+ruby ruby-example.rb
+```
+
+Before running, update the credentials in the script:
+```ruby
+client.login('admin@stateset.com', 'your-password')
+```
+
 ### cURL (Bash)
 
 ```bash
@@ -65,6 +133,13 @@ Before running, update the credentials in the script:
 EMAIL="your-email@example.com"
 PASSWORD="your-password"
 ```
+
+### Postman Collection
+
+1. Import `StateSet-API.postman_collection.json` into Postman
+2. Set the `base_url` environment variable to your API endpoint
+3. Run the "Login" request first to automatically set the `access_token`
+4. All subsequent requests will use the token automatically
 
 ## What's Covered
 
@@ -107,7 +182,19 @@ All examples demonstrate the following workflows:
 
 ## API Client Classes
 
-The JavaScript and Python examples include full-featured client classes that you can use in your own projects:
+All code examples include full-featured client classes that you can use in your own projects:
+
+### TypeScript (Recommended)
+```typescript
+import StateSetClient from './typescript-example';
+
+const client = new StateSetClient('http://localhost:8080/api/v1');
+await client.login('user@example.com', 'password');
+
+// All methods are fully typed
+const orders = await client.listOrders({ status: 'pending', page: 1, limit: 10 });
+const cart = await client.createCart(customerId);
+```
 
 ### JavaScript
 ```javascript
@@ -125,6 +212,26 @@ from python_example import StateSetClient
 client = StateSetClient('http://localhost:8080/api/v1')
 client.login('user@example.com', 'password')
 orders = client.list_orders(status='pending')
+```
+
+### Go
+```go
+package main
+
+import "github.com/stateset/stateset-api/examples"
+
+client := NewStateSetClient("http://localhost:8080/api/v1")
+err := client.Login("user@example.com", "password")
+orders, err := client.ListOrders(1, 10)
+```
+
+### Ruby
+```ruby
+require './ruby-example'
+
+client = StateSetClient.new('http://localhost:8080/api/v1')
+client.login('user@example.com', 'password')
+orders = client.list_orders(page: 1, limit: 10)
 ```
 
 ## Important Notes
@@ -252,6 +359,20 @@ cargo build --bin stateset-cli
 4. Receive and inspect items
 5. Restock inventory
 6. Process refund
+
+## Advanced Workflows
+
+For detailed, production-ready workflow implementations, see [ADVANCED_WORKFLOWS.md](./ADVANCED_WORKFLOWS.md), which includes:
+
+- **Complete E-Commerce Checkout Flow** - Full checkout from cart to order completion
+- **Order Fulfillment Workflow** - End-to-end fulfillment with inventory reservations
+- **Returns Processing Workflow** - Complete returns with inspection and refunds
+- **Inventory Management with Reservations** - Automatic reservation handling
+- **Subscription Order Management** - Recurring order implementation
+- **Error Handling and Retry Patterns** - Robust error handling with exponential backoff
+- **Idempotency Best Practices** - Prevent duplicate operations
+- **Webhooks Integration** - Handle webhook events securely
+- **Batch Operations** - Process multiple operations efficiently
 
 ## Need Help?
 

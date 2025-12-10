@@ -1,0 +1,683 @@
+{
+  "info": {
+    "name": "StateSet API",
+    "description": "Complete collection of StateSet API endpoints for e-commerce, inventory, manufacturing, and more.\n\n## Setup\n1. Import this collection into Postman\n2. Set the `base_url` variable to your API endpoint (e.g., http://localhost:8080/api/v1)\n3. Run the 'Login' request first to set the `access_token` variable\n4. All subsequent requests will use the token automatically\n\n## Variables\n- `base_url`: API base URL\n- `access_token`: JWT access token (auto-set after login)\n- `customer_id`: Sample customer ID\n- `order_id`: Sample order ID\n- `cart_id`: Sample cart ID",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customer_id",
+      "value": "550e8400-e29b-41d4-a716-446655440001",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cart_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.refresh_token);",
+                  "    console.log('Access token saved:', jsonData.access_token.substring(0, 20) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@stateset.com\",\n  \"password\": \"your-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authenticate and receive JWT access and refresh tokens"
+          },
+          "response": []
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newuser@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Production API Key\",\n  \"permissions\": [\"orders:read\", \"orders:create\", \"inventory:read\"],\n  \"expires_at\": \"2026-12-31T23:59:59Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "api-keys"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders?page=1&limit=10&status=pending",
+              "host": ["{{base_url}}"],
+              "path": ["orders"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"},
+                {"key": "status", "value": "pending"}
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('order_id', jsonData.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"status\": \"pending\",\n  \"total_amount\": 199.98,\n  \"currency\": \"USD\",\n  \"items\": [\n    {\n      \"product_id\": \"550e8400-e29b-41d4-a716-446655440002\",\n      \"sku\": \"WIDGET-001\",\n      \"quantity\": 2,\n      \"unit_price\": 99.99,\n      \"name\": \"Premium Widget\"\n    }\n  ],\n  \"shipping_address\": {\n    \"street\": \"123 Main St\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"postal_code\": \"94105\",\n    \"country\": \"US\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["orders", "{{order_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"processing\",\n  \"notes\": \"Payment confirmed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["orders", "{{order_id}}", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer requested cancellation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_id}}/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["orders", "{{order_id}}", "cancel"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "List Inventory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/inventory?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["inventory"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Low Stock Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/inventory/low-stock",
+              "host": ["{{base_url}}"],
+              "path": ["inventory", "low-stock"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reserve Inventory",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 5,\n  \"order_id\": \"{{order_id}}\",\n  \"expires_at\": \"2025-12-31T23:59:59Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/inventory/:id/reserve",
+              "host": ["{{base_url}}"],
+              "path": ["inventory", ":id", "reserve"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "550e8400-e29b-41d4-a716-446655440010"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Shopping Cart",
+      "item": [
+        {
+          "name": "Create Cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('cart_id', jsonData.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"session_id\": \"{{$guid}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/carts",
+              "host": ["{{base_url}}"],
+              "path": ["carts"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/carts/{{cart_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["carts", "{{cart_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Item to Cart",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": \"550e8400-e29b-41d4-a716-446655440002\",\n  \"sku\": \"WIDGET-001\",\n  \"quantity\": 2,\n  \"price\": 99.99,\n  \"name\": \"Premium Widget\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/carts/{{cart_id}}/items",
+              "host": ["{{base_url}}"],
+              "path": ["carts", "{{cart_id}}", "items"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "Create Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('customer_id', jsonData.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\",\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Smith\",\n  \"phone\": \"+1-555-0200\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/customers",
+              "host": ["{{base_url}}"],
+              "path": ["customers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["customers"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Returns",
+      "item": [
+        {
+          "name": "Create Return",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"items\": [\n    {\n      \"quantity\": 1,\n      \"reason\": \"defective\",\n      \"description\": \"Product arrived damaged\"\n    }\n  ],\n  \"customer_notes\": \"Package was damaged during shipping\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/returns",
+              "host": ["{{base_url}}"],
+              "path": ["returns"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Returns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/returns?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["returns"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Return",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/returns/:id/approve",
+              "host": ["{{base_url}}"],
+              "path": ["returns", ":id", "approve"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "return-id-here"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Shipments",
+      "item": [
+        {
+          "name": "Create Shipment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{order_id}}\",\n  \"carrier\": \"UPS\",\n  \"service_level\": \"ground\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/shipments",
+              "host": ["{{base_url}}"],
+              "path": ["shipments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as Shipped",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tracking_number\": \"1Z999AA10123456784\",\n  \"shipped_at\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/shipments/:id/ship",
+              "host": ["{{base_url}}"],
+              "path": ["shipments", ":id", "ship"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "shipment-id-here"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Track Shipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/shipments/track/:tracking_number",
+              "host": ["{{base_url}}"],
+              "path": ["shipments", "track", ":tracking_number"],
+              "variable": [
+                {
+                  "key": "tracking_number",
+                  "value": "1Z999AA10123456784"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Dashboard Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "dashboard"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sales Trends",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/sales/trends?start_date=2025-01-01&end_date=2025-12-31&interval=month",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "sales", "trends"],
+              "query": [
+                {"key": "start_date", "value": "2025-01-01"},
+                {"key": "end_date", "value": "2025-12-31"},
+                {"key": "interval", "value": "month"}
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Inventory Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/inventory",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "inventory"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "API Status",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["status"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
