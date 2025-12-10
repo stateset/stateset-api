@@ -8,6 +8,21 @@ This directory contains practical examples for using the StateSet API in differe
 
 - **[api-examples.md](./api-examples.md)** - Comprehensive guide with examples in cURL, JavaScript, and Python covering all major API endpoints
 - **[ADVANCED_WORKFLOWS.md](./ADVANCED_WORKFLOWS.md)** - Advanced workflow examples including complete checkout flows, order fulfillment, returns processing, and more
+- **[MANUFACTURING_EXAMPLES.md](./MANUFACTURING_EXAMPLES.md)** - Comprehensive manufacturing and production examples with shell scripts, Python, and TypeScript
+
+### 🏭 Manufacturing & Production Examples
+
+- **[manufacturing-client.py](./manufacturing-client.py)** - Complete Python client for manufacturing operations (BOM, work orders, batch production, traceability)
+- **[manufacturing-client.ts](./manufacturing-client.ts)** - Fully-typed TypeScript client for manufacturing workflows
+- **Shell Script Demos** (in `/demos/`):
+  - `demo_1_robot_build.sh` - Robot manufacturing with component traceability
+  - `demo_2_quality_issue.sh` - Quality management and NCR workflows
+  - `demo_3_production_dashboard.sh` - Real-time production monitoring
+  - `demo_4_production_scheduling.sh` - Multi-work order scheduling and MRP
+  - `demo_5_batch_production.sh` - Batch/lot tracking for regulated industries
+  - `demo_6_supply_chain_integration.sh` - End-to-end supply chain workflows
+
+See **[MANUFACTURING_EXAMPLES.md](./MANUFACTURING_EXAMPLES.md)** for detailed manufacturing documentation and usage guides.
 
 ### 💻 Code Examples
 
@@ -207,6 +222,17 @@ All examples demonstrate the following workflows:
 7. **Analytics**
    - Dashboard metrics
    - Sales trends
+
+8. **Manufacturing & Production** (See [MANUFACTURING_EXAMPLES.md](./MANUFACTURING_EXAMPLES.md))
+   - Bill of Materials (BOM) management
+   - Work order lifecycle (create, start, complete, hold, resume, cancel)
+   - Batch production and lot tracking
+   - Component serial number tracking
+   - Robot manufacturing and traceability
+   - Quality control and testing
+   - Production scheduling and capacity planning
+   - Supply chain integration (procurement to fulfillment)
+   - Production analytics and metrics
 
 ## API Client Classes
 
