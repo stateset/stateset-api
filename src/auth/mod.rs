@@ -108,8 +108,12 @@ impl AuthUser {
         self.roles.iter().any(|r| r == role)
     }
 
-    /// Check if the user has a specific permission
+    /// Check if the user has a specific permission (admins have all permissions)
     pub fn has_permission(&self, permission: &str) -> bool {
+        // Admins have all permissions
+        if self.has_role("admin") {
+            return true;
+        }
         self.permissions.iter().any(|p| p == permission)
     }
 

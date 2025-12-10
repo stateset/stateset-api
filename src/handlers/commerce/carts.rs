@@ -16,6 +16,7 @@ use axum::{
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -25,12 +26,12 @@ pub fn carts_routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_carts))
         .route("/", post(create_cart))
-        .route("/{id}", get(get_cart))
-        .route("/{id}", delete(delete_cart))
-        .route("/{id}/items", post(add_to_cart))
-        .route("/{id}/items/{item_id}", put(update_cart_item))
-        .route("/{id}/items/{item_id}", delete(remove_cart_item))
-        .route("/{id}/clear", post(clear_cart))
+        .route("/:id", get(get_cart))
+        .route("/:id", delete(delete_cart))
+        .route("/:id/items", post(add_to_cart))
+        .route("/:id/items/:item_id", put(update_cart_item))
+        .route("/:id/items/:item_id", delete(remove_cart_item))
+        .route("/:id/clear", post(clear_cart))
         .with_auth()
 }
 
@@ -126,7 +127,7 @@ async fn create_cart(
 /// Get cart with items
 #[utoipa::path(
     get,
-    path = "/api/v1/carts/{id}",
+    path = "/api/v1/carts/:id",
     params(
         ("id" = Uuid, Path, description = "Cart ID")
     ),
@@ -159,7 +160,7 @@ async fn get_cart(
 /// Delete (abandon) a cart
 #[utoipa::path(
     delete,
-    path = "/api/v1/carts/{id}",
+    path = "/api/v1/carts/:id",
     params(("id" = Uuid, Path, description = "Cart ID")),
     responses(
         (status = 200, description = "Cart abandoned", body = crate::ApiResponse<CartResponse>),
@@ -188,7 +189,7 @@ async fn delete_cart(
 /// Add item to cart
 #[utoipa::path(
     post,
-    path = "/api/v1/carts/{id}/items",
+    path = "/api/v1/carts/:id/items",
     params(
         ("id" = Uuid, Path, description = "Cart ID")
     ),
@@ -228,7 +229,7 @@ async fn add_to_cart(
 /// Update cart item quantity
 #[utoipa::path(
     put,
-    path = "/api/v1/carts/{id}/items/{item_id}",
+    path = "/api/v1/carts/:id/items/:item_id",
     params(
         ("id" = Uuid, Path, description = "Cart ID"),
         ("item_id" = Uuid, Path, description = "Cart item ID")
@@ -264,7 +265,7 @@ async fn update_cart_item(
 /// Remove item from cart
 #[utoipa::path(
     delete,
-    path = "/api/v1/carts/{id}/items/{item_id}",
+    path = "/api/v1/carts/:id/items/:item_id",
     params(
         ("id" = Uuid, Path, description = "Cart ID"),
         ("item_id" = Uuid, Path, description = "Cart item ID")
@@ -296,7 +297,7 @@ async fn remove_cart_item(
 /// Clear all items from cart
 #[utoipa::path(
     post,
-    path = "/api/v1/carts/{id}/clear",
+    path = "/api/v1/carts/:id/clear",
     params(
         ("id" = Uuid, Path, description = "Cart ID")
     ),
@@ -329,23 +330,49 @@ async fn clear_cart(
 // Request DTOs
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "session_id": "sess_abc123xyz",
+    "customer_id": "550e8400-e29b-41d4-a716-446655440000",
+    "currency": "USD",
+    "metadata": {"source": "mobile_app", "campaign": "holiday_sale"}
+}))]
 pub struct CreateCartRequest {
+    /// Optional session ID for guest carts
+    #[schema(example = "sess_abc123xyz")]
     pub session_id: Option<String>,
+    /// Customer UUID (must match authenticated user)
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub customer_id: Option<Uuid>,
+    /// Currency code (ISO 4217, defaults to USD)
+    #[schema(example = "USD")]
     pub currency: Option<String>,
+    /// Additional metadata for the cart
     pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "variant_id": "660e8400-e29b-41d4-a716-446655440001",
+    "quantity": 2
+}))]
 pub struct AddItemRequest {
+    /// Product variant UUID to add
+    #[schema(example = "660e8400-e29b-41d4-a716-446655440001")]
     pub variant_id: Uuid,
+    /// Quantity to add (minimum 1)
     #[validate(range(min = 1))]
+    #[schema(example = 2)]
     pub quantity: i32,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "quantity": 3
+}))]
 pub struct UpdateQuantityRequest {
+    /// New quantity (0 to remove item)
     #[validate(range(min = 0))]
+    #[schema(example = 3)]
     pub quantity: i32,
 }
 
@@ -376,17 +403,49 @@ fn verify_cart_owner(customer_id: Option<Uuid>, user_id: Uuid) -> Result<(), Api
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "770e8400-e29b-41d4-a716-446655440000",
+    "currency": "USD",
+    "subtotal": "149.98",
+    "tax_total": "12.00",
+    "shipping_total": "9.99",
+    "discount_total": "15.00",
+    "total": "156.97",
+    "status": "active",
+    "expires_at": "2024-12-16T10:30:00Z",
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T11:45:00Z"
+}))]
 pub struct CartResponse {
+    /// Cart UUID
+    #[schema(example = "770e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// Currency code (ISO 4217)
+    #[schema(example = "USD")]
     pub currency: String,
+    /// Subtotal before tax, shipping, and discounts
+    #[schema(example = "149.98")]
     pub subtotal: Decimal,
+    /// Total tax amount
+    #[schema(example = "12.00")]
     pub tax_total: Decimal,
+    /// Total shipping cost
+    #[schema(example = "9.99")]
     pub shipping_total: Decimal,
+    /// Total discount amount
+    #[schema(example = "15.00")]
     pub discount_total: Decimal,
+    /// Final total (subtotal + tax + shipping - discounts)
+    #[schema(example = "156.97")]
     pub total: Decimal,
+    /// Cart status (active, abandoned, converted, expired)
+    #[schema(example = "active")]
     pub status: CartStatus,
+    /// Cart expiration timestamp
     pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// Cart creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last update timestamp
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -409,13 +468,34 @@ impl CartResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "880e8400-e29b-41d4-a716-446655440000",
+    "variant_id": "660e8400-e29b-41d4-a716-446655440001",
+    "quantity": 2,
+    "unit_price": "74.99",
+    "line_total": "149.98",
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T10:30:00Z"
+}))]
 pub struct CartItemResponse {
+    /// Cart item UUID
+    #[schema(example = "880e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// Product variant UUID
+    #[schema(example = "660e8400-e29b-41d4-a716-446655440001")]
     pub variant_id: Uuid,
+    /// Item quantity
+    #[schema(example = 2)]
     pub quantity: i32,
+    /// Unit price per item
+    #[schema(example = "74.99")]
     pub unit_price: Decimal,
+    /// Line total (unit_price × quantity)
+    #[schema(example = "149.98")]
     pub line_total: Decimal,
+    /// Item added timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last update timestamp
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -434,8 +514,36 @@ impl From<cart_item::Model> for CartItemResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "cart": {
+        "id": "770e8400-e29b-41d4-a716-446655440000",
+        "currency": "USD",
+        "subtotal": "149.98",
+        "tax_total": "12.00",
+        "shipping_total": "9.99",
+        "discount_total": "15.00",
+        "total": "156.97",
+        "status": "active",
+        "expires_at": "2024-12-16T10:30:00Z",
+        "created_at": "2024-12-09T10:30:00Z",
+        "updated_at": "2024-12-09T11:45:00Z"
+    },
+    "items": [
+        {
+            "id": "880e8400-e29b-41d4-a716-446655440000",
+            "variant_id": "660e8400-e29b-41d4-a716-446655440001",
+            "quantity": 2,
+            "unit_price": "74.99",
+            "line_total": "149.98",
+            "created_at": "2024-12-09T10:30:00Z",
+            "updated_at": "2024-12-09T10:30:00Z"
+        }
+    ]
+}))]
 pub struct CartDetailedResponse {
+    /// Cart summary information
     pub cart: CartResponse,
+    /// Items in the cart
     pub items: Vec<CartItemResponse>,
 }
 
@@ -449,6 +557,11 @@ impl CartDetailedResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "message": "Cart cleared successfully"
+}))]
 pub struct CartMessageResponse {
+    /// Operation result message
+    #[schema(example = "Cart cleared successfully")]
     pub message: String,
 }

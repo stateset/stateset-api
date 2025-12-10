@@ -58,7 +58,7 @@ async fn delete_user_notification_handler(
 pub fn notification_routes() -> Router<(Arc<DbPool>, Arc<redis::Client>)> {
     Router::new()
         .route("/", get(get_user_notifications_handler))
-        .route("/{id}/read", post(mark_notification_as_read_handler))
-        .route("/{id}/unread", post(mark_notification_as_unread_handler))
-        .route("/{id}/delete", delete(delete_user_notification_handler))
+        .route("/:id/read", post(mark_notification_as_read_handler))
+        .route("/:id/unread", post(mark_notification_as_unread_handler))
+        .route("/:id/delete", delete(delete_user_notification_handler))
 }

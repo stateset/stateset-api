@@ -20,26 +20,59 @@ use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "order_id": "550e8400-e29b-41d4-a716-446655440000",
+    "amount": "149.99",
+    "payment_method": "credit_card",
+    "payment_method_id": "pm_1234567890",
+    "currency": "USD",
+    "description": "Payment for order ORD-2024-001234"
+}))]
 pub struct CreatePaymentRequest {
+    /// Order to process payment for
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub order_id: Uuid,
 
+    /// Payment amount
+    #[schema(example = "149.99")]
     pub amount: Decimal,
+    /// Payment method type (credit_card, debit_card, paypal, bank_transfer, cash, check)
+    #[schema(example = "credit_card")]
     pub payment_method: String,
+    /// External payment method identifier (e.g., Stripe payment method ID)
+    #[schema(example = "pm_1234567890")]
     pub payment_method_id: Option<String>,
+    /// Currency code (ISO 4217, defaults to USD)
+    #[schema(example = "USD")]
     pub currency: Option<String>,
+    /// Payment description
+    #[schema(example = "Payment for order ORD-2024-001234")]
     pub description: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "payment_id": "770e8400-e29b-41d4-a716-446655440001",
+    "amount": "50.00",
+    "reason": "Customer requested partial refund - item damaged"
+}))]
 pub struct RefundPaymentHandlerRequest {
+    /// Payment to refund
+    #[schema(example = "770e8400-e29b-41d4-a716-446655440001")]
     pub payment_id: Uuid,
 
+    /// Refund amount (optional, defaults to full payment amount)
+    #[schema(example = "50.00")]
     pub amount: Option<Decimal>,
+    /// Reason for refund
+    #[schema(example = "Customer requested partial refund - item damaged")]
     pub reason: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, utoipa::IntoParams)]
 pub struct PaymentStatusFilter {
+    /// Filter by payment status (pending, completed, failed, refunded)
+    #[schema(example = "completed")]
     pub status: Option<String>,
 }
 
@@ -51,9 +84,17 @@ pub struct PaymentStatusFilter {
     path = "/api/v1/payments",
     request_body = CreatePaymentRequest,
     responses(
-        (status = 201, description = "Payment processed", body = crate::ApiResponse<crate::services::payments::PaymentResponse>),
+        (status = 201, description = "Payment processed", body = crate::ApiResponse<crate::services::payments::PaymentResponse>,
+            headers(
+                ("X-Request-Id" = String, description = "Unique request identifier"),
+                ("X-RateLimit-Limit" = String, description = "Maximum requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in current window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until rate limit resets"),
+            )
+        ),
         (status = 400, description = "Bad request", body = crate::errors::ErrorResponse),
-        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse)
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
     ),
     security(("bearer_auth" = [])),
     tag = "Payments"
@@ -112,7 +153,7 @@ async fn process_payment(
 /// Get payment by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/payments/{payment_id}",
+    path = "/api/v1/payments/:payment_id",
     params(
         ("payment_id" = Uuid, Path, description = "Payment ID")
     ),
@@ -145,7 +186,7 @@ async fn get_payment(
 /// Get payments for an order
 #[utoipa::path(
     get,
-    path = "/api/v1/payments/order/{order_id}",
+    path = "/api/v1/payments/order/:order_id",
     params(
         ("order_id" = Uuid, Path, description = "Order ID")
     ),
@@ -183,7 +224,17 @@ async fn get_order_payments(
         PaymentStatusFilter
     ),
     responses(
-        (status = 200, description = "List payments", body = crate::ApiResponse<crate::PaginatedResponse<crate::services::payments::PaymentResponse>>)
+        (status = 200, description = "List payments", body = crate::ApiResponse<crate::PaginatedResponse<crate::services::payments::PaymentResponse>>,
+            headers(
+                ("X-Request-Id" = String, description = "Unique request identifier"),
+                ("X-RateLimit-Limit" = String, description = "Maximum requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in current window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until rate limit resets"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
     ),
     security(("bearer_auth" = [])),
     tag = "Payments"
@@ -278,7 +329,7 @@ async fn refund_payment(
 /// Get total payments for an order
 #[utoipa::path(
     get,
-    path = "/api/v1/payments/order/{order_id}/total",
+    path = "/api/v1/payments/order/:order_id/total",
     params(
         ("order_id" = Uuid, Path, description = "Order ID")
     ),
@@ -318,9 +369,9 @@ pub fn payment_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(process_payment))
         .route("/", get(list_payments))
-        .route("/{payment_id}", get(get_payment))
-        .route("/order/{order_id}", get(get_order_payments))
-        .route("/order/{order_id}/total", get(get_order_payment_total))
+        .route("/:payment_id", get(get_payment))
+        .route("/order/:order_id", get(get_order_payments))
+        .route("/order/:order_id/total", get(get_order_payment_total))
         .route("/refund", post(refund_payment))
 }
 

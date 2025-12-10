@@ -11,7 +11,10 @@ async fn response_json(response: Response) -> Value {
     let bytes = body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("response body bytes");
-    serde_json::from_slice(&bytes).expect("json response")
+    serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+        let body_str = String::from_utf8_lossy(&bytes);
+        panic!("json response parse error: {}, body: {}", e, body_str)
+    })
 }
 
 #[tokio::test]
@@ -43,20 +46,32 @@ async fn inventory_item_lifecycle() {
     let response = app
         .request_authenticated(Method::POST, "/api/v1/inventory", Some(create_payload))
         .await;
-    assert_eq!(response.status(), 201);
+    let status = response.status();
     let body = response_json(response).await;
+    if status != 201 {
+        eprintln!("Response body: {:?}", body);
+        panic!("Expected 201, got {}", status);
+    }
     assert!(body["success"].as_bool().unwrap());
     let item = body["data"].clone();
     assert_eq!(item["item_number"], "TEST-ITEM-1");
     assert_eq!(item["quantities"]["available"], "15");
     let inventory_item_id = item["inventory_item_id"].as_i64().expect("item id");
+    eprintln!("Created inventory item with ID: {}", inventory_item_id);
 
-    // Fetch the item by number
+    // Fetch the item by ID
+    let url = format!("/api/v1/inventory/{}", inventory_item_id);
+    eprintln!("Fetching from URL: {}", url);
     let response = app
-        .request_authenticated(Method::GET, "/api/v1/inventory/TEST-ITEM-1", None)
+        .request_authenticated(Method::GET, &url, None)
         .await;
-    assert_eq!(response.status(), 200);
+    eprintln!("GET status: {}", response.status());
+    let status = response.status();
     let fetched = response_json(response).await;
+    if status != 200 {
+        eprintln!("GET Response body: {:?}", fetched);
+        panic!("Expected 200, got {}", status);
+    }
     assert_eq!(fetched["success"], true);
     assert_eq!(fetched["data"]["quantities"]["available"], "15");
 
@@ -69,7 +84,7 @@ async fn inventory_item_lifecycle() {
     let response = app
         .request_authenticated(
             Method::PUT,
-            "/api/v1/inventory/TEST-ITEM-1",
+            &format!("/api/v1/inventory/{}", inventory_item_id),
             Some(update_payload),
         )
         .await;
@@ -86,7 +101,7 @@ async fn inventory_item_lifecycle() {
     let response = app
         .request_authenticated(
             Method::POST,
-            "/api/v1/inventory/TEST-ITEM-1/reserve",
+            &format!("/api/v1/inventory/{}/reserve", inventory_item_id),
             Some(reserve_payload),
         )
         .await;
@@ -106,7 +121,7 @@ async fn inventory_item_lifecycle() {
     let response = app
         .request_authenticated(
             Method::POST,
-            "/api/v1/inventory/TEST-ITEM-1/release",
+            &format!("/api/v1/inventory/{}/release", inventory_item_id),
             Some(release_payload),
         )
         .await;

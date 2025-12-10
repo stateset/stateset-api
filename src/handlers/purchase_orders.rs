@@ -211,7 +211,7 @@ pub async fn create_purchase_order(
 /// Get a purchase order by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/purchase-orders/{id}",
+    path = "/api/v1/purchase-orders/:id",
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
     ),
@@ -239,7 +239,7 @@ pub async fn get_purchase_order(
 /// Update a purchase order
 #[utoipa::path(
     put,
-    path = "/api/v1/purchase-orders/{id}",
+    path = "/api/v1/purchase-orders/:id",
     request_body = UpdatePurchaseOrderRequest,
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
@@ -295,7 +295,7 @@ pub async fn update_purchase_order(
 /// Approve a purchase order
 #[utoipa::path(
     post,
-    path = "/api/v1/purchase-orders/{id}/approve",
+    path = "/api/v1/purchase-orders/:id/approve",
     request_body = ApprovePurchaseOrderRequest,
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
@@ -337,7 +337,7 @@ pub async fn approve_purchase_order(
 /// Cancel a purchase order
 #[utoipa::path(
     post,
-    path = "/api/v1/purchase-orders/{id}/cancel",
+    path = "/api/v1/purchase-orders/:id/cancel",
     request_body = CancelPurchaseOrderRequest,
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
@@ -378,7 +378,7 @@ pub async fn cancel_purchase_order(
 /// Mark a purchase order as received
 #[utoipa::path(
     post,
-    path = "/api/v1/purchase-orders/{id}/receive",
+    path = "/api/v1/purchase-orders/:id/receive",
     request_body = ReceivePurchaseOrderRequest,
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
@@ -428,7 +428,7 @@ pub async fn receive_purchase_order(
 /// Get purchase orders for a supplier
 #[utoipa::path(
     get,
-    path = "/api/v1/purchase-orders/supplier/{supplier_id}",
+    path = "/api/v1/purchase-orders/supplier/:supplier_id",
     params(
         ("supplier_id" = Uuid, Path, description = "Supplier ID")
     ),
@@ -454,7 +454,7 @@ pub async fn get_purchase_orders_by_supplier(
 /// Get purchase orders by status
 #[utoipa::path(
     get,
-    path = "/api/v1/purchase-orders/status/{status}",
+    path = "/api/v1/purchase-orders/status/:status",
     params(
         ("status" = String, Path, description = "Purchase order status")
     ),
@@ -541,7 +541,7 @@ pub async fn get_total_purchase_value(
 /// Submit a purchase order for approval
 #[utoipa::path(
     post,
-    path = "/api/v1/purchase-orders/{id}/submit",
+    path = "/api/v1/purchase-orders/:id/submit",
     request_body = SubmitPurchaseOrderRequest,
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
@@ -586,7 +586,7 @@ pub async fn submit_purchase_order(
 /// Reject a purchase order
 #[utoipa::path(
     post,
-    path = "/api/v1/purchase-orders/{id}/reject",
+    path = "/api/v1/purchase-orders/:id/reject",
     request_body = RejectPurchaseOrderRequest,
     params(
         ("id" = Uuid, Path, description = "Purchase order ID")
@@ -635,13 +635,13 @@ pub async fn reject_purchase_order(
 pub fn purchase_order_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_purchase_order))
-        .route("/{id}", get(get_purchase_order))
-        .route("/{id}", put(update_purchase_order))
-        .route("/{id}/submit", post(submit_purchase_order))
-        .route("/{id}/approve", post(approve_purchase_order))
-        .route("/{id}/reject", post(reject_purchase_order))
-        .route("/{id}/cancel", post(cancel_purchase_order))
-        .route("/{id}/receive", post(receive_purchase_order))
+        .route("/:id", get(get_purchase_order))
+        .route("/:id", put(update_purchase_order))
+        .route("/:id/submit", post(submit_purchase_order))
+        .route("/:id/approve", post(approve_purchase_order))
+        .route("/:id/reject", post(reject_purchase_order))
+        .route("/:id/cancel", post(cancel_purchase_order))
+        .route("/:id/receive", post(receive_purchase_order))
         .route(
             "/supplier/:supplier_id",
             get(get_purchase_orders_by_supplier),

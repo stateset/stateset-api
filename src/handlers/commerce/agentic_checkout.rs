@@ -869,7 +869,7 @@ async fn create_checkout_session(
 /// Get checkout session
 #[utoipa::path(
     get,
-    path = "/checkout_sessions/{checkout_session_id}",
+    path = "/checkout_sessions/:checkout_session_id}",
     tag = "Agentic Checkout",
     params(
         AgenticCheckoutHeaders,
@@ -912,7 +912,7 @@ async fn get_checkout_session(
 /// Update checkout session
 #[utoipa::path(
     post,
-    path = "/checkout_sessions/{checkout_session_id}",
+    path = "/checkout_sessions/:checkout_session_id}",
     tag = "Agentic Checkout",
     request_body = ApiUpdateCheckoutSessionRequest,
     params(
@@ -990,7 +990,7 @@ async fn update_checkout_session(
 /// Complete checkout session
 #[utoipa::path(
     post,
-    path = "/checkout_sessions/{checkout_session_id}/complete",
+    path = "/checkout_sessions/:checkout_session_id}/complete",
     tag = "Agentic Checkout",
     request_body = ApiCompleteCheckoutSessionRequest,
     params(
@@ -1069,7 +1069,7 @@ async fn complete_checkout_session(
 /// Cancel checkout session
 #[utoipa::path(
     post,
-    path = "/checkout_sessions/{checkout_session_id}/cancel",
+    path = "/checkout_sessions/:checkout_session_id}/cancel",
     tag = "Agentic Checkout",
     params(
         AgenticCheckoutHeaders,

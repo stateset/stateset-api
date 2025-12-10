@@ -28,12 +28,30 @@ pub struct ReturnListQuery {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "880e8400-e29b-41d4-a716-446655440000",
+    "order_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "pending",
+    "reason": "Product arrived damaged - scratches on surface",
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T10:30:00Z"
+}))]
 pub struct ReturnSummary {
+    /// Return request UUID
+    #[schema(example = "880e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// Associated order UUID
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub order_id: Uuid,
+    /// Return status (pending, approved, rejected, received, restocked, refunded)
+    #[schema(example = "pending")]
     pub status: String,
+    /// Reason for return
+    #[schema(example = "Product arrived damaged - scratches on surface")]
     pub reason: String,
+    /// Creation timestamp
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp
     pub updated_at: DateTime<Utc>,
 }
 
@@ -65,9 +83,17 @@ impl From<InitiateReturnResult> for ReturnSummary {
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "order_id": "550e8400-e29b-41d4-a716-446655440000",
+    "reason": "Product arrived damaged - scratches on surface"
+}))]
 pub struct CreateReturnRequest {
+    /// Order UUID to create return for
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub order_id: Uuid,
+    /// Reason for the return (required)
     #[validate(length(min = 1, message = "Reason cannot be empty"))]
+    #[schema(example = "Product arrived damaged - scratches on surface")]
     pub reason: String,
 }
 
@@ -115,7 +141,7 @@ pub async fn list_returns(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/returns/{id}",
+    path = "/api/v1/returns/:id",
     params(
         ("id" = Uuid, Path, description = "Return ID")
     ),
@@ -164,7 +190,7 @@ pub async fn create_return(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/returns/{id}/approve",
+    path = "/api/v1/returns/:id/approve",
     params(
         ("id" = Uuid, Path, description = "Return ID")
     ),
@@ -184,7 +210,7 @@ pub async fn approve_return(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/returns/{id}/restock",
+    path = "/api/v1/returns/:id/restock",
     params(
         ("id" = Uuid, Path, description = "Return ID")
     ),

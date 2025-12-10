@@ -230,10 +230,21 @@ impl OrderService {
             version: Set(1),
         };
 
-        let model = order_active.insert(db).await.map_err(|e| {
-            error!(error = %e, order_id = %order_id, "Failed to create minimal order");
-            ServiceError::db_error(e)
-        })?;
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        OrderEntity::insert(order_active)
+            .exec(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to create minimal order");
+                ServiceError::db_error(e)
+            })?;
+
+        // Query the order back using the known ID
+        let model = OrderEntity::find_by_id(order_id)
+            .one(db)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order".to_string()))?;
 
         if let Some(event_sender) = &self.event_sender {
             event_sender
@@ -294,10 +305,21 @@ impl OrderService {
             version: Set(1),
         };
 
-        let order_model = order_active.insert(&txn).await.map_err(|e| {
-            error!(error = %e, order_id = %order_id, "Failed to persist order header");
-            ServiceError::db_error(e)
-        })?;
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        OrderEntity::insert(order_active)
+            .exec(&txn)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to persist order header");
+                ServiceError::db_error(e)
+            })?;
+
+        // Query the order back using the known ID
+        let order_model = OrderEntity::find_by_id(order_id)
+            .one(&txn)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order".to_string()))?;
 
         let mut saved_items = Vec::with_capacity(input.items.len());
         for item in input.items.drain(..) {
@@ -312,8 +334,9 @@ impl OrderService {
             let tax_rate = item.tax_rate.unwrap_or(Decimal::ZERO);
             let tax_amount = (total_price * tax_rate).round_dp(2);
 
+            let item_id = Uuid::new_v4();
             let am = OrderItemActiveModel {
-                id: Set(Uuid::new_v4()),
+                id: Set(item_id),
                 order_id: Set(order_id),
                 product_id: Set(item.product_id.unwrap_or_else(Uuid::new_v4)),
                 sku: Set(item.sku),
@@ -330,10 +353,21 @@ impl OrderService {
                 updated_at: Set(Some(now)),
             };
 
-            let saved = am.insert(&txn).await.map_err(|e| {
-                error!(error = %e, order_id = %order_id, "Failed to persist order item");
-                ServiceError::db_error(e)
-            })?;
+            // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+            OrderItemEntity::insert(am)
+                .exec(&txn)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, order_id = %order_id, "Failed to persist order item");
+                    ServiceError::db_error(e)
+                })?;
+
+            // Query the item back
+            let saved = OrderItemEntity::find_by_id(item_id)
+                .one(&txn)
+                .await
+                .map_err(ServiceError::db_error)?
+                .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order item".to_string()))?;
             saved_items.push(saved);
         }
 
@@ -416,11 +450,21 @@ impl OrderService {
             version: Set(1),
         };
 
-        // Insert the order
-        let order_model = order_active_model.insert(&txn).await.map_err(|e| {
-            error!(error = %e, order_id = %order_id, "Failed to create order in database");
-            ServiceError::db_error(e)
-        })?;
+        // Insert the order using Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        OrderEntity::insert(order_active_model)
+            .exec(&txn)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to create order in database");
+                ServiceError::db_error(e)
+            })?;
+
+        // Query the order back using the known ID
+        let order_model = OrderEntity::find_by_id(order_id)
+            .one(&txn)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order".to_string()))?;
 
         // Enqueue outbox event within the transaction for reliability
         let payload = serde_json::json!({"order_id": order_id.to_string()});
@@ -563,8 +607,9 @@ impl OrderService {
         let rate = tax_rate.unwrap_or(Decimal::ZERO);
         let tax_amount = (total_price * rate).round_dp(2);
 
+        let item_id = Uuid::new_v4();
         let am = OrderItemActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(item_id),
             order_id: Set(order_id),
             product_id: Set(product_id.unwrap_or_else(Uuid::new_v4)),
             sku: Set(sku),
@@ -581,10 +626,21 @@ impl OrderService {
             updated_at: Set(Some(Utc::now())),
         };
 
-        let saved = am.insert(db).await.map_err(|e| {
-            error!(error = %e, order_id = %order_id, "Failed to add order item");
-            ServiceError::db_error(e)
-        })?;
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        OrderItemEntity::insert(am)
+            .exec(db)
+            .await
+            .map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to add order item");
+                ServiceError::db_error(e)
+            })?;
+
+        // Query the item back
+        let saved = OrderItemEntity::find_by_id(item_id)
+            .one(db)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order item".to_string()))?;
 
         if let Some(sender) = &self.event_sender {
             sender.send_or_log(Event::OrderUpdated {
@@ -1041,8 +1097,9 @@ impl OrderService {
             updated_at: Set(Some(now)),
             version: Set(1),
         };
-        let _model = header
-            .insert(db)
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        OrderEntity::insert(header)
+            .exec(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?;
 
@@ -1053,7 +1110,7 @@ impl OrderService {
             .await
             .map_err(|e| ServiceError::db_error(e))?;
         if existing_items == 0 {
-            let _ = OrderItemActiveModel {
+            let item1 = OrderItemActiveModel {
                 id: Set(Uuid::new_v4()),
                 order_id: Set(order_id),
                 product_id: Set(Uuid::new_v4()),
@@ -1069,12 +1126,13 @@ impl OrderService {
                 notes: Set(None),
                 created_at: Set(now - chrono::Duration::hours(2)),
                 updated_at: Set(Some(now)),
-            }
-            .insert(db)
-            .await
-            .map_err(|e| ServiceError::db_error(e))?;
+            };
+            OrderItemEntity::insert(item1)
+                .exec(db)
+                .await
+                .map_err(|e| ServiceError::db_error(e))?;
 
-            let _ = OrderItemActiveModel {
+            let item2 = OrderItemActiveModel {
                 id: Set(Uuid::new_v4()),
                 order_id: Set(order_id),
                 product_id: Set(Uuid::new_v4()),
@@ -1090,10 +1148,11 @@ impl OrderService {
                 notes: Set(None),
                 created_at: Set(now - chrono::Duration::hours(2)),
                 updated_at: Set(Some(now)),
-            }
-            .insert(db)
-            .await
-            .map_err(|e| ServiceError::db_error(e))?;
+            };
+            OrderItemEntity::insert(item2)
+                .exec(db)
+                .await
+                .map_err(|e| ServiceError::db_error(e))?;
         }
 
         Ok(order_id)

@@ -265,21 +265,21 @@ where
     Router::new()
         .route("/", get(list_work_orders::<S>).post(create_work_order::<S>))
         .route(
-            "/{id}",
+            "/:id",
             get(get_work_order::<S>)
                 .put(update_work_order::<S>)
                 .delete(delete_work_order::<S>),
         )
-        .route("/{id}/schedule", post(schedule_work_order::<S>))
-        .route("/{id}/start", post(start_work_order::<S>))
-        .route("/{id}/complete", post(complete_work_order::<S>))
-        .route("/{id}/hold", post(hold_work_order::<S>))
-        .route("/{id}/cancel", post(cancel_work_order::<S>))
+        .route("/:id/schedule", post(schedule_work_order::<S>))
+        .route("/:id/start", post(start_work_order::<S>))
+        .route("/:id/complete", post(complete_work_order::<S>))
+        .route("/:id/hold", post(hold_work_order::<S>))
+        .route("/:id/cancel", post(cancel_work_order::<S>))
         .route(
-            "/{id}/materials/{material_id}/consume",
+            "/:id/materials/:material_id}/consume",
             post(consume_material::<S>),
         )
-        .route("/{id}/tasks/{task_id}", put(update_task::<S>))
+        .route("/:id/tasks/:task_id", put(update_task::<S>))
         .route("/capacity/:work_center_id", get(get_capacity::<S>))
 }
 
@@ -403,7 +403,7 @@ where
 /// Get a specific work order by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/work-orders/{id}",
+    path = "/api/v1/work-orders/:id",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
         (status = 200, description = "Work order details", body = crate::ApiResponse<WorkOrderResponse>,
@@ -434,7 +434,7 @@ where
 /// Update a work order
 #[utoipa::path(
     put,
-    path = "/api/v1/work-orders/{id}",
+    path = "/api/v1/work-orders/:id",
     params(("id" = String, Path, description = "Work order ID")),
     request_body = UpdateWorkOrderRequest,
     responses(
@@ -483,7 +483,7 @@ where
 /// Delete a work order
 #[utoipa::path(
     delete,
-    path = "/api/v1/work-orders/{id}",
+    path = "/api/v1/work-orders/:id",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
         (status = 204, description = "Work order deleted"),
@@ -507,7 +507,7 @@ where
 /// Schedule a work order
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/schedule",
+    path = "/api/v1/work-orders/:id/schedule",
     params(("id" = String, Path, description = "Work order ID")),
     request_body = ScheduleWorkOrderRequest,
     responses(
@@ -545,7 +545,7 @@ where
 /// Start a work order
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/start",
+    path = "/api/v1/work-orders/:id/start",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
         (status = 200, description = "Work order started",
@@ -576,7 +576,7 @@ where
 /// Complete a work order
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/complete",
+    path = "/api/v1/work-orders/:id/complete",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
         (status = 200, description = "Work order completed",
@@ -607,7 +607,7 @@ where
 /// Put work order on hold
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/hold",
+    path = "/api/v1/work-orders/:id/hold",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
         (status = 200, description = "Work order on hold",
@@ -645,7 +645,7 @@ where
 /// Cancel a work order
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/cancel",
+    path = "/api/v1/work-orders/:id/cancel",
     params(("id" = String, Path, description = "Work order ID")),
     responses(
         (status = 200, description = "Work order cancelled",
@@ -683,7 +683,7 @@ where
 /// Consume material for work order
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/materials/{material_id}/consume",
+    path = "/api/v1/work-orders/:id/materials/:material_id}/consume",
     params(
         ("id" = String, Path, description = "Work order ID"),
         ("material_id" = String, Path, description = "Material ID")
@@ -722,7 +722,7 @@ where
 /// Update a work order task
 #[utoipa::path(
     put,
-    path = "/api/v1/work-orders/{id}/tasks/{task_id}",
+    path = "/api/v1/work-orders/:id/tasks/:task_id",
     params(
         ("id" = String, Path, description = "Work order ID"),
         ("task_id" = String, Path, description = "Task ID")
@@ -762,7 +762,7 @@ where
 /// Get work center capacity
 #[utoipa::path(
     get,
-    path = "/api/v1/work-orders/capacity/{work_center_id}",
+    path = "/api/v1/work-orders/capacity/:work_center_id}",
     params(("work_center_id" = String, Path, description = "Work center ID")),
     responses(
         (status = 200, description = "Capacity details",
@@ -821,7 +821,7 @@ where
 /// Assign a work order to a technician
 #[utoipa::path(
     post,
-    path = "/api/v1/work-orders/{id}/assign",
+    path = "/api/v1/work-orders/:id/assign",
     params(("id" = String, Path, description = "Work order ID")),
     request_body = serde_json::Value,
     responses(
@@ -852,7 +852,7 @@ where
 /// Update work order status
 #[utoipa::path(
     put,
-    path = "/api/v1/work-orders/{id}/status",
+    path = "/api/v1/work-orders/:id/status",
     params(("id" = String, Path, description = "Work order ID")),
     request_body = serde_json::Value,
     responses(

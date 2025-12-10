@@ -23,40 +23,128 @@ pub trait InventoryHandlerState: Clone + Send + Sync + 'static {
 
 /// API representation of aggregated inventory for an item.
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "inventory_item_id": 12345,
+    "item_number": "SKU-WIDGET-001",
+    "description": "Premium Widget - Blue Edition",
+    "primary_uom_code": "EA",
+    "organization_id": 1,
+    "quantities": {
+        "on_hand": "500",
+        "allocated": "50",
+        "available": "450"
+    },
+    "locations": [{
+        "location_id": 1,
+        "location_name": "Main Warehouse",
+        "quantities": {
+            "on_hand": "300",
+            "allocated": "30",
+            "available": "270"
+        },
+        "updated_at": "2024-12-09T10:30:00Z",
+        "version": 5
+    }, {
+        "location_id": 2,
+        "location_name": "Distribution Center East",
+        "quantities": {
+            "on_hand": "200",
+            "allocated": "20",
+            "available": "180"
+        },
+        "updated_at": "2024-12-09T09:15:00Z",
+        "version": 3
+    }]
+}))]
 pub struct InventoryItem {
+    /// Internal inventory item ID
+    #[schema(example = 12345)]
     pub inventory_item_id: i64,
+    /// SKU or item number
+    #[schema(example = "SKU-WIDGET-001")]
     pub item_number: String,
+    /// Item description
+    #[schema(example = "Premium Widget - Blue Edition")]
     pub description: Option<String>,
+    /// Unit of measure code
+    #[schema(example = "EA")]
     pub primary_uom_code: Option<String>,
+    /// Organization ID
+    #[schema(example = 1)]
     pub organization_id: i64,
+    /// Aggregated quantities across all locations
     pub quantities: InventoryQuantities,
+    /// Inventory breakdown by location
     pub locations: Vec<InventoryLocation>,
 }
 
 /// API representation of quantities.
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "on_hand": "500",
+    "allocated": "50",
+    "available": "450"
+}))]
 pub struct InventoryQuantities {
+    /// Total quantity physically in stock
+    #[schema(example = "500")]
     pub on_hand: String,
+    /// Quantity reserved/allocated for orders
+    #[schema(example = "50")]
     pub allocated: String,
+    /// Quantity available for new orders (on_hand - allocated)
+    #[schema(example = "450")]
     pub available: String,
 }
 
 /// API representation of inventory at a specific location.
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "location_id": 1,
+    "location_name": "Main Warehouse",
+    "quantities": {
+        "on_hand": "300",
+        "allocated": "30",
+        "available": "270"
+    },
+    "updated_at": "2024-12-09T10:30:00Z",
+    "version": 5
+}))]
 pub struct InventoryLocation {
+    /// Location identifier
+    #[schema(example = 1)]
     pub location_id: i32,
+    /// Human-readable location name
+    #[schema(example = "Main Warehouse")]
     pub location_name: Option<String>,
+    /// Quantities at this location
     pub quantities: InventoryQuantities,
+    /// Last update timestamp (RFC3339)
+    #[schema(example = "2024-12-09T10:30:00Z")]
     pub updated_at: String,
     /// Version number for optimistic locking. Include this in update requests to prevent lost updates.
+    #[schema(example = 5)]
     pub version: i32,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "items": [],
+    "total": 150,
+    "page": 1,
+    "per_page": 50
+}))]
 pub struct InventoryListResponse {
+    /// List of inventory items
     pub items: Vec<InventoryItem>,
+    /// Total number of items matching the query
+    #[schema(example = 150)]
     pub total: u64,
+    /// Current page number
+    #[schema(example = 1)]
     pub page: u64,
+    /// Items per page
+    #[schema(example = 50)]
     pub per_page: u64,
 }
 
@@ -73,82 +161,145 @@ pub struct InventoryFilters {
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "item_number": "SKU-WIDGET-001",
+    "description": "Premium Widget - Blue Edition",
+    "primary_uom_code": "EA",
+    "organization_id": 1,
+    "location_id": 1,
+    "quantity_on_hand": 500,
+    "reason": "Initial stock receipt from supplier PO-2024-001"
+}))]
 pub struct CreateInventoryRequest {
     /// SKU or item number (1-100 characters)
     #[validate(length(min = 1, max = 100, message = "Item number must be between 1 and 100 characters"))]
+    #[schema(example = "SKU-WIDGET-001")]
     pub item_number: String,
     /// Item description (max 500 characters)
     #[validate(length(max = 500, message = "Description must not exceed 500 characters"))]
+    #[schema(example = "Premium Widget - Blue Edition")]
     pub description: Option<String>,
     /// Unit of measure code (e.g., "EA", "KG", "LB")
     #[validate(length(max = 20, message = "UOM code must not exceed 20 characters"))]
+    #[schema(example = "EA")]
     pub primary_uom_code: Option<String>,
     /// Organization ID (must be positive if provided)
     #[validate(range(min = 1, message = "Organization ID must be positive"))]
+    #[schema(example = 1)]
     pub organization_id: Option<i64>,
     /// Location ID (must be positive)
     #[validate(range(min = 1, message = "Location ID must be positive"))]
+    #[schema(example = 1)]
     pub location_id: i32,
     /// Initial quantity on hand (cannot be negative)
     #[validate(range(min = 0, message = "Quantity on hand cannot be negative"))]
+    #[schema(example = 500)]
     pub quantity_on_hand: i64,
     /// Reason for inventory adjustment (max 200 characters)
     #[validate(length(max = 200, message = "Reason must not exceed 200 characters"))]
+    #[schema(example = "Initial stock receipt from supplier PO-2024-001")]
     pub reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "location_id": 1,
+    "on_hand": 450,
+    "description": "Premium Widget - Blue Edition (Updated)",
+    "reason": "Inventory adjustment after cycle count",
+    "expected_version": 5
+}))]
 pub struct UpdateInventoryRequest {
     /// Location ID (must be positive)
     #[validate(range(min = 1, message = "Location ID must be positive"))]
+    #[schema(example = 1)]
     pub location_id: i32,
     /// New quantity on hand (cannot be negative)
     #[validate(range(min = 0, message = "Quantity on hand cannot be negative"))]
+    #[schema(example = 450)]
     pub on_hand: Option<i64>,
     /// Updated description (max 500 characters)
     #[validate(length(max = 500, message = "Description must not exceed 500 characters"))]
+    #[schema(example = "Premium Widget - Blue Edition (Updated)")]
     pub description: Option<String>,
     /// Updated UOM code (max 20 characters)
     #[validate(length(max = 20, message = "UOM code must not exceed 20 characters"))]
+    #[schema(example = "EA")]
     pub primary_uom_code: Option<String>,
     /// Organization ID (must be positive if provided)
     #[validate(range(min = 1, message = "Organization ID must be positive"))]
+    #[schema(example = 1)]
     pub organization_id: Option<i64>,
     /// Reason for update (max 200 characters)
     #[validate(length(max = 200, message = "Reason must not exceed 200 characters"))]
+    #[schema(example = "Inventory adjustment after cycle count")]
     pub reason: Option<String>,
     /// Expected version for optimistic locking. If provided, update fails if version doesn't match.
+    #[schema(example = 5)]
     pub expected_version: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "location_id": 1,
+    "quantity": 10,
+    "reference_id": "550e8400-e29b-41d4-a716-446655440000",
+    "reference_type": "SALES_ORDER"
+}))]
 pub struct ReserveInventoryRequest {
     /// Location ID (must be positive)
     #[validate(range(min = 1, message = "Location ID must be positive"))]
+    #[schema(example = 1)]
     pub location_id: i32,
     /// Quantity to reserve (must be at least 1)
     #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    #[schema(example = 10)]
     pub quantity: i64,
     /// Reference ID (e.g., order ID) - must be valid UUID if provided
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub reference_id: Option<String>,
     /// Reference type (e.g., "SALES_ORDER", "CUSTOMER_HOLD")
     #[validate(length(max = 50, message = "Reference type must not exceed 50 characters"))]
+    #[schema(example = "SALES_ORDER")]
     pub reference_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "location_id": 1,
+    "quantity": 5
+}))]
 pub struct ReleaseInventoryRequest {
     /// Location ID (must be positive)
     #[validate(range(min = 1, message = "Location ID must be positive"))]
+    #[schema(example = 1)]
     pub location_id: i32,
     /// Quantity to release (must be at least 1)
     #[validate(range(min = 1, message = "Quantity must be at least 1"))]
+    #[schema(example = 5)]
     pub quantity: i64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "reservation_id": "res-550e8400-e29b-41d4",
+    "location": {
+        "location_id": 1,
+        "location_name": "Main Warehouse",
+        "quantities": {
+            "on_hand": "300",
+            "allocated": "40",
+            "available": "260"
+        },
+        "updated_at": "2024-12-09T10:35:00Z",
+        "version": 6
+    }
+}))]
 pub struct ReservationResponse {
+    /// Unique reservation identifier
+    #[schema(example = "res-550e8400-e29b-41d4")]
     pub reservation_id: String,
+    /// Updated location inventory after reservation
     pub location: InventoryLocation,
 }
 
@@ -164,7 +315,16 @@ pub struct LowStockQuery {
     path = "/api/v1/inventory",
     params(InventoryFilters),
     responses(
-        (status = 200, description = "Inventory list returned", body = ApiResponse<InventoryListResponse>)
+        (status = 200, description = "Inventory list returned", body = ApiResponse<InventoryListResponse>,
+            headers(
+                ("X-Request-Id" = String, description = "Unique request identifier"),
+                ("X-RateLimit-Limit" = String, description = "Maximum requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in current window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until rate limit resets"),
+            )
+        ),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
     ),
     tag = "inventory"
 )]
@@ -200,7 +360,17 @@ where
     path = "/api/v1/inventory",
     request_body = CreateInventoryRequest,
     responses(
-        (status = 201, description = "Inventory created", body = ApiResponse<InventoryItem>)
+        (status = 201, description = "Inventory created", body = ApiResponse<InventoryItem>,
+            headers(
+                ("X-Request-Id" = String, description = "Unique request identifier"),
+                ("X-RateLimit-Limit" = String, description = "Maximum requests allowed in current window"),
+                ("X-RateLimit-Remaining" = String, description = "Remaining requests in current window"),
+                ("X-RateLimit-Reset" = String, description = "Seconds until rate limit resets"),
+            )
+        ),
+        (status = 400, description = "Bad request", body = crate::errors::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::errors::ErrorResponse),
+        (status = 429, description = "Rate limit exceeded", body = crate::errors::ErrorResponse)
     ),
     tag = "inventory"
 )]
@@ -254,7 +424,7 @@ where
 
 #[utoipa::path(
     get,
-    path = "/api/v1/inventory/{id}",
+    path = "/api/v1/inventory/:id",
     params(("id" = String, Path, description = "Inventory item id or item number")),
     responses(
         (status = 200, description = "Inventory item returned", body = ApiResponse<InventoryItem>),
@@ -276,7 +446,7 @@ where
 
 #[utoipa::path(
     put,
-    path = "/api/v1/inventory/{id}",
+    path = "/api/v1/inventory/:id",
     params(("id" = String, Path, description = "Inventory item id or item number")),
     request_body = UpdateInventoryRequest,
     responses(
@@ -347,7 +517,7 @@ where
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/inventory/{id}",
+    path = "/api/v1/inventory/:id",
     params(("id" = String, Path, description = "Inventory item id or item number")),
     responses((status = 204, description = "Inventory deleted")),
     tag = "inventory"
@@ -382,7 +552,7 @@ where
 
 #[utoipa::path(
     post,
-    path = "/api/v1/inventory/{id}/reserve",
+    path = "/api/v1/inventory/:id/reserve",
     params(("id" = String, Path, description = "Inventory item id or item number")),
     request_body = ReserveInventoryRequest,
     responses((status = 200, description = "Inventory reserved", body = ApiResponse<ReservationResponse>)),
@@ -432,7 +602,7 @@ where
 
 #[utoipa::path(
     post,
-    path = "/api/v1/inventory/{id}/release",
+    path = "/api/v1/inventory/:id/release",
     params(("id" = String, Path, description = "Inventory item id or item number")),
     request_body = ReleaseInventoryRequest,
     responses((status = 200, description = "Inventory released", body = ApiResponse<InventoryLocation>)),
@@ -783,7 +953,7 @@ pub async fn list_reservations(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/inventory/reservations/{id}",
+    path = "/api/v1/inventory/reservations/:id",
     params(("id" = String, Path, description = "Reservation ID")),
     responses(
         (status = 200, description = "Reservation details", body = ApiResponse<ReservationDetail>),
@@ -827,7 +997,7 @@ pub async fn get_reservation(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/inventory/reservations/{id}/cancel",
+    path = "/api/v1/inventory/reservations/:id/cancel",
     params(("id" = String, Path, description = "Reservation ID")),
     responses(
         (status = 200, description = "Reservation cancelled", body = ApiResponse<ReservationDetail>),

@@ -200,8 +200,8 @@ pub fn customer_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/register", post(register_customer))
         .route("/login", post(login_customer))
-        .route("/{customer_id}", get(get_customer))
-        .route("/{customer_id}", put(update_customer))
-        .route("/{customer_id}/addresses", post(add_customer_address))
-        .route("/{customer_id}/addresses", get(get_customer_addresses))
+        .route("/:customer_id", get(get_customer))
+        .route("/:customer_id", put(update_customer))
+        .route("/:customer_id/addresses", post(add_customer_address))
+        .route("/:customer_id/addresses", get(get_customer_addresses))
 }

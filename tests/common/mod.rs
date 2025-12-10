@@ -180,7 +180,7 @@ impl TestApp {
         std::env::set_var("STATESET_AUTH_ALLOW_ADMIN_OVERRIDE", "1");
         std::env::set_var(
             "AUTH_DEFAULT_PERMISSIONS",
-            "orders:read,orders:create,orders:update,purchaseorders:manage,asns:manage",
+            "orders:read,orders:create,orders:update,orders:delete,purchaseorders:manage,asns:manage,carts:access,inventory:read,inventory:write,inventory:adjust,payments:access,payments:read,payments:write,returns:read,returns:write,shipments:read,shipments:write,warranties:read,warranties:write",
         );
 
         let user = User {
@@ -201,7 +201,7 @@ impl TestApp {
             email: Some(user.email.clone()),
             roles: vec!["admin".to_string()],
             permissions: std::env::var("AUTH_DEFAULT_PERMISSIONS")
-                .unwrap_or_else(|_| "orders:read,orders:create,orders:update".to_string())
+                .unwrap_or_else(|_| "orders:read,orders:create,orders:update,payments:access,payments:write,payments:read,inventory:read,inventory:write,carts:access,returns:read,returns:write,purchase_orders:manage,asn:manage".to_string())
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect(),

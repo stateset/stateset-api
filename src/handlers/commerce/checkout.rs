@@ -104,11 +104,11 @@ async fn remove_session(state: &AppState, session_id: &Uuid) -> Result<(), ApiEr
 pub fn checkout_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(start_checkout))
-        .route("/{session_id}", get(get_checkout_session))
-        .route("/{session_id}/customer", put(set_customer_info))
-        .route("/{session_id}/shipping-address", put(set_shipping_address))
-        .route("/{session_id}/shipping-method", put(set_shipping_method))
-        .route("/{session_id}/complete", post(complete_checkout))
+        .route("/:session_id", get(get_checkout_session))
+        .route("/:session_id/customer", put(set_customer_info))
+        .route("/:session_id/shipping-address", put(set_shipping_address))
+        .route("/:session_id/shipping-method", put(set_shipping_method))
+        .route("/:session_id/complete", post(complete_checkout))
         .with_auth()
 }
 

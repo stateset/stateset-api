@@ -87,7 +87,7 @@ async fn list_outbox(State(state): State<AppState>) -> Result<Json<Vec<OutboxIte
 
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/outbox/{id}/retry",
+    path = "/api/v1/admin/outbox/:id/retry",
     params(
         ("id" = Uuid, Path, description = "Outbox event id")
     ),

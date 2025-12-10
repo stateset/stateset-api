@@ -13,6 +13,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
 use utoipa::ToSchema;
@@ -22,52 +23,132 @@ use validator::Validate;
 // Request and response DTOs
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "password": "SecurePass123!",
+    "role": "user",
+    "department": "Engineering",
+    "phone": "+1-555-123-4567"
+}))]
 pub struct CreateUserRequest {
+    /// User's full name
+    #[schema(example = "John Doe")]
     pub name: String,
 
+    /// User's email address (must be unique)
+    #[schema(example = "john.doe@example.com")]
     pub email: String,
 
+    /// User's password (minimum 8 characters, must include uppercase, lowercase, number)
+    #[schema(example = "SecurePass123!")]
     pub password: String,
+    /// User role (user, admin, manager)
+    #[schema(example = "user")]
     pub role: Option<String>,
+    /// User's department
+    #[schema(example = "Engineering")]
     pub department: Option<String>,
+    /// User's phone number
+    #[schema(example = "+1-555-123-4567")]
     pub phone: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "name": "John Smith",
+    "email": "john.smith@example.com",
+    "role": "manager",
+    "department": "Product",
+    "phone": "+1-555-987-6543",
+    "is_active": true
+}))]
 pub struct UpdateUserRequest {
+    /// Updated user name
+    #[schema(example = "John Smith")]
     pub name: Option<String>,
 
+    /// Updated email address
+    #[schema(example = "john.smith@example.com")]
     pub email: Option<String>,
+    /// Updated role
+    #[schema(example = "manager")]
     pub role: Option<String>,
+    /// Updated department
+    #[schema(example = "Product")]
     pub department: Option<String>,
+    /// Updated phone number
+    #[schema(example = "+1-555-987-6543")]
     pub phone: Option<String>,
+    /// Whether user account is active
+    #[schema(example = true)]
     pub is_active: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "current_password": "OldPass123!",
+    "new_password": "NewSecure456!",
+    "confirm_password": "NewSecure456!"
+}))]
 pub struct ChangePasswordRequest {
+    /// Current password for verification
     #[validate(length(
         min = 6,
         message = "Current password must be at least 6 characters long"
     ))]
+    #[schema(example = "OldPass123!")]
     pub current_password: String,
 
+    /// New password (minimum 8 characters)
+    #[schema(example = "NewSecure456!")]
     pub new_password: String,
 
+    /// Confirm new password (must match new_password)
+    #[schema(example = "NewSecure456!")]
     pub confirm_password: String,
 }
 
 // Example User model for responses
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "role": "user",
+    "department": "Engineering",
+    "phone": "+1-555-123-4567",
+    "is_active": true,
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T14:45:00Z"
+}))]
 pub struct User {
+    /// User UUID
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// User's full name
+    #[schema(example = "John Doe")]
     pub name: String,
+    /// User's email address
+    #[schema(example = "john.doe@example.com")]
     pub email: String,
+    /// User role (user, admin, manager)
+    #[schema(example = "user")]
     pub role: String,
+    /// User's department
+    #[schema(example = "Engineering")]
     pub department: Option<String>,
+    /// User's phone number
+    #[schema(example = "+1-555-123-4567")]
     pub phone: Option<String>,
+    /// Whether user account is active
+    #[schema(example = true)]
     pub is_active: bool,
+    /// Account creation timestamp
+    #[schema(example = "2024-12-09T10:30:00Z")]
     pub created_at: String,
+    /// Last update timestamp
+    #[schema(example = "2024-12-09T14:45:00Z")]
     pub updated_at: Option<String>,
 }
 
@@ -117,7 +198,7 @@ pub async fn create_user(
 /// Get a user by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/users/{id}",
+    path = "/api/v1/users/:id",
     params(("id" = String, Path, description = "User ID (UUID)")),
     responses(
         (status = 200, description = "User returned", body = User,
@@ -162,7 +243,7 @@ pub async fn get_user(
 /// Update a user
 #[utoipa::path(
     put,
-    path = "/api/v1/users/{id}",
+    path = "/api/v1/users/:id",
     params(("id" = String, Path, description = "User ID (UUID)")),
     request_body = UpdateUserRequest,
     responses(
@@ -204,7 +285,7 @@ pub async fn update_user(
 /// Delete a user
 #[utoipa::path(
     delete,
-    path = "/api/v1/users/{id}",
+    path = "/api/v1/users/:id",
     params(("id" = String, Path, description = "User ID (UUID)")),
     responses(
         (status = 204, description = "User deleted",
@@ -303,7 +384,7 @@ pub async fn list_users(
 /// Change user password
 #[utoipa::path(
     post,
-    path = "/api/v1/users/{id}/change-password",
+    path = "/api/v1/users/:id/change-password",
     params(("id" = String, Path, description = "User ID (UUID)")),
     request_body = ChangePasswordRequest,
     responses(
@@ -384,8 +465,8 @@ pub fn user_routes() -> Router<Arc<AppState>> {
         .route("/", post(create_user))
         .route("/", get(list_users))
         .route("/profile", get(get_current_user))
-        .route("/{id}", get(get_user))
-        .route("/{id}", put(update_user))
-        .route("/{id}", delete(delete_user))
-        .route("/{id}/change-password", post(change_password))
+        .route("/:id", get(get_user))
+        .route("/:id", put(update_user))
+        .route("/:id", delete(delete_user))
+        .route("/:id/change-password", post(change_password))
 }

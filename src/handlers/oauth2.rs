@@ -6,9 +6,9 @@
  * ## Endpoints
  *
  * - `GET /auth/oauth2/providers` - List configured OAuth2 providers
- * - `GET /auth/oauth2/{provider}/authorize` - Get authorization URL
- * - `GET /auth/oauth2/{provider}/callback` - Handle OAuth2 callback
- * - `POST /auth/oauth2/{provider}/token` - Exchange code for tokens (for SPAs)
+ * - `GET /auth/oauth2/:provider}/authorize` - Get authorization URL
+ * - `GET /auth/oauth2/:provider}/callback` - Handle OAuth2 callback
+ * - `POST /auth/oauth2/:provider}/token` - Exchange code for tokens (for SPAs)
  */
 
 use axum::{
@@ -139,7 +139,7 @@ pub async fn list_providers(
 
 /// Get authorization URL for a provider
 ///
-/// GET /auth/oauth2/{provider}/authorize
+/// GET /auth/oauth2/:provider}/authorize
 pub async fn get_authorize_url(
     State(state): State<OAuth2State>,
     Path(provider): Path<String>,
@@ -173,7 +173,7 @@ pub async fn get_authorize_url(
 
 /// Handle OAuth2 callback (redirect flow)
 ///
-/// GET /auth/oauth2/{provider}/callback
+/// GET /auth/oauth2/:provider}/callback
 pub async fn handle_callback(
     State(state): State<OAuth2State>,
     Path(provider): Path<String>,
@@ -266,7 +266,7 @@ pub async fn handle_callback(
 
 /// Exchange authorization code for tokens (SPA flow)
 ///
-/// POST /auth/oauth2/{provider}/token
+/// POST /auth/oauth2/:provider}/token
 pub async fn exchange_token(
     State(state): State<OAuth2State>,
     Path(provider): Path<String>,

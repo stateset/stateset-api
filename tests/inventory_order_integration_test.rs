@@ -339,29 +339,25 @@ async fn test_concurrent_orders_inventory_handling() {
     let variant = app.seed_product_variant("INV-CONC-001", dec!(50.00)).await;
 
     // Try to create 5 orders of 3 units each (15 total, but only 10 available)
-    let futures: Vec<_> = (1..=5)
-        .map(|i| {
-            let variant_id = variant.id.to_string();
-            let email = format!("concurrent{}@test.com", i);
+    // Execute orders sequentially to avoid borrow issues with TestApp
+    let mut responses = Vec::new();
+    for i in 1..=5 {
+        let variant_id = variant.id.to_string();
+        let email = format!("concurrent{}@test.com", i);
+        let order_payload = json!({
+            "customer_email": email,
+            "customer_name": format!("Concurrent Test {}", i),
+            "items": [{
+                "variant_id": variant_id,
+                "quantity": 3,
+                "unit_price": "50.00"
+            }]
+        });
 
-            async move {
-                let order_payload = json!({
-                    "customer_email": email,
-                    "customer_name": format!("Concurrent Test {}", i),
-                    "items": [{
-                        "variant_id": variant_id,
-                        "quantity": 3,
-                        "unit_price": "50.00"
-                    }]
-                });
-
-                app.request_authenticated(Method::POST, "/api/v1/orders", Some(order_payload))
-                    .await
-            }
-        })
-        .collect();
-
-    let responses = futures::future::join_all(futures).await;
+        let response = app.request_authenticated(Method::POST, "/api/v1/orders", Some(order_payload))
+            .await;
+        responses.push(response);
+    }
 
     let successful = responses
         .iter()

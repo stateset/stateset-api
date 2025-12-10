@@ -38,18 +38,18 @@ pub fn asn_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_asn))
         .route("/", get(list_asns))
-        .route("/{id}", get(get_asn))
-        .route("/{id}", put(update_asn))
-        .route("/{id}", delete(delete_asn))
-        .route("/{id}/in-transit", post(mark_in_transit))
-        .route("/{id}/delivered", post(mark_delivered))
-        .route("/{id}/cancel", post(cancel_asn))
-        .route("/{id}/hold", post(hold_asn))
-        .route("/{id}/release", post(release_asn_from_hold))
-        .route("/{id}/items", post(add_item_to_asn))
-        .route("/{id}/items/{item_id}", delete(remove_item_from_asn))
-        .route("/supplier/{supplier_id}", get(get_asns_by_supplier))
-        .route("/status/{status}", get(get_asns_by_status))
+        .route("/:id", get(get_asn))
+        .route("/:id", put(update_asn))
+        .route("/:id", delete(delete_asn))
+        .route("/:id/in-transit", post(mark_in_transit))
+        .route("/:id/delivered", post(mark_delivered))
+        .route("/:id/cancel", post(cancel_asn))
+        .route("/:id/hold", post(hold_asn))
+        .route("/:id/release", post(release_asn_from_hold))
+        .route("/:id/items", post(add_item_to_asn))
+        .route("/:id/items/:item_id", delete(remove_item_from_asn))
+        .route("/supplier/:supplier_id", get(get_asns_by_supplier))
+        .route("/status/:status", get(get_asns_by_status))
         .route("/delivery-date", get(get_asns_by_delivery_date))
 }
 
@@ -209,7 +209,7 @@ pub async fn create_asn(
 /// Retrieve an ASN by id
 #[utoipa::path(
     get,
-    path = "/api/v1/asns/{id}",
+    path = "/api/v1/asns/:id",
     params(
         ("id" = Uuid, Path, description = "ASN ID")
     ),
@@ -280,7 +280,7 @@ pub async fn list_asns(
 /// Mark an ASN as in transit
 #[utoipa::path(
     post,
-    path = "/api/v1/asns/{id}/in-transit",
+    path = "/api/v1/asns/:id/in-transit",
     request_body = MarkAsnInTransitRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -343,7 +343,7 @@ pub async fn mark_in_transit(
 /// Mark an ASN as delivered
 #[utoipa::path(
     post,
-    path = "/api/v1/asns/{id}/delivered",
+    path = "/api/v1/asns/:id/delivered",
     request_body = MarkAsnDeliveredRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -540,7 +540,7 @@ pub struct UpdateAsnRequest {
 /// Update an ASN
 #[utoipa::path(
     put,
-    path = "/api/v1/asns/{id}",
+    path = "/api/v1/asns/:id",
     request_body = UpdateAsnRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -626,7 +626,7 @@ pub struct CancelAsnResponse {
 /// Cancel an ASN
 #[utoipa::path(
     post,
-    path = "/api/v1/asns/{id}/cancel",
+    path = "/api/v1/asns/:id/cancel",
     request_body = CancelAsnRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -693,7 +693,7 @@ pub struct HoldAsnResponse {
 /// Place an ASN on hold
 #[utoipa::path(
     post,
-    path = "/api/v1/asns/{id}/hold",
+    path = "/api/v1/asns/:id/hold",
     request_body = HoldAsnRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -758,7 +758,7 @@ pub struct ReleaseAsnFromHoldResponse {
 /// Release an ASN from hold
 #[utoipa::path(
     post,
-    path = "/api/v1/asns/{id}/release",
+    path = "/api/v1/asns/:id/release",
     request_body = ReleaseAsnFromHoldRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -809,7 +809,7 @@ pub async fn release_asn_from_hold(
 /// Delete an ASN (only draft ASNs can be deleted)
 #[utoipa::path(
     delete,
-    path = "/api/v1/asns/{id}",
+    path = "/api/v1/asns/:id",
     params(
         ("id" = Uuid, Path, description = "ASN ID")
     ),
@@ -871,7 +871,7 @@ pub struct AddItemToAsnResponse {
 /// Add an item to an ASN
 #[utoipa::path(
     post,
-    path = "/api/v1/asns/{id}/items",
+    path = "/api/v1/asns/:id/items",
     request_body = AddItemToAsnRequest,
     params(
         ("id" = Uuid, Path, description = "ASN ID")
@@ -931,7 +931,7 @@ pub async fn add_item_to_asn(
 /// Remove an item from an ASN
 #[utoipa::path(
     delete,
-    path = "/api/v1/asns/{id}/items/{item_id}",
+    path = "/api/v1/asns/:id/items/:item_id",
     params(
         ("id" = Uuid, Path, description = "ASN ID"),
         ("item_id" = Uuid, Path, description = "Item ID to remove")
@@ -968,7 +968,7 @@ pub async fn remove_item_from_asn(
 /// Get ASNs by supplier
 #[utoipa::path(
     get,
-    path = "/api/v1/asns/supplier/{supplier_id}",
+    path = "/api/v1/asns/supplier/:supplier_id",
     params(
         ("supplier_id" = Uuid, Path, description = "Supplier ID")
     ),
@@ -995,7 +995,7 @@ pub async fn get_asns_by_supplier(
 /// Get ASNs by status
 #[utoipa::path(
     get,
-    path = "/api/v1/asns/status/{status}",
+    path = "/api/v1/asns/status/:status",
     params(
         ("status" = String, Path, description = "ASN status")
     ),

@@ -28,17 +28,48 @@ pub struct WarrantyListQuery {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "aa0e8400-e29b-41d4-a716-446655440000",
+    "warranty_number": "WRN-2024-001234",
+    "product_id": "550e8400-e29b-41d4-a716-446655440000",
+    "customer_id": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "active",
+    "start_date": "2024-12-09T00:00:00Z",
+    "end_date": "2026-12-09T00:00:00Z",
+    "description": "2-year manufacturer warranty covering defects in materials and workmanship",
+    "terms": "Covers manufacturing defects only. Does not cover damage from misuse, accidents, or unauthorized modifications.",
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T10:30:00Z"
+}))]
 pub struct WarrantySummary {
+    /// Warranty UUID
+    #[schema(example = "aa0e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// Human-readable warranty number
+    #[schema(example = "WRN-2024-001234")]
     pub warranty_number: String,
+    /// Product UUID covered by warranty
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub product_id: Uuid,
+    /// Customer UUID who owns the warranty
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
     pub customer_id: Uuid,
+    /// Warranty status (active, expired, claimed, void)
+    #[schema(example = "active")]
     pub status: String,
+    /// Warranty start date
     pub start_date: DateTime<Utc>,
+    /// Warranty expiration date
     pub end_date: DateTime<Utc>,
+    /// Warranty description
+    #[schema(example = "2-year manufacturer warranty covering defects")]
     pub description: Option<String>,
+    /// Warranty terms and conditions
+    #[schema(example = "Covers manufacturing defects only")]
     pub terms: Option<String>,
+    /// Creation timestamp
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp
     pub updated_at: Option<DateTime<Utc>>,
 }
 
@@ -61,40 +92,94 @@ impl From<warranty::Model> for WarrantySummary {
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "product_id": "550e8400-e29b-41d4-a716-446655440000",
+    "customer_id": "123e4567-e89b-12d3-a456-426614174000",
+    "serial_number": "SN-WBH-2024-001234",
+    "warranty_type": "manufacturer",
+    "expiration_date": "2026-12-09T00:00:00Z",
+    "terms": "Covers manufacturing defects only. Does not cover damage from misuse."
+}))]
 pub struct CreateWarrantyRequest {
+    /// Product UUID to warranty
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub product_id: Uuid,
+    /// Customer UUID
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
     pub customer_id: Uuid,
+    /// Product serial number
     #[validate(length(min = 1))]
+    #[schema(example = "SN-WBH-2024-001234")]
     pub serial_number: String,
+    /// Warranty type (manufacturer, extended, limited)
     #[validate(length(min = 1))]
+    #[schema(example = "manufacturer")]
     pub warranty_type: String,
+    /// Warranty expiration date
     pub expiration_date: DateTime<Utc>,
+    /// Warranty terms and conditions
     #[validate(length(min = 1))]
+    #[schema(example = "Covers manufacturing defects only")]
     pub terms: String,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "warranty_id": "aa0e8400-e29b-41d4-a716-446655440000",
+    "customer_id": "123e4567-e89b-12d3-a456-426614174000",
+    "description": "Product stopped working after 3 months of normal use. Display shows error code E01.",
+    "evidence": ["https://storage.example.com/claims/photo1.jpg", "https://storage.example.com/claims/receipt.pdf"],
+    "contact_email": "customer@example.com",
+    "contact_phone": "+1-555-123-4567"
+}))]
 pub struct CreateWarrantyClaimRequest {
+    /// Warranty UUID to claim
+    #[schema(example = "aa0e8400-e29b-41d4-a716-446655440000")]
     pub warranty_id: Uuid,
+    /// Customer UUID filing the claim
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
     pub customer_id: Uuid,
+    /// Description of the issue
     #[validate(length(min = 1))]
+    #[schema(example = "Product stopped working after 3 months of normal use")]
     pub description: String,
+    /// URLs to supporting evidence (photos, receipts, etc.)
     #[serde(default)]
     pub evidence: Vec<String>,
+    /// Contact email for claim updates
+    #[schema(example = "customer@example.com")]
     pub contact_email: Option<String>,
+    /// Contact phone for claim updates
+    #[schema(example = "+1-555-123-4567")]
     pub contact_phone: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "approved_by": "bb0e8400-e29b-41d4-a716-446655440000",
+    "resolution": "replacement",
+    "notes": "Approved replacement unit. Original unit will be collected upon delivery."
+}))]
 pub struct ApproveWarrantyClaimRequest {
+    /// Admin/agent UUID approving the claim
+    #[schema(example = "bb0e8400-e29b-41d4-a716-446655440000")]
     pub approved_by: Uuid,
+    /// Resolution type (replacement, repair, refund)
     #[validate(length(min = 1))]
+    #[schema(example = "replacement")]
     pub resolution: String,
+    /// Additional notes for the claim
+    #[schema(example = "Approved replacement unit")]
     pub notes: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "additional_months": 12
+}))]
 pub struct ExtendWarrantyRequest {
+    /// Number of months to extend the warranty
+    #[schema(example = 12)]
     pub additional_months: i32,
 }
 
@@ -141,7 +226,7 @@ pub async fn list_warranties(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/warranties/{id}",
+    path = "/api/v1/warranties/:id",
     params(
         ("id" = Uuid, Path, description = "Warranty ID")
     ),
@@ -234,7 +319,7 @@ pub async fn create_warranty_claim(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/warranties/claims/{id}/approve",
+    path = "/api/v1/warranties/claims/:id/approve",
     request_body = ApproveWarrantyClaimRequest,
     params(
         ("id" = Uuid, Path, description = "Warranty claim ID")
@@ -274,7 +359,7 @@ pub async fn approve_warranty_claim(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/warranties/{id}/extend",
+    path = "/api/v1/warranties/:id/extend",
     request_body = ExtendWarrantyRequest,
     params(
         ("id" = Uuid, Path, description = "Warranty ID")

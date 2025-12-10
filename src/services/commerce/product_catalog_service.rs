@@ -69,7 +69,18 @@ impl ProductCatalogService {
             updated_at: Set(Some(now)),
         };
 
-        let product = product.insert(&*self.db).await?;
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        Product::insert(product)
+            .exec(&*self.db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        // Query the product back using the known ID
+        let product = Product::find_by_id(product_id)
+            .one(&*self.db)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted product".to_string()))?;
 
         // Publish event
         self.event_sender
@@ -184,7 +195,18 @@ impl ProductCatalogService {
             updated_at: Set(Utc::now()),
         };
 
-        let variant = variant.insert(&*self.db).await?;
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
+        ProductVariant::insert(variant)
+            .exec(&*self.db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        // Query the variant back using the known ID
+        let variant = ProductVariant::find_by_id(variant_id)
+            .one(&*self.db)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted variant".to_string()))?;
 
         info!(
             "Created variant {} for product {}",

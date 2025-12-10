@@ -13,7 +13,7 @@ pub struct Model {
     pub quantity_on_hand: Decimal,
     #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub quantity_allocated: Decimal,
-    #[sea_orm(column_type = "Decimal(Some((19, 4)))", select_as = "expr")]
+    #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub quantity_available: Decimal,
     #[sea_orm(column_type = "Decimal(Some((19, 4)))")]
     pub reorder_point: Option<Decimal>,

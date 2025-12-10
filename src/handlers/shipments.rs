@@ -23,18 +23,51 @@ pub struct ShipmentListQuery {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "990e8400-e29b-41d4-a716-446655440000",
+    "order_id": "550e8400-e29b-41d4-a716-446655440000",
+    "tracking_number": "1Z999AA10123456784",
+    "status": "in_transit",
+    "shipping_method": "express",
+    "shipping_address": "123 Main Street, San Francisco, CA 94102, US",
+    "recipient_name": "John Doe",
+    "estimated_delivery": "2024-12-12T18:00:00Z",
+    "shipped_at": "2024-12-09T14:30:00Z",
+    "delivered_at": null,
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T14:30:00Z"
+}))]
 pub struct ShipmentSummary {
+    /// Shipment UUID
+    #[schema(example = "990e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// Associated order UUID
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub order_id: Uuid,
+    /// Carrier tracking number
+    #[schema(example = "1Z999AA10123456784")]
     pub tracking_number: String,
+    /// Shipment status (pending, label_created, in_transit, out_for_delivery, delivered, exception)
+    #[schema(example = "in_transit")]
     pub status: String,
+    /// Shipping method (standard, express, overnight, twoday, international, custom)
+    #[schema(example = "express")]
     pub shipping_method: String,
+    /// Full shipping address
+    #[schema(example = "123 Main Street, San Francisco, CA 94102, US")]
     pub shipping_address: String,
+    /// Recipient name
+    #[schema(example = "John Doe")]
     pub recipient_name: String,
+    /// Estimated delivery date
     pub estimated_delivery: Option<DateTime<Utc>>,
+    /// Actual ship date
     pub shipped_at: Option<DateTime<Utc>>,
+    /// Actual delivery date
     pub delivered_at: Option<DateTime<Utc>>,
+    /// Creation timestamp
     pub created_at: DateTime<Utc>,
+    /// Last update timestamp
     pub updated_at: DateTime<Utc>,
 }
 
@@ -58,15 +91,32 @@ impl From<shipment::Model> for ShipmentSummary {
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "order_id": "550e8400-e29b-41d4-a716-446655440000",
+    "shipping_address": "123 Main Street, San Francisco, CA 94102, US",
+    "shipping_method": "express",
+    "tracking_number": "1Z999AA10123456784",
+    "recipient_name": "John Doe"
+}))]
 pub struct CreateShipmentRequest {
+    /// Order UUID to ship
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub order_id: Uuid,
+    /// Full shipping address
     #[validate(length(min = 1))]
+    #[schema(example = "123 Main Street, San Francisco, CA 94102, US")]
     pub shipping_address: String,
+    /// Shipping method (standard, express, overnight, twoday, international, custom)
     #[validate(length(min = 1))]
+    #[schema(example = "express")]
     pub shipping_method: String,
+    /// Carrier tracking number
     #[validate(length(min = 1))]
+    #[schema(example = "1Z999AA10123456784")]
     pub tracking_number: String,
+    /// Recipient name
     #[validate(length(min = 1))]
+    #[schema(example = "John Doe")]
     pub recipient_name: String,
 }
 
@@ -110,7 +160,7 @@ pub async fn list_shipments(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/shipments/{id}",
+    path = "/api/v1/shipments/:id",
     params(
         ("id" = Uuid, Path, description = "Shipment ID")
     ),
@@ -188,7 +238,7 @@ fn parse_shipping_method(value: &str) -> Result<shipment::ShippingMethod, Servic
 
 #[utoipa::path(
     post,
-    path = "/api/v1/shipments/{id}/ship",
+    path = "/api/v1/shipments/:id/ship",
     params(
         ("id" = Uuid, Path, description = "Shipment ID")
     ),
@@ -208,7 +258,7 @@ pub async fn mark_shipped(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/shipments/{id}/deliver",
+    path = "/api/v1/shipments/:id/deliver",
     params(
         ("id" = Uuid, Path, description = "Shipment ID")
     ),
@@ -228,7 +278,7 @@ pub async fn mark_delivered(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/shipments/{id}/track",
+    path = "/api/v1/shipments/:id/track",
     params(
         ("id" = Uuid, Path, description = "Shipment ID")
     ),
@@ -255,7 +305,7 @@ pub async fn track_shipment(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/shipments/track/{tracking_number}",
+    path = "/api/v1/shipments/track/:tracking_number}",
     params(
         ("tracking_number" = String, Path, description = "Tracking number")
     ),

@@ -69,17 +69,17 @@ fn ensure_i32_non_negative(value: i32, field: &str) -> Result<(), ApiError> {
 pub fn products_routes() -> Router<AppState> {
     let protected = Router::new()
         .route("/", post(create_product))
-        .route("/{id}", put(update_product))
-        .route("/{id}/variants", post(create_variant))
-        .route("/variants/{variant_id}", delete(delete_variant))
-        .route("/variants/{variant_id}/price", put(update_variant_price))
+        .route("/:id", put(update_product))
+        .route("/:id/variants", post(create_variant))
+        .route("/variants/:variant_id", delete(delete_variant))
+        .route("/variants/:variant_id/price", put(update_variant_price))
         .with_permission(perm::INVENTORY_ADJUST);
 
     Router::new()
         .route("/", get(list_products))
-        .route("/{id}", get(get_product))
-        .route("/{id}/variants", get(get_product_variants))
-        .route("/variants/{variant_id}", get(get_variant))
+        .route("/:id", get(get_product))
+        .route("/:id/variants", get(get_product_variants))
+        .route("/variants/:variant_id", get(get_variant))
         .route("/search", get(search_products))
         .merge(protected)
 }
@@ -207,7 +207,7 @@ async fn create_product(
 /// Get a product by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/products/{id}",
+    path = "/api/v1/products/:id",
     params(
         ("id" = Uuid, Path, description = "Product ID")
     ),
@@ -235,7 +235,7 @@ async fn get_product(
 /// Update a product
 #[utoipa::path(
     put,
-    path = "/api/v1/products/{id}",
+    path = "/api/v1/products/:id",
     params(
         ("id" = Uuid, Path, description = "Product ID")
     ),
@@ -369,7 +369,7 @@ async fn update_product(
 /// Get product variants
 #[utoipa::path(
     get,
-    path = "/api/v1/products/{id}/variants",
+    path = "/api/v1/products/:id/variants",
     params(
         ("id" = Uuid, Path, description = "Product ID")
     ),
@@ -399,7 +399,7 @@ async fn get_product_variants(
 /// Create a product variant
 #[utoipa::path(
     post,
-    path = "/api/v1/products/{id}/variants",
+    path = "/api/v1/products/:id/variants",
     params(
         ("id" = Uuid, Path, description = "Product ID")
     ),
@@ -447,7 +447,7 @@ async fn create_variant(
 /// Get a single variant
 #[utoipa::path(
     get,
-    path = "/api/v1/products/variants/{variant_id}",
+    path = "/api/v1/products/variants/:variant_id",
     params(
         ("variant_id" = Uuid, Path, description = "Variant ID")
     ),
@@ -475,7 +475,7 @@ async fn get_variant(
 /// Delete a product variant
 #[utoipa::path(
     delete,
-    path = "/api/v1/products/variants/{variant_id}",
+    path = "/api/v1/products/variants/:variant_id",
     params(
         ("variant_id" = Uuid, Path, description = "Variant ID")
     ),
@@ -504,7 +504,7 @@ async fn delete_variant(
 /// Update variant price
 #[utoipa::path(
     put,
-    path = "/api/v1/products/variants/{variant_id}/price",
+    path = "/api/v1/products/variants/:variant_id/price",
     params(
         ("variant_id" = Uuid, Path, description = "Variant ID")
     ),
@@ -663,48 +663,107 @@ async fn list_products(
 // Request/Response DTOs
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
+#[schema(example = json!({
+    "name": "Wireless Bluetooth Headphones",
+    "sku": "WBH-BLK-001",
+    "description": "Premium over-ear wireless headphones with active noise cancellation, 30-hour battery life, and premium sound quality.",
+    "price": "149.99",
+    "currency": "USD",
+    "is_active": true,
+    "is_digital": false,
+    "image_url": "https://cdn.example.com/products/wbh-blk-001.jpg",
+    "brand": "AudioTech",
+    "manufacturer": "AudioTech Inc.",
+    "weight_kg": "0.35",
+    "dimensions_cm": "20x18x8",
+    "tags": "electronics,audio,headphones,wireless,bluetooth",
+    "cost_price": "75.00",
+    "msrp": "199.99",
+    "tax_rate": "0.08",
+    "meta_title": "Wireless Bluetooth Headphones | AudioTech",
+    "meta_description": "Shop premium wireless Bluetooth headphones with ANC and 30-hour battery life.",
+    "reorder_point": 25
+}))]
 pub struct CreateProductRequest {
+    /// Product display name
     #[validate(length(min = 1))]
+    #[schema(example = "Wireless Bluetooth Headphones")]
     pub name: String,
+    /// Stock keeping unit (unique identifier)
     #[serde(alias = "slug")]
     #[validate(length(min = 1))]
+    #[schema(example = "WBH-BLK-001")]
     pub sku: String,
+    /// Product description (max 2000 characters)
     #[serde(default)]
     #[validate(length(max = 2000))]
+    #[schema(example = "Premium over-ear wireless headphones with active noise cancellation.")]
     pub description: Option<String>,
+    /// Sale price
     #[serde(default)]
+    #[schema(example = "149.99")]
     pub price: Option<Decimal>,
+    /// Currency code (ISO 4217, 3 characters)
     #[serde(default)]
     #[validate(length(equal = 3))]
+    #[schema(example = "USD")]
     pub currency: Option<String>,
+    /// Whether the product is available for purchase
     #[serde(default)]
+    #[schema(example = true)]
     pub is_active: Option<bool>,
+    /// Whether this is a digital/downloadable product
     #[serde(default)]
+    #[schema(example = false)]
     pub is_digital: Option<bool>,
+    /// Main product image URL
     #[serde(default)]
     #[validate(url)]
+    #[schema(example = "https://cdn.example.com/products/wbh-blk-001.jpg")]
     pub image_url: Option<String>,
+    /// Brand name
     #[serde(default)]
+    #[schema(example = "AudioTech")]
     pub brand: Option<String>,
+    /// Manufacturer name
     #[serde(default)]
+    #[schema(example = "AudioTech Inc.")]
     pub manufacturer: Option<String>,
+    /// Product weight in kilograms
     #[serde(default)]
+    #[schema(example = "0.35")]
     pub weight_kg: Option<Decimal>,
+    /// Dimensions in centimeters (LxWxH format)
     #[serde(default)]
+    #[schema(example = "20x18x8")]
     pub dimensions_cm: Option<String>,
+    /// Comma-separated tags for categorization
     #[serde(default)]
+    #[schema(example = "electronics,audio,headphones,wireless")]
     pub tags: Option<String>,
+    /// Cost price (for profit calculation)
     #[serde(default)]
+    #[schema(example = "75.00")]
     pub cost_price: Option<Decimal>,
+    /// Manufacturer's suggested retail price
     #[serde(default)]
+    #[schema(example = "199.99")]
     pub msrp: Option<Decimal>,
+    /// Tax rate as decimal
     #[serde(default)]
+    #[schema(example = "0.08")]
     pub tax_rate: Option<Decimal>,
+    /// SEO meta title
     #[serde(default)]
+    #[schema(example = "Wireless Bluetooth Headphones | AudioTech")]
     pub meta_title: Option<String>,
+    /// SEO meta description
     #[serde(default)]
+    #[schema(example = "Shop premium wireless Bluetooth headphones with ANC.")]
     pub meta_description: Option<String>,
+    /// Inventory reorder point threshold
     #[serde(default)]
+    #[schema(example = 25)]
     pub reorder_point: Option<i32>,
 }
 
@@ -753,41 +812,107 @@ pub struct UpdateProductRequest {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Wireless Bluetooth Headphones",
+    "sku": "WBH-BLK-001",
+    "description": "Premium over-ear wireless headphones with active noise cancellation.",
+    "price": "149.99",
+    "currency": "USD",
+    "is_active": true,
+    "is_digital": false,
+    "image_url": "https://cdn.example.com/products/wbh-blk-001.jpg",
+    "brand": "AudioTech",
+    "manufacturer": "AudioTech Inc.",
+    "weight_kg": "0.35",
+    "dimensions_cm": "20x18x8",
+    "tags": "electronics,audio,headphones,wireless",
+    "cost_price": "75.00",
+    "msrp": "199.99",
+    "tax_rate": "0.08",
+    "meta_title": "Wireless Bluetooth Headphones | AudioTech",
+    "meta_description": "Shop premium wireless Bluetooth headphones.",
+    "reorder_point": 25,
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T14:45:00Z"
+}))]
 pub struct ProductResponse {
+    /// Product UUID
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: Uuid,
+    /// Product display name
+    #[schema(example = "Wireless Bluetooth Headphones")]
     pub name: String,
+    /// Stock keeping unit
+    #[schema(example = "WBH-BLK-001")]
     pub sku: String,
+    /// Product description
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Premium over-ear wireless headphones with active noise cancellation.")]
     pub description: Option<String>,
+    /// Sale price
+    #[schema(example = "149.99")]
     pub price: Decimal,
+    /// Currency code (ISO 4217)
+    #[schema(example = "USD")]
     pub currency: String,
+    /// Whether product is available for purchase
+    #[schema(example = true)]
     pub is_active: bool,
+    /// Whether this is a digital/downloadable product
+    #[schema(example = false)]
     pub is_digital: bool,
+    /// Main product image URL
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://cdn.example.com/products/wbh-blk-001.jpg")]
     pub image_url: Option<String>,
+    /// Brand name
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "AudioTech")]
     pub brand: Option<String>,
+    /// Manufacturer name
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "AudioTech Inc.")]
     pub manufacturer: Option<String>,
+    /// Product weight in kilograms
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "0.35")]
     pub weight_kg: Option<Decimal>,
+    /// Dimensions in centimeters
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "20x18x8")]
     pub dimensions_cm: Option<String>,
+    /// Comma-separated tags
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "electronics,audio,headphones")]
     pub tags: Option<String>,
+    /// Cost price
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "75.00")]
     pub cost_price: Option<Decimal>,
+    /// MSRP
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "199.99")]
     pub msrp: Option<Decimal>,
+    /// Tax rate
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "0.08")]
     pub tax_rate: Option<Decimal>,
+    /// SEO meta title
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Wireless Bluetooth Headphones | AudioTech")]
     pub meta_title: Option<String>,
+    /// SEO meta description
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Shop premium wireless Bluetooth headphones.")]
     pub meta_description: Option<String>,
+    /// Reorder point threshold
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 25)]
     pub reorder_point: Option<i32>,
+    /// Creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last update timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -845,24 +970,68 @@ pub struct ProductSearchParams {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(example = json!({
+    "id": "660e8400-e29b-41d4-a716-446655440001",
+    "product_id": "550e8400-e29b-41d4-a716-446655440000",
+    "sku": "WBH-BLK-001-L",
+    "name": "Wireless Bluetooth Headphones - Large",
+    "price": "149.99",
+    "compare_at_price": "199.99",
+    "cost": "75.00",
+    "weight": 0.35,
+    "dimensions": {
+        "length": 20.0,
+        "width": 18.0,
+        "height": 8.0
+    },
+    "options": {"size": "Large", "color": "Black"},
+    "inventory_tracking": true,
+    "position": 1,
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T14:45:00Z"
+}))]
 pub struct VariantResponse {
+    /// Variant UUID
+    #[schema(example = "660e8400-e29b-41d4-a716-446655440001")]
     pub id: Uuid,
+    /// Parent product UUID
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub product_id: Uuid,
+    /// Variant SKU
+    #[schema(example = "WBH-BLK-001-L")]
     pub sku: String,
+    /// Variant display name
+    #[schema(example = "Wireless Bluetooth Headphones - Large")]
     pub name: String,
+    /// Sale price
+    #[schema(example = "149.99")]
     pub price: Decimal,
+    /// Original/compare-at price (for showing discounts)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "199.99")]
     pub compare_at_price: Option<Decimal>,
+    /// Cost price
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "75.00")]
     pub cost: Option<Decimal>,
+    /// Weight in kilograms
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 0.35)]
     pub weight: Option<f64>,
+    /// Dimensions (length, width, height in cm)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<product_variant::Dimensions>,
+    /// Variant options (e.g., size, color)
     pub options: Value,
+    /// Whether inventory is tracked for this variant
+    #[schema(example = true)]
     pub inventory_tracking: bool,
+    /// Display position (for sorting)
+    #[schema(example = 1)]
     pub position: i32,
+    /// Creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last update timestamp
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

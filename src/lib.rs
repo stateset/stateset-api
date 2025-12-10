@@ -252,12 +252,12 @@ pub fn api_v1_routes() -> Router<AppState> {
     // Orders routes with permission gating
     let orders_read = Router::new()
         .route("/orders", get(handlers::orders::list_orders))
-        .route("/orders/{id}", get(handlers::orders::get_order))
+        .route("/orders/:id", get(handlers::orders::get_order))
         .route(
-            "/orders/by-number/{order_number}",
+            "/orders/by-number/:order_number",
             get(handlers::orders::get_order_by_number),
         )
-        .route("/orders/{id}/items", get(handlers::orders::get_order_items))
+        .route("/orders/:id/items", get(handlers::orders::get_order_items))
         .with_permission(perm::ORDERS_READ);
 
     let orders_create = Router::new()
@@ -269,33 +269,33 @@ pub fn api_v1_routes() -> Router<AppState> {
 
     let orders_update = Router::new()
         .route(
-            "/orders/{id}",
+            "/orders/:id",
             axum::routing::put(handlers::orders::update_order),
         )
         .route(
-            "/orders/{id}/items",
+            "/orders/:id/items",
             axum::routing::post(handlers::orders::add_order_item),
         )
         .route(
-            "/orders/{id}/status",
+            "/orders/:id/status",
             axum::routing::put(handlers::orders::update_order_status),
         )
         .route(
-            "/orders/{id}/archive",
+            "/orders/:id/archive",
             axum::routing::post(handlers::orders::archive_order),
         )
         .with_permission(perm::ORDERS_UPDATE);
 
     let orders_cancel = Router::new()
         .route(
-            "/orders/{id}/cancel",
+            "/orders/:id/cancel",
             axum::routing::post(handlers::orders::cancel_order),
         )
         .with_permission(perm::ORDERS_CANCEL);
 
     let orders_delete = Router::new()
         .route(
-            "/orders/{id}",
+            "/orders/:id",
             axum::routing::delete(handlers::orders::delete_order),
         )
         .with_permission(perm::ORDERS_DELETE);
@@ -307,7 +307,7 @@ pub fn api_v1_routes() -> Router<AppState> {
             get(handlers::inventory::list_inventory::<AppState>),
         )
         .route(
-            "/inventory/{id}",
+            "/inventory/:id",
             get(handlers::inventory::get_inventory::<AppState>),
         )
         .route(
@@ -324,7 +324,7 @@ pub fn api_v1_routes() -> Router<AppState> {
             get(handlers::inventory::get_reservation_stats),
         )
         .route(
-            "/inventory/reservations/{id}",
+            "/inventory/reservations/:id",
             get(handlers::inventory::get_reservation),
         )
         .with_permission(perm::INVENTORY_READ);
@@ -335,15 +335,15 @@ pub fn api_v1_routes() -> Router<AppState> {
             axum::routing::post(handlers::inventory::create_inventory::<AppState>),
         )
         .route(
-            "/inventory/{id}",
+            "/inventory/:id",
             axum::routing::put(handlers::inventory::update_inventory::<AppState>),
         )
         .route(
-            "/inventory/{id}/reserve",
+            "/inventory/:id/reserve",
             axum::routing::post(handlers::inventory::reserve_inventory::<AppState>),
         )
         .route(
-            "/inventory/{id}/release",
+            "/inventory/:id/release",
             axum::routing::post(handlers::inventory::release_inventory::<AppState>),
         )
         // Bulk operations
@@ -357,14 +357,14 @@ pub fn api_v1_routes() -> Router<AppState> {
             axum::routing::post(handlers::inventory::cleanup_expired_reservations),
         )
         .route(
-            "/inventory/reservations/{id}/cancel",
+            "/inventory/reservations/:id/cancel",
             axum::routing::post(handlers::inventory::cancel_reservation),
         )
         .with_permission(perm::INVENTORY_ADJUST);
 
     let inventory_delete = Router::new()
         .route(
-            "/inventory/{id}",
+            "/inventory/:id",
             axum::routing::delete(handlers::inventory::delete_inventory::<AppState>),
         )
         .with_permission(perm::INVENTORY_ADJUST);
@@ -372,7 +372,7 @@ pub fn api_v1_routes() -> Router<AppState> {
     // Returns routes with permission gating
     let returns_read = Router::new()
         .route("/returns", get(handlers::returns::list_returns))
-        .route("/returns/{id}", get(handlers::returns::get_return))
+        .route("/returns/:id", get(handlers::returns::get_return))
         .with_permission(perm::RETURNS_READ);
 
     let returns_write = Router::new()
@@ -381,29 +381,29 @@ pub fn api_v1_routes() -> Router<AppState> {
             axum::routing::post(handlers::returns::create_return),
         )
         .route(
-            "/returns/{id}/approve",
+            "/returns/:id/approve",
             axum::routing::post(handlers::returns::approve_return),
         )
         .route(
-            "/returns/{id}/restock",
+            "/returns/:id/restock",
             axum::routing::post(handlers::returns::restock_return),
         )
         .with_permission(perm::RETURNS_CREATE);
 
     let returns_delete = Router::new()
-        // .route("/returns/{id}", axum::routing::delete(handlers::returns::delete_return::<AppState>))
+        // .route("/returns/:id", axum::routing::delete(handlers::returns::delete_return::<AppState>))
         .with_permission(perm::RETURNS_REJECT);
 
     // Shipments routes with permission gating
     let shipments_read = Router::new()
         .route("/shipments", get(handlers::shipments::list_shipments))
-        .route("/shipments/{id}", get(handlers::shipments::get_shipment))
+        .route("/shipments/:id", get(handlers::shipments::get_shipment))
         .route(
-            "/shipments/{id}/track",
+            "/shipments/:id/track",
             get(handlers::shipments::track_shipment),
         )
         .route(
-            "/shipments/track/{tracking_number}",
+            "/shipments/track/:tracking_number",
             get(handlers::shipments::track_by_number),
         )
         .with_permission(perm::SHIPMENTS_READ);
@@ -414,23 +414,23 @@ pub fn api_v1_routes() -> Router<AppState> {
             axum::routing::post(handlers::shipments::create_shipment),
         )
         .route(
-            "/shipments/{id}/ship",
+            "/shipments/:id/ship",
             axum::routing::post(handlers::shipments::mark_shipped),
         )
         .route(
-            "/shipments/{id}/deliver",
+            "/shipments/:id/deliver",
             axum::routing::post(handlers::shipments::mark_delivered),
         )
         .with_permission(perm::SHIPMENTS_UPDATE);
 
     let shipments_delete = Router::new()
-        // .route("/shipments/{id}", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
+        // .route("/shipments/:id", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
         .with_permission(perm::SHIPMENTS_DELETE);
 
     // Warranties routes with permission gating
     let warranties_read = Router::new()
         .route("/warranties", get(handlers::warranties::list_warranties))
-        .route("/warranties/{id}", get(handlers::warranties::get_warranty))
+        .route("/warranties/:id", get(handlers::warranties::get_warranty))
         .with_permission(perm::WARRANTIES_READ);
 
     let warranties_create = Router::new()
@@ -442,7 +442,7 @@ pub fn api_v1_routes() -> Router<AppState> {
 
     let warranties_update = Router::new()
         .route(
-            "/warranties/{id}/extend",
+            "/warranties/:id/extend",
             axum::routing::post(handlers::warranties::extend_warranty),
         )
         .route(
@@ -450,7 +450,7 @@ pub fn api_v1_routes() -> Router<AppState> {
             axum::routing::post(handlers::warranties::create_warranty_claim),
         )
         .route(
-            "/warranties/claims/{id}/approve",
+            "/warranties/claims/:id/approve",
             axum::routing::post(handlers::warranties::approve_warranty_claim),
         )
         .with_permission(perm::WARRANTIES_UPDATE);
@@ -462,7 +462,7 @@ pub fn api_v1_routes() -> Router<AppState> {
             get(handlers::work_orders::list_work_orders::<AppState>),
         )
         .route(
-            "/work-orders/{id}",
+            "/work-orders/:id",
             get(handlers::work_orders::get_work_order::<AppState>),
         )
         .with_permission(perm::WORKORDERS_READ);
@@ -476,26 +476,26 @@ pub fn api_v1_routes() -> Router<AppState> {
 
     let work_orders_update = Router::new()
         .route(
-            "/work-orders/{id}",
+            "/work-orders/:id",
             axum::routing::put(handlers::work_orders::update_work_order::<AppState>),
         )
         .route(
-            "/work-orders/{id}/assign",
+            "/work-orders/:id/assign",
             axum::routing::post(handlers::work_orders::assign_work_order::<AppState>),
         )
         .route(
-            "/work-orders/{id}/complete",
+            "/work-orders/:id/complete",
             axum::routing::post(handlers::work_orders::complete_work_order::<AppState>),
         )
         .route(
-            "/work-orders/{id}/status",
+            "/work-orders/:id/status",
             axum::routing::put(handlers::work_orders::update_work_order_status::<AppState>),
         )
         .with_permission(perm::WORKORDERS_UPDATE);
 
     let work_orders_delete = Router::new()
         .route(
-            "/work-orders/{id}",
+            "/work-orders/:id",
             axum::routing::delete(handlers::work_orders::delete_work_order::<AppState>),
         )
         .with_permission(perm::WORKORDERS_DELETE);

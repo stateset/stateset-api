@@ -292,97 +292,286 @@ impl<T> OrderHandlerState for T where T: Clone + Send + Sync + 'static {}
 
 // Order DTOs
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "order_number": "ORD-2024-001234",
+    "customer_id": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "pending",
+    "order_date": "2024-12-09T10:30:00Z",
+    "total_amount": "149.99",
+    "currency": "USD",
+    "payment_status": "pending",
+    "fulfillment_status": "unfulfilled",
+    "items": [{
+        "id": "item-001",
+        "product_id": "prod-abc123",
+        "product_name": "Wireless Bluetooth Headphones",
+        "sku": "WBH-BLK-001",
+        "quantity": 2,
+        "unit_price": "49.99",
+        "total_price": "99.98",
+        "tax_rate": "0.08",
+        "tax_amount": "8.00"
+    }],
+    "shipping_address": {
+        "street": "123 Main Street",
+        "city": "San Francisco",
+        "state": "CA",
+        "postal_code": "94102",
+        "country": "US"
+    },
+    "billing_address": {
+        "street": "123 Main Street",
+        "city": "San Francisco",
+        "state": "CA",
+        "postal_code": "94102",
+        "country": "US"
+    },
+    "payment_method_id": "pm_card_visa",
+    "notes": "Please deliver to back door",
+    "version": 1,
+    "created_at": "2024-12-09T10:30:00Z",
+    "updated_at": "2024-12-09T10:30:00Z"
+}))]
 pub struct OrderResponse {
+    /// Unique order identifier (UUID)
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub id: String,
+    /// Human-readable order number
+    #[schema(example = "ORD-2024-001234")]
     pub order_number: String,
+    /// Customer identifier (UUID)
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
     pub customer_id: String,
+    /// Current order status
     pub status: OrderStatus,
+    /// Date when the order was placed
     pub order_date: DateTime<Utc>,
+    /// Total order amount
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "149.99")]
     pub total_amount: Option<rust_decimal::Decimal>,
+    /// Currency code (ISO 4217)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "USD")]
     pub currency: Option<String>,
+    /// Payment status (pending, paid, failed, refunded)
+    #[schema(example = "pending")]
     pub payment_status: String,
+    /// Fulfillment status (unfulfilled, partially_fulfilled, fulfilled)
+    #[schema(example = "unfulfilled")]
     pub fulfillment_status: String,
+    /// Order line items
     pub items: Vec<OrderItem>,
+    /// Shipping address
     pub shipping_address: Option<Address>,
+    /// Billing address
     pub billing_address: Option<Address>,
+    /// Payment method identifier
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "pm_card_visa")]
     pub payment_method_id: Option<String>,
+    /// Associated shipment identifier
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "ship_abc123")]
     pub shipment_id: Option<String>,
+    /// Order notes
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Please deliver to back door")]
     pub notes: Option<String>,
+    /// Version number for optimistic locking
+    #[schema(example = 1)]
     pub version: i32,
+    /// Creation timestamp
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Last update timestamp
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "customer_id": "123e4567-e89b-12d3-a456-426614174000",
+    "items": [
+        {
+            "product_id": "prod-abc123",
+            "quantity": 2,
+            "unit_price": "49.99",
+            "tax_rate": "0.08"
+        },
+        {
+            "product_id": "SKU-WIDGET-001",
+            "quantity": 1,
+            "unit_price": "29.99"
+        }
+    ],
+    "shipping_address": {
+        "street": "123 Main Street",
+        "city": "San Francisco",
+        "state": "CA",
+        "postal_code": "94102",
+        "country": "US"
+    },
+    "billing_address": {
+        "street": "456 Billing Ave",
+        "city": "San Francisco",
+        "state": "CA",
+        "postal_code": "94102",
+        "country": "US"
+    },
+    "payment_method_id": "pm_card_visa",
+    "notes": "Please gift wrap"
+}))]
 pub struct CreateOrderRequest {
+    /// Customer UUID
     #[validate(length(min = 1))]
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
     pub customer_id: String,
 
+    /// Order line items (at least one required)
     #[validate(length(min = 1))]
     pub items: Vec<CreateOrderItem>,
 
+    /// Shipping address for delivery
     pub shipping_address: Option<Address>,
+    /// Billing address for payment
     pub billing_address: Option<Address>,
+    /// Payment method identifier (e.g., Stripe payment method ID)
+    #[schema(example = "pm_card_visa")]
     pub payment_method_id: Option<String>,
+    /// Optional notes for the order
+    #[schema(example = "Please gift wrap")]
     pub notes: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "shipping_address": {
+        "street": "789 New Address Blvd",
+        "city": "Los Angeles",
+        "state": "CA",
+        "postal_code": "90001",
+        "country": "US"
+    },
+    "notes": "Updated delivery instructions"
+}))]
 pub struct UpdateOrderRequest {
+    /// Updated shipping address
     pub shipping_address: Option<Address>,
+    /// Updated billing address
     pub billing_address: Option<Address>,
+    /// Updated payment method ID
+    #[schema(example = "pm_card_mastercard")]
     pub payment_method_id: Option<String>,
+    /// Updated order notes
+    #[schema(example = "Leave at front door")]
     pub notes: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "product_id": "SKU-WIDGET-001",
+    "quantity": 2,
+    "unit_price": "49.99",
+    "tax_rate": "0.08"
+}))]
 pub struct CreateOrderItem {
-    /// Variant identifier; accepts either a UUID or SKU string.
+    /// Variant identifier; accepts either a UUID or SKU string
     #[serde(alias = "sku")]
     #[validate(length(min = 1))]
+    #[schema(example = "SKU-WIDGET-001")]
     pub product_id: String,
 
+    /// Quantity to order (must be at least 1)
     #[validate(range(min = 1))]
+    #[schema(example = 2)]
     pub quantity: i32,
 
+    /// Unit price (optional, will use catalog price if not provided)
     #[serde(alias = "price")]
+    #[schema(example = "49.99")]
     pub unit_price: Option<rust_decimal::Decimal>,
+    /// Tax rate as decimal (e.g., 0.08 for 8%)
+    #[schema(example = "0.08")]
     pub tax_rate: Option<rust_decimal::Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "id": "item-550e8400-e29b-41d4",
+    "product_id": "prod-abc123",
+    "product_name": "Wireless Bluetooth Headphones",
+    "sku": "WBH-BLK-001",
+    "quantity": 2,
+    "unit_price": "49.99",
+    "total_price": "99.98",
+    "discount": "5.00",
+    "tax_rate": "0.08",
+    "tax_amount": "7.60"
+}))]
 pub struct OrderItem {
+    /// Line item ID
+    #[schema(example = "item-550e8400-e29b-41d4")]
     pub id: String,
+    /// Product variant ID
+    #[schema(example = "prod-abc123")]
     pub product_id: String,
+    /// Product display name
+    #[schema(example = "Wireless Bluetooth Headphones")]
     pub product_name: String,
+    /// Product SKU
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "WBH-BLK-001")]
     pub sku: Option<String>,
+    /// Quantity ordered
+    #[schema(example = 2)]
     pub quantity: i32,
+    /// Price per unit
+    #[schema(example = "49.99")]
     pub unit_price: rust_decimal::Decimal,
+    /// Total price (unit_price × quantity)
+    #[schema(example = "99.98")]
     pub total_price: rust_decimal::Decimal,
+    /// Discount amount applied
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "5.00")]
     pub discount: Option<rust_decimal::Decimal>,
+    /// Tax rate as decimal
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "0.08")]
     pub tax_rate: Option<rust_decimal::Decimal>,
+    /// Calculated tax amount
+    #[schema(example = "7.60")]
     pub tax_amount: Option<rust_decimal::Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "street": "123 Main Street, Apt 4B",
+    "city": "San Francisco",
+    "state": "CA",
+    "postal_code": "94102",
+    "country": "US"
+}))]
 pub struct Address {
+    /// Street address (including apt/suite if applicable)
+    #[schema(example = "123 Main Street, Apt 4B")]
     pub street: String,
+    /// City name
+    #[schema(example = "San Francisco")]
     pub city: String,
+    /// State or province code
+    #[schema(example = "CA")]
     pub state: String,
+    /// Postal/ZIP code
+    #[schema(example = "94102")]
     pub postal_code: String,
+    /// Country code (ISO 3166-1 alpha-2)
+    #[schema(example = "US")]
     pub country: String,
 }
 
@@ -402,15 +591,27 @@ pub enum OrderStatus {
 
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "status": "processing",
+    "reason": "Payment confirmed, beginning fulfillment"
+}))]
 pub struct UpdateOrderStatusRequest {
+    /// New order status
     pub status: OrderStatus,
+    /// Reason for status change (optional but recommended)
+    #[schema(example = "Payment confirmed, beginning fulfillment")]
     pub reason: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+#[schema(example = json!({
+    "reason": "Customer requested cancellation"
+}))]
 pub struct CancelOrderRequest {
+    /// Cancellation reason
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Customer requested cancellation")]
     pub reason: Option<String>,
 }
 
@@ -709,7 +910,7 @@ pub async fn create_order(
 /// Get order by its public order number (explicit route)
 #[utoipa::path(
     get,
-    path = "/api/v1/orders/by-number/{order_number}",
+    path = "/api/v1/orders/by-number/:order_number}",
     summary = "Get order by number",
     description = "Retrieve an order by its public order number (e.g., ORD-ABC123)",
     params(("order_number" = String, Path, description = "Public order number")),
@@ -749,7 +950,7 @@ pub async fn get_order_by_number(
 /// Get order by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/orders/{id}",
+    path = "/api/v1/orders/:id",
     summary = "Get order",
     description = "Get an order by its ID",
     params(
@@ -798,7 +999,7 @@ pub async fn get_order(
 /// Update order
 #[utoipa::path(
     put,
-    path = "/api/v1/orders/{id}",
+    path = "/api/v1/orders/:id",
     summary = "Update order",
     description = "Update an existing order",
     params(
@@ -875,7 +1076,7 @@ pub async fn update_order(
 /// Delete order
 #[utoipa::path(
     delete,
-    path = "/api/v1/orders/{id}",
+    path = "/api/v1/orders/:id",
     summary = "Delete order",
     description = "Delete an order by its ID",
     params(
@@ -915,7 +1116,7 @@ pub async fn delete_order(
 /// Update order status
 #[utoipa::path(
     put,
-    path = "/api/v1/orders/{id}/status",
+    path = "/api/v1/orders/:id/status",
     summary = "Update order status",
     description = "Update the status of an order",
     params(
@@ -991,7 +1192,7 @@ pub async fn update_order_status(
 /// Get order items
 #[utoipa::path(
     get,
-    path = "/api/v1/orders/{id}/items",
+    path = "/api/v1/orders/:id/items",
     summary = "Get order items",
     description = "Get all items for a specific order",
     params(
@@ -1030,7 +1231,7 @@ pub async fn get_order_items(
 /// Add item to order
 #[utoipa::path(
     post,
-    path = "/api/v1/orders/{id}/items",
+    path = "/api/v1/orders/:id/items",
     summary = "Add order item",
     description = "Add a new item to an existing order",
     params(
@@ -1141,7 +1342,7 @@ pub async fn add_order_item(
 /// Cancel an existing order
 #[utoipa::path(
     post,
-    path = "/api/v1/orders/{id}/cancel",
+    path = "/api/v1/orders/:id/cancel",
     summary = "Cancel order",
     description = "Cancel an order and return the updated order",
     params(("id" = String, Path, description = "Order ID")),
@@ -1184,7 +1385,7 @@ pub async fn cancel_order(
 /// Archive an existing order
 #[utoipa::path(
     post,
-    path = "/api/v1/orders/{id}/archive",
+    path = "/api/v1/orders/:id/archive",
     summary = "Archive order",
     description = "Archive an order and return the updated order record",
     params(("id" = String, Path, description = "Order ID")),

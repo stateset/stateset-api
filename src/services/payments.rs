@@ -6,8 +6,7 @@ use crate::{
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set,
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -140,10 +139,20 @@ impl PaymentService {
             processed_at: Set(Some(Utc::now())),
         };
 
-        let payment = payment_model
-            .insert(&*self.db)
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID primary keys on SQLite
+        payment::Entity::insert(payment_model)
+            .exec(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;
+
+        // Query the payment back using the known ID
+        let payment = payment::Entity::find_by_id(payment_id)
+            .one(&*self.db)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted payment".to_string())
+            })?;
 
         // Send event
         let event = if matches!(status, PaymentStatus::Succeeded) {
@@ -348,8 +357,9 @@ impl PaymentService {
         );
 
         // In real implementation, this would call payment gateway for refund
+        let refund_id = Uuid::new_v4();
         let refund_payment = payment::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(refund_id),
             order_id: Set(original_payment.order_id),
             amount: Set(-refund_amount),
             currency: Set(original_payment.currency),
@@ -366,10 +376,20 @@ impl PaymentService {
             processed_at: Set(Some(Utc::now())),
         };
 
-        let refund = refund_payment
-            .insert(&*self.db)
+        // Use Entity::insert().exec() to avoid last_insert_id issues with UUID primary keys on SQLite
+        payment::Entity::insert(refund_payment)
+            .exec(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;
+
+        // Query the refund back using the known ID
+        let refund = payment::Entity::find_by_id(refund_id)
+            .one(&*self.db)
+            .await
+            .map_err(ServiceError::db_error)?
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted refund".to_string())
+            })?;
 
         // Send refund event
         let event = Event::PaymentRefunded(refund.id);

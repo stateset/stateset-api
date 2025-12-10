@@ -5,6 +5,7 @@ use axum::{
 };
 use sea_orm::error::DbErr;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -17,39 +18,83 @@ fn current_request_id() -> Option<String> {
 
 /// Simplified error structure for OpenAPI documentation
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "error": "Not Found",
+    "message": "Order with ID 550e8400-e29b-41d4-a716-446655440000 not found",
+    "details": null,
+    "request_id": "req-abc123xyz",
+    "timestamp": "2024-12-09T10:30:00.000Z"
+}))]
 pub struct ErrorResponse {
+    /// HTTP status category (e.g., "Not Found", "Bad Request", "Internal Server Error")
+    #[schema(example = "Not Found")]
     pub error: String,
+    /// Human-readable error description
+    #[schema(example = "Order with ID 550e8400-e29b-41d4-a716-446655440000 not found")]
     pub message: String,
+    /// Additional error details (validation errors, stack traces in dev mode)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Field 'email' must be a valid email address")]
     pub details: Option<String>,
+    /// Unique request identifier for support and debugging
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "req-abc123xyz")]
     pub request_id: Option<String>,
+    /// ISO 8601 timestamp when error occurred
+    #[schema(example = "2024-12-09T10:30:00.000Z")]
     pub timestamp: String,
 }
 
 /// ACP-compliant error response format
 /// Matches the Agentic Commerce Protocol error specification
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "error": {
+        "type": "invalid_request_error",
+        "code": "validation_error",
+        "message": "The 'quantity' field must be a positive integer",
+        "param": "quantity"
+    }
+}))]
 pub struct ACPErrorResponse {
+    /// Error details object
     pub error: ACPErrorDetails,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "type": "invalid_request_error",
+    "code": "validation_error",
+    "message": "The 'quantity' field must be a positive integer",
+    "param": "quantity"
+}))]
 pub struct ACPErrorDetails {
+    /// Error type category
     #[serde(rename = "type")]
+    #[schema(example = "invalid_request_error")]
     pub error_type: ACPErrorType,
+    /// Machine-readable error code
+    #[schema(example = "validation_error")]
     pub code: String,
+    /// Human-readable error message
+    #[schema(example = "The 'quantity' field must be a positive integer")]
     pub message: String,
+    /// Parameter that caused the error (for validation errors)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "quantity")]
     pub param: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ACPErrorType {
+    /// Invalid request parameters or payload
     InvalidRequestError,
+    /// Authentication or authorization failure
     AuthenticationError,
+    /// Rate limit exceeded
     RateLimitError,
+    /// General API error
     ApiError,
 }
 

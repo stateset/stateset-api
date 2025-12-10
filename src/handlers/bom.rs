@@ -29,13 +29,13 @@ pub fn bom_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_bom))
         .route("/", get(list_boms))
-        .route("/{id}", get(get_bom))
-        .route("/{id}", put(update_bom))
-        .route("/{id}/audit", post(audit_bom))
-        .route("/{id}/components", get(get_bom_components))
-        .route("/{id}/components", post(add_component_to_bom))
+        .route("/:id", get(get_bom))
+        .route("/:id", put(update_bom))
+        .route("/:id/audit", post(audit_bom))
+        .route("/:id/components", get(get_bom_components))
+        .route("/:id/components", post(add_component_to_bom))
         .route(
-            "/{id}/components/{component_id}",
+            "/:id/components/:component_id}",
             delete(remove_component_from_bom),
         )
 }
@@ -151,7 +151,7 @@ pub async fn create_bom(
 /// Get a BOM by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/manufacturing/boms/{id}",
+    path = "/api/v1/manufacturing/boms/:id",
     params(
         ("id" = Uuid, Path, description = "BOM ID")
     ),
@@ -185,7 +185,7 @@ pub async fn get_bom(
 /// Update a BOM
 #[utoipa::path(
     put,
-    path = "/api/v1/manufacturing/boms/{id}",
+    path = "/api/v1/manufacturing/boms/:id",
     request_body = UpdateBOMRequest,
     params(
         ("id" = Uuid, Path, description = "BOM ID")
@@ -233,7 +233,7 @@ pub async fn update_bom(
 /// Audit a BOM
 #[utoipa::path(
     post,
-    path = "/api/v1/manufacturing/boms/{id}/audit",
+    path = "/api/v1/manufacturing/boms/:id/audit",
     request_body = AuditBOMRequest,
     params(
         ("id" = Uuid, Path, description = "BOM ID")
@@ -316,7 +316,7 @@ pub async fn list_boms(
 /// Get components for a BOM
 #[utoipa::path(
     get,
-    path = "/api/v1/manufacturing/boms/{id}/components",
+    path = "/api/v1/manufacturing/boms/:id/components",
     params(
         ("id" = Uuid, Path, description = "BOM ID")
     ),
@@ -343,7 +343,7 @@ pub async fn get_bom_components(
 /// Add a component to a BOM
 #[utoipa::path(
     post,
-    path = "/api/v1/manufacturing/boms/{id}/components",
+    path = "/api/v1/manufacturing/boms/:id/components",
     request_body = AddComponentRequest,
     params(
         ("id" = Uuid, Path, description = "BOM ID")
@@ -390,7 +390,7 @@ pub async fn add_component_to_bom(
 /// Remove a component from a BOM
 #[utoipa::path(
     delete,
-    path = "/api/v1/manufacturing/boms/{id}/components/{component_id}",
+    path = "/api/v1/manufacturing/boms/:id/components/:component_id}",
     params(
         ("id" = Uuid, Path, description = "BOM ID"),
         ("component_id" = Uuid, Path, description = "Component ID")

@@ -109,6 +109,7 @@ impl InventoryService {
     }
 
     /// Returns a paginated list of inventory snapshots.
+    /// Uses batch loading to avoid N+1 queries.
     #[instrument(skip(self))]
     pub async fn list_inventory(
         &self,
@@ -139,15 +140,14 @@ impl InventoryService {
             ServiceError::InternalError(format!("Failed to fetch inventory page: {}", e))
         })?;
 
-        let mut snapshots = Vec::with_capacity(models.len());
-        for item in models {
-            snapshots.push(self.snapshot_for_item(&item).await?);
-        }
+        // Batch load all balances for fetched items (avoids N+1 queries)
+        let snapshots = self.batch_snapshots_for_items(&models).await?;
 
         Ok((snapshots, total))
     }
 
     /// Returns a filtered paginated list of inventory snapshots.
+    /// Uses batch loading to avoid N+1 queries.
     #[instrument(skip(self))]
     pub async fn list_inventory_filtered(
         &self,
@@ -194,10 +194,12 @@ impl InventoryService {
             ServiceError::InternalError(format!("Failed to fetch inventory page: {}", e))
         })?;
 
-        let mut snapshots = Vec::new();
-        for item in models {
-            let mut snapshot = self.snapshot_for_item(&item).await?;
+        // Batch load all balances for fetched items (avoids N+1 queries)
+        let all_snapshots = self.batch_snapshots_for_items(&models).await?;
 
+        // Apply post-fetch filters (location and low stock)
+        let mut snapshots = Vec::new();
+        for mut snapshot in all_snapshots {
             // Apply location filter if specified
             if let Some(loc_id) = location_filter {
                 snapshot.locations.retain(|loc| loc.location_id == loc_id);
@@ -420,9 +422,9 @@ impl InventoryService {
                         }
                         let mut active: inventory_balance::ActiveModel = existing.clone().into();
                         active.quantity_on_hand = Set(new_on_hand);
+                        active.quantity_available = Set(new_available);
                         // Increment version for optimistic locking
                         active.version = Set(existing.version + 1);
-                        // quantity_available is computed by database, don't set it
                         active.updated_at = Set(now.into());
                         let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
                         Ok((existing.quantity_on_hand, updated))
@@ -437,9 +439,9 @@ impl InventoryService {
                             location_id: Set(location_id),
                             quantity_on_hand: Set(delta),
                             quantity_allocated: Set(Decimal::ZERO),
+                            quantity_available: Set(delta), // available = on_hand - allocated
                             // Initialize version to 1 for new records
                             version: Set(1),
-                            // quantity_available is computed by database, don't set it
                             created_at: Set(now.into()),
                             updated_at: Set(now.into()),
                             ..Default::default()
@@ -542,10 +544,11 @@ impl InventoryService {
                     }
 
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
-                    active.quantity_allocated = Set(existing.quantity_allocated + quantity);
+                    let new_allocated = existing.quantity_allocated + quantity;
+                    active.quantity_allocated = Set(new_allocated);
+                    active.quantity_available = Set(existing.quantity_on_hand - new_allocated);
                     // Increment version for optimistic locking
                     active.version = Set(existing.version + 1);
-                    // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
 
@@ -668,10 +671,11 @@ impl InventoryService {
                     }
 
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
-                    active.quantity_allocated = Set(existing.quantity_allocated - quantity);
+                    let new_allocated = existing.quantity_allocated - quantity;
+                    active.quantity_allocated = Set(new_allocated);
+                    active.quantity_available = Set(existing.quantity_on_hand - new_allocated);
                     // Increment version for optimistic locking
                     active.version = Set(existing.version + 1);
-                    // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     let updated = active.update(txn).await.map_err(ServiceError::db_error)?;
 
@@ -762,10 +766,11 @@ impl InventoryService {
                 }
 
                 let mut source_active: inventory_balance::ActiveModel = source.clone().into();
-                source_active.quantity_on_hand = Set(source.quantity_on_hand - quantity);
+                let new_source_on_hand = source.quantity_on_hand - quantity;
+                source_active.quantity_on_hand = Set(new_source_on_hand);
+                source_active.quantity_available = Set(new_source_on_hand - source.quantity_allocated);
                 // Increment version for optimistic locking
                 source_active.version = Set(source.version + 1);
-                // quantity_available is computed by database, don't set it
                 source_active.updated_at = Set(now.into());
                 source_active
                     .update(txn)
@@ -783,10 +788,11 @@ impl InventoryService {
 
                 if let Some(existing) = dest {
                     let mut active: inventory_balance::ActiveModel = existing.clone().into();
-                    active.quantity_on_hand = Set(existing.quantity_on_hand + quantity);
+                    let new_on_hand = existing.quantity_on_hand + quantity;
+                    active.quantity_on_hand = Set(new_on_hand);
+                    active.quantity_available = Set(new_on_hand - existing.quantity_allocated);
                     // Increment version for optimistic locking
                     active.version = Set(existing.version + 1);
-                    // quantity_available is computed by database, don't set it
                     active.updated_at = Set(now.into());
                     active.update(txn).await.map_err(ServiceError::db_error)?;
                 } else {
@@ -795,9 +801,9 @@ impl InventoryService {
                         location_id: Set(to_location),
                         quantity_on_hand: Set(quantity),
                         quantity_allocated: Set(Decimal::ZERO),
+                        quantity_available: Set(quantity), // available = on_hand - allocated
                         // Initialize version to 1 for new records
                         version: Set(1),
-                        // quantity_available is computed by database, don't set it
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
                         ..Default::default()
@@ -812,6 +818,75 @@ impl InventoryService {
         })
         .await
         .map_err(|e| ServiceError::InternalError(e.to_string()))
+    }
+
+    /// Batch loads inventory snapshots for multiple items in a single query.
+    /// This avoids N+1 queries when fetching inventory for list operations.
+    async fn batch_snapshots_for_items(
+        &self,
+        items: &[item_master::Model],
+    ) -> Result<Vec<InventorySnapshot>, ServiceError> {
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let db = &*self.db_pool;
+
+        // Collect all inventory_item_ids
+        let item_ids: Vec<i64> = items.iter().map(|i| i.inventory_item_id).collect();
+
+        // Single query to fetch all balances for all items with their locations
+        let all_balances = InventoryBalanceEntity::find()
+            .filter(inventory_balance::Column::InventoryItemId.is_in(item_ids.clone()))
+            .find_also_related(InventoryLocationEntity)
+            .all(db)
+            .await
+            .map_err(ServiceError::db_error)?;
+
+        // Group balances by inventory_item_id using a HashMap for O(1) lookup
+        let mut balances_by_item: std::collections::HashMap<i64, Vec<(inventory_balance::Model, Option<inventory_location::Model>)>> =
+            std::collections::HashMap::with_capacity(items.len());
+
+        for (balance, location) in all_balances {
+            balances_by_item
+                .entry(balance.inventory_item_id)
+                .or_default()
+                .push((balance, location));
+        }
+
+        // Build snapshots for each item
+        let mut snapshots = Vec::with_capacity(items.len());
+        for item in items {
+            let item_balances = balances_by_item
+                .remove(&item.inventory_item_id)
+                .unwrap_or_default();
+
+            let mut total_on_hand = Decimal::ZERO;
+            let mut total_allocated = Decimal::ZERO;
+            let mut total_available = Decimal::ZERO;
+            let mut location_balances = Vec::with_capacity(item_balances.len());
+
+            for (balance, location) in item_balances {
+                total_on_hand += balance.quantity_on_hand;
+                total_allocated += balance.quantity_allocated;
+                total_available += balance.quantity_available;
+                location_balances.push(Self::map_balance(balance, location));
+            }
+
+            snapshots.push(InventorySnapshot {
+                inventory_item_id: item.inventory_item_id,
+                item_number: item.item_number.clone(),
+                description: item.description.clone(),
+                primary_uom_code: item.primary_uom_code.clone(),
+                organization_id: item.organization_id,
+                total_on_hand,
+                total_allocated,
+                total_available,
+                locations: location_balances,
+            });
+        }
+
+        Ok(snapshots)
     }
 
     async fn snapshot_for_item(

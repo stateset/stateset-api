@@ -56,9 +56,17 @@ use crate::auth::AuthUser;
 
 /// Helper function to convert a number to a HeaderValue.
 /// This is safe because numeric strings are always valid ASCII header values.
+///
+/// # Panics
+/// This function will never panic in practice as numeric strings contain only ASCII digits,
+/// which are always valid HTTP header values per RFC 7230.
 fn num_to_header_value<T: ToString>(n: T) -> http::HeaderValue {
+    // SAFETY: Numeric types when converted to string only produce ASCII digit characters (0-9)
+    // and optionally a minus sign (-) for negative numbers. These are always valid HTTP header
+    // characters according to RFC 7230 Section 3.2.6 (field-content = field-vchar).
+    // This unwrap_or_default provides a fallback for the theoretically impossible case.
     http::HeaderValue::from_str(&n.to_string())
-        .expect("numeric strings are always valid header values")
+        .unwrap_or_else(|_| http::HeaderValue::from_static("0"))
 }
 
 // In-memory rate limiter implementation

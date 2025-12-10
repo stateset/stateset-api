@@ -14,8 +14,115 @@ use sea_orm_migration::MigratorTrait;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+/// Configuration for database retry logic
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Initial delay between retries
+    pub initial_delay: Duration,
+    /// Maximum delay between retries
+    pub max_delay: Duration,
+    /// Multiplier for exponential backoff
+    pub backoff_multiplier: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay: Duration::from_millis(100),
+            max_delay: Duration::from_secs(5),
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+/// Determines if an error is retryable (transient)
+fn is_retryable_error(err: &DbErr) -> bool {
+    match err {
+        DbErr::Conn(_) => true, // Connection errors are retryable
+        DbErr::ConnectionAcquire(_) => true, // Pool exhaustion is retryable
+        DbErr::Query(ref runtime_err) => {
+            let msg = runtime_err.to_string().to_lowercase();
+            // Retry on connection-related query errors
+            msg.contains("connection")
+                || msg.contains("timeout")
+                || msg.contains("broken pipe")
+                || msg.contains("reset by peer")
+                || msg.contains("deadlock")
+        }
+        _ => false,
+    }
+}
+
+/// Execute a database operation with retry logic and exponential backoff
+pub async fn with_retry<F, Fut, T>(
+    config: &RetryConfig,
+    operation_name: &str,
+    mut f: F,
+) -> Result<T, DbErr>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, DbErr>>,
+{
+    let mut attempts = 0;
+    let mut delay = config.initial_delay;
+
+    loop {
+        attempts += 1;
+
+        match f().await {
+            Ok(result) => {
+                if attempts > 1 {
+                    info!(
+                        operation = %operation_name,
+                        attempts = attempts,
+                        "Database operation succeeded after {} attempts",
+                        attempts
+                    );
+                    counter!("stateset_db.retry.success", 1, "operation" => operation_name.to_string());
+                }
+                return Ok(result);
+            }
+            Err(err) => {
+                if attempts >= config.max_retries || !is_retryable_error(&err) {
+                    error!(
+                        operation = %operation_name,
+                        attempts = attempts,
+                        error = %err,
+                        "Database operation failed after {} attempts (non-retryable or max retries reached)",
+                        attempts
+                    );
+                    counter!("stateset_db.retry.exhausted", 1, "operation" => operation_name.to_string());
+                    return Err(err);
+                }
+
+                warn!(
+                    operation = %operation_name,
+                    attempts = attempts,
+                    max_retries = config.max_retries,
+                    delay_ms = delay.as_millis() as u64,
+                    error = %err,
+                    "Retryable database error, waiting {:?} before retry",
+                    delay
+                );
+                counter!("stateset_db.retry.attempt", 1, "operation" => operation_name.to_string());
+
+                sleep(delay).await;
+
+                // Exponential backoff with max cap
+                delay = Duration::from_secs_f64(
+                    (delay.as_secs_f64() * config.backoff_multiplier).min(config.max_delay.as_secs_f64())
+                );
+            }
+        }
+    }
+}
 
 use crate::auth::{api_key, refresh_token, user, user_role};
 use crate::entities::commerce::{
@@ -174,16 +281,30 @@ pub async fn create_db_pool() -> Result<DbPool, AppError> {
     establish_connection_from_app_config(&cfg).await
 }
 
-/// Database access wrapper with built-in metrics and error handling
+/// Database access wrapper with built-in metrics, error handling, and retry logic
 #[derive(Debug, Clone)]
 pub struct DatabaseAccess {
     pool: Arc<DbPool>,
+    retry_config: RetryConfig,
 }
 
 impl DatabaseAccess {
-    /// Create a new database access instance
+    /// Create a new database access instance with default retry config
     pub fn new(pool: Arc<DbPool>) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            retry_config: RetryConfig::default(),
+        }
+    }
+
+    /// Create a new database access instance with custom retry config
+    pub fn with_retry_config(pool: Arc<DbPool>, retry_config: RetryConfig) -> Self {
+        Self { pool, retry_config }
+    }
+
+    /// Get the retry configuration
+    pub fn retry_config(&self) -> &RetryConfig {
+        &self.retry_config
     }
 
     /// Get a reference to the connection pool
@@ -294,6 +415,66 @@ impl DatabaseAccess {
 
         if result.is_ok() {
             debug!(operation = %operation, duration = ?elapsed, "Database operation completed successfully");
+        }
+
+        result
+    }
+
+    /// Execute query with retry logic for transient failures
+    ///
+    /// This method will automatically retry on connection errors, timeouts,
+    /// and other transient database failures using exponential backoff.
+    pub async fn execute_with_retry<F, Fut, T>(
+        &self,
+        operation: &str,
+        f: F,
+    ) -> Result<T, ServiceError>
+    where
+        F: Fn() -> Fut + Send,
+        Fut: Future<Output = Result<T, DbErr>> + Send,
+        T: Send + 'static,
+    {
+        let start = std::time::Instant::now();
+
+        debug!(operation = %operation, "Starting database operation with retry");
+
+        let result = with_retry(&self.retry_config, operation, f)
+            .await
+            .map_err(|e| {
+                error!(operation = %operation, error = %e, "Database operation failed after retries");
+                counter!("stateset_db.operation.error", 1, "operation" => operation.to_string());
+                ServiceError::db_error(e)
+            });
+
+        let elapsed = start.elapsed();
+        histogram!("stateset_db.operation.duration", elapsed, "operation" => operation.to_string());
+
+        if result.is_ok() {
+            debug!(operation = %operation, duration = ?elapsed, "Database operation completed successfully");
+        }
+
+        result
+    }
+
+    /// Check if the database connection is healthy
+    pub async fn health_check(&self) -> Result<(), ServiceError> {
+        let db = &*self.pool;
+        let start = std::time::Instant::now();
+
+        debug!("Performing database health check");
+
+        let result = db.ping().await.map_err(|e| {
+            error!(error = %e, "Database health check failed");
+            counter!("stateset_db.health_check.failed", 1);
+            ServiceError::db_error(e)
+        });
+
+        let elapsed = start.elapsed();
+        gauge!("stateset_db.health_check.latency_ms", elapsed.as_millis() as f64);
+
+        if result.is_ok() {
+            debug!(latency_ms = elapsed.as_millis() as u64, "Database health check passed");
+            counter!("stateset_db.health_check.passed", 1);
         }
 
         result

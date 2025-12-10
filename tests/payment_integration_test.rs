@@ -14,12 +14,16 @@ use axum::{body, http::Method, response::Response};
 use common::TestApp;
 use rust_decimal_macros::dec;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 async fn response_json(response: Response) -> Value {
     let bytes = body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("response body bytes");
-    serde_json::from_slice(&bytes).expect("json response")
+    serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+        let body_str = String::from_utf8_lossy(&bytes);
+        panic!("JSON parse error: {}, body was: {}", e, body_str)
+    })
 }
 
 // ==================== Payment Processing Tests ====================
@@ -33,10 +37,9 @@ async fn test_process_payment_success() {
     let variant = app.seed_product_variant("PAY-TEST-SKU", dec!(99.99)).await;
 
     let order_payload = json!({
-        "customer_email": "payment@test.com",
-        "customer_name": "Payment Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "99.99"
         }]
@@ -46,13 +49,17 @@ async fn test_process_payment_success() {
         .request_authenticated(Method::POST, "/api/v1/orders", Some(order_payload))
         .await;
 
+    let order_status = order_response.status();
+    let order_body = response_json(order_response).await;
+
     // Handle both 201 and 200 status codes
     assert!(
-        order_response.status() == 201 || order_response.status() == 200,
-        "Order creation should succeed"
+        order_status == 201 || order_status == 200,
+        "Order creation should succeed, got status {} with body: {:?}",
+        order_status,
+        order_body
     );
 
-    let order_body = response_json(order_response).await;
     let order_id = order_body["data"]["id"]
         .as_str()
         .or_else(|| order_body["data"]["order_id"].as_str())
@@ -71,9 +78,10 @@ async fn test_process_payment_success() {
         .request_authenticated(Method::POST, "/api/v1/payments", Some(payment_payload))
         .await;
 
-    assert_eq!(response.status(), 201, "Payment should be created");
-
+    let status = response.status();
     let body = response_json(response).await;
+
+    assert_eq!(status, 201, "Payment should be created, got {} with body: {:?}", status, body);
     assert!(body["success"].as_bool().unwrap_or(false));
 
     let payment = &body["data"];
@@ -109,10 +117,9 @@ async fn test_process_payment_with_different_methods() {
             .await;
 
         let order_payload = json!({
-            "customer_email": format!("{}@test.com", method),
-            "customer_name": format!("{} Test", method),
+            "customer_id": Uuid::new_v4().to_string(),
             "items": [{
-                "variant_id": variant.id.to_string(),
+                "product_id": variant.id.to_string(),
                 "quantity": 1,
                 "unit_price": "50.00"
             }]
@@ -231,10 +238,9 @@ async fn test_get_payment_by_id() {
     let variant = app.seed_product_variant("PAY-GET-SKU", dec!(75.00)).await;
 
     let order_payload = json!({
-        "customer_email": "get@test.com",
-        "customer_name": "Get Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "75.00"
         }]
@@ -305,10 +311,9 @@ async fn test_get_payments_for_order() {
     let variant = app.seed_product_variant("PAY-ORD-SKU", dec!(100.00)).await;
 
     let order_payload = json!({
-        "customer_email": "order@test.com",
-        "customer_name": "Order Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "100.00"
         }]
@@ -369,10 +374,9 @@ async fn test_list_payments_pagination() {
             .await;
 
         let order_payload = json!({
-            "customer_email": format!("list{}@test.com", i),
-            "customer_name": format!("List Test {}", i),
+            "customer_id": Uuid::new_v4().to_string(),
             "items": [{
-                "variant_id": variant.id.to_string(),
+                "product_id": variant.id.to_string(),
                 "quantity": 1,
                 "unit_price": "25.00"
             }]
@@ -427,10 +431,9 @@ async fn test_refund_payment_full() {
     let variant = app.seed_product_variant("PAY-REFUND-SKU", dec!(100.00)).await;
 
     let order_payload = json!({
-        "customer_email": "refund@test.com",
-        "customer_name": "Refund Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "100.00"
         }]
@@ -502,10 +505,9 @@ async fn test_refund_payment_partial() {
         .await;
 
     let order_payload = json!({
-        "customer_email": "partial@test.com",
-        "customer_name": "Partial Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "100.00"
         }]
@@ -581,10 +583,9 @@ async fn test_payment_different_currencies() {
             .await;
 
         let order_payload = json!({
-            "customer_email": format!("{}@test.com", currency.to_lowercase()),
-            "customer_name": format!("{} Test", currency),
+            "customer_id": Uuid::new_v4().to_string(),
             "items": [{
-                "variant_id": variant.id.to_string(),
+                "product_id": variant.id.to_string(),
                 "quantity": 1,
                 "unit_price": "100.00"
             }]
@@ -665,10 +666,9 @@ async fn test_payment_with_payment_method_id() {
     let variant = app.seed_product_variant("PAY-PMID-SKU", dec!(50.00)).await;
 
     let order_payload = json!({
-        "customer_email": "pmid@test.com",
-        "customer_name": "PMID Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "50.00"
         }]
@@ -714,10 +714,9 @@ async fn test_payment_large_amount() {
     let variant = app.seed_product_variant("PAY-LARGE-SKU", dec!(99999.99)).await;
 
     let order_payload = json!({
-        "customer_email": "large@test.com",
-        "customer_name": "Large Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "99999.99"
         }]
@@ -759,10 +758,9 @@ async fn test_payment_small_amount() {
     let variant = app.seed_product_variant("PAY-SMALL-SKU", dec!(0.01)).await;
 
     let order_payload = json!({
-        "customer_email": "small@test.com",
-        "customer_name": "Small Test",
+        "customer_id": Uuid::new_v4().to_string(),
         "items": [{
-            "variant_id": variant.id.to_string(),
+            "product_id": variant.id.to_string(),
             "quantity": 1,
             "unit_price": "0.01"
         }]

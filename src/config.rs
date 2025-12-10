@@ -276,6 +276,42 @@ pub struct AppConfig {
     /// Microsoft OAuth2 Tenant ID (defaults to "common")
     #[serde(default)]
     pub oauth2_microsoft_tenant_id: Option<String>,
+
+    // ========== API Pagination Configuration ==========
+
+    /// Default page size for paginated API responses
+    #[serde(default = "default_api_page_size")]
+    pub api_default_page_size: u32,
+
+    /// Maximum page size allowed for paginated API responses
+    #[serde(default = "default_api_max_page_size")]
+    pub api_max_page_size: u32,
+
+    /// Default currency code for commerce operations
+    #[serde(default = "default_currency")]
+    pub default_currency: String,
+
+    /// Maximum request body size in bytes (default 10MB)
+    #[serde(default = "default_max_body_size")]
+    pub max_body_size: usize,
+
+    /// Maximum string length for input validation (default 10000)
+    #[serde(default = "default_max_string_length")]
+    pub max_string_length: usize,
+
+    // ========== Circuit Breaker Configuration ==========
+
+    /// Number of failures before circuit breaker opens
+    #[serde(default = "default_circuit_breaker_failures")]
+    pub circuit_breaker_failure_threshold: u32,
+
+    /// Circuit breaker reset timeout in seconds
+    #[serde(default = "default_circuit_breaker_timeout")]
+    pub circuit_breaker_timeout_secs: u64,
+
+    /// Circuit breaker backoff multiplier
+    #[serde(default = "default_circuit_breaker_multiplier")]
+    pub circuit_breaker_backoff_multiplier: f64,
 }
 
 impl AppConfig {
@@ -356,6 +392,16 @@ impl AppConfig {
             oauth2_microsoft_client_secret: None,
             oauth2_microsoft_redirect_url: None,
             oauth2_microsoft_tenant_id: None,
+            // API pagination defaults
+            api_default_page_size: default_api_page_size(),
+            api_max_page_size: default_api_max_page_size(),
+            default_currency: default_currency(),
+            max_body_size: default_max_body_size(),
+            max_string_length: default_max_string_length(),
+            // Circuit breaker defaults
+            circuit_breaker_failure_threshold: default_circuit_breaker_failures(),
+            circuit_breaker_timeout_secs: default_circuit_breaker_timeout(),
+            circuit_breaker_backoff_multiplier: default_circuit_breaker_multiplier(),
         };
         config.db_url = config.database_url.clone();
         config
@@ -572,6 +618,38 @@ fn default_tax_rate() -> f64 {
 
 fn default_event_channel_capacity() -> usize {
     1024 // Default channel capacity
+}
+
+fn default_api_page_size() -> u32 {
+    20 // Default page size for API pagination
+}
+
+fn default_api_max_page_size() -> u32 {
+    100 // Maximum page size allowed
+}
+
+fn default_currency() -> String {
+    "USD".to_string() // Default currency
+}
+
+fn default_max_body_size() -> usize {
+    10 * 1024 * 1024 // 10MB default max body size
+}
+
+fn default_max_string_length() -> usize {
+    10000 // Default max string length for input validation
+}
+
+fn default_circuit_breaker_failures() -> u32 {
+    5 // Number of failures before circuit opens
+}
+
+fn default_circuit_breaker_timeout() -> u64 {
+    60 // 60 seconds reset timeout
+}
+
+fn default_circuit_breaker_multiplier() -> f64 {
+    2.0 // Backoff multiplier
 }
 
 fn validate_message_queue_backend(value: &str) -> Result<(), ValidationError> {
