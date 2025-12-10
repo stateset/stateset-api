@@ -1448,6 +1448,7 @@ impl OrderService {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    use sea_orm::DatabaseConnection;
 
     #[test]
     fn test_model_to_response_conversion() {

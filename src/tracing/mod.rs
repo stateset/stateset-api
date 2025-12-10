@@ -1005,6 +1005,7 @@ where
 mod tests {
     use super::*;
     use axum::body::Body;
+    use axum::response::IntoResponse;
     use axum::{routing::get, Router};
     use http::Method;
     use serde_json::json;

@@ -316,6 +316,7 @@ mod tests {
     use sea_orm::Set;
     use sea_orm::{DbBackend, EntityTrait, QueryTrait};
     use validator::Validate;
+    use crate::models::order_line_item::{Model as OrderLineItemModel, OrderLineItemStatus};
 
     /// Helper function to create a valid order.
     fn create_valid_order() -> Model {
@@ -335,8 +336,8 @@ mod tests {
     }
 
     /// Helper function to create a valid order line item.
-    fn create_valid_line_item(order_id: Uuid) -> super::order_line_item::Model {
-        super::order_line_item::Model::new(
+    fn create_valid_line_item(order_id: Uuid) -> OrderLineItemModel {
+        OrderLineItemModel::new(
             order_id,
             "Widget".to_string(),
             3,
@@ -353,7 +354,7 @@ mod tests {
             "http://example.com/widget.jpg".to_string(),
             "Widget Pro".to_string(),
             "TypeA".to_string(),
-            super::order_line_item::OrderLineItemStatus::Pending,
+            OrderLineItemStatus::Pending,
         )
     }
 

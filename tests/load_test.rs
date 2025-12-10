@@ -6,104 +6,85 @@ use axum::{
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
-use stateset_api::{config, db, events::EventSender, handlers::AppServices, AppState};
+use stateset_api::{
+    config, db,
+    events::EventSender,
+    handlers::AppServices,
+    message_queue::InMemoryMessageQueue,
+    AppState,
+};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower::ServiceExt;
+use slog::Drain;
 
 // Benchmark setup
-fn create_benchmark_app_state() -> AppState {
-    let config = config::AppConfig {
-        database_url: ":memory:".to_string(),
-        host: "127.0.0.1".to_string(),
-        port: 8080,
-        auto_migrate: false,
-        env: "benchmark".to_string(),
-        jwt_secret: "benchmark_secret_key".to_string(),
-        jwt_expiration: 3600,
-        refresh_token_expiration: 86400,
-        redis_url: "redis://localhost:6379".to_string(),
-        rate_limit_requests_per_window: 10000,
-        rate_limit_window_seconds: 60,
-        rate_limit_enable_headers: false,
-        log_level: "error".to_string(),
-        log_json: false,
-        cors_allowed_origins: None,
-        cors_allow_credentials: false,
-        grpc_port: None,
-        is_production: false,
-        rate_limit_path_policies: None,
-        rate_limit_api_key_policies: None,
-        rate_limit_user_policies: None,
-        statement_timeout: None,
-    };
+async fn create_benchmark_app_state() -> AppState {
+    let mut config = config::AppConfig::new(
+        ":memory:".to_string(),
+        "redis://localhost:6379".to_string(),
+        "benchmark_secret_key_for_tests_that_is_long_enough_to_validate_secrets".to_string(),
+        3600,
+        86400,
+        "127.0.0.1".to_string(),
+        8080,
+        "benchmark".to_string(),
+    );
+    config.auto_migrate = false;
+    config.rate_limit_enable_headers = false;
 
     let db_arc = Arc::new(
-        db::establish_connection(&config.database_url)
+        db::establish_connection(config.database_url())
             .await
-            .unwrap(),
+            .expect("in-memory db for load tests"),
     );
     let (tx, _rx) = mpsc::channel(1000);
     let event_sender = EventSender::new(tx);
-
-    let inventory_service = stateset_api::services::inventory::InventoryService::new(
+    let event_sender_arc = Arc::new(event_sender.clone());
+    let redis_client = Arc::new(
+        redis::Client::open(config.redis_url.clone())
+            .unwrap_or_else(|_| redis::Client::open("redis://mock:6379").unwrap()),
+    );
+    let auth_service = Arc::new(stateset_api::auth::AuthService::new(
+        stateset_api::auth::AuthConfig::new(
+            config.jwt_secret.clone(),
+            "stateset-api".to_string(),
+            "stateset-auth".to_string(),
+            std::time::Duration::from_secs(config.jwt_expiration as u64),
+            std::time::Duration::from_secs(config.refresh_token_expiration as u64),
+            "sk_".to_string(),
+        )
+        .expect("valid auth config for load tests"),
         db_arc.clone(),
-        event_sender.clone(),
+    ));
+    let message_queue: Arc<dyn stateset_api::message_queue::MessageQueue> =
+        Arc::new(InMemoryMessageQueue::new());
+    let drain = slog::Discard;
+    let base_logger = slog::Logger::root(drain.fuse(), slog::o!());
+    let services = AppServices::new(
+        db_arc.clone(),
+        event_sender_arc.clone(),
+        redis_client.clone(),
+        auth_service,
+        message_queue,
+        base_logger,
     );
 
-    let order_service = stateset_api::services::orders::OrderService::new(
-        db_arc.clone(),
-        Some(Arc::new(event_sender.clone())),
-    );
+    let inventory_service =
+        stateset_api::services::inventory::InventoryService::new(db_arc.clone(), event_sender.clone());
 
     AppState {
         db: db_arc,
         config,
         event_sender,
         inventory_service,
-        services: AppServices {
-            product_catalog: Arc::new(
-                stateset_api::services::commerce::ProductCatalogService::new(
-                    db_arc.clone(),
-                    event_sender.clone(),
-                ),
-            ),
-            cart: Arc::new(stateset_api::services::commerce::CartService::new(
-                db_arc.clone(),
-                event_sender.clone(),
-            )),
-            checkout: Arc::new(stateset_api::services::commerce::CheckoutService::new(
-                db_arc.clone(),
-                event_sender.clone(),
-                order_service.clone(),
-            )),
-            customer: Arc::new(stateset_api::services::commerce::CustomerService::new(
-                db_arc.clone(),
-                event_sender.clone(),
-                Arc::new(stateset_api::auth::AuthService::new(
-                    stateset_api::auth::AuthConfig::new(
-                        config.jwt_secret.clone(),
-                        "stateset-api".to_string(),
-                        "stateset-auth".to_string(),
-                        std::time::Duration::from_secs(config.jwt_expiration as u64),
-                        std::time::Duration::from_secs(config.refresh_token_expiration as u64),
-                        "sk_".to_string(),
-                    )
-                    .expect("valid auth config for load tests"),
-                    db_arc.clone(),
-                )),
-            )),
-            order: order_service,
-        },
-        redis: Arc::new(
-            redis::Client::open(config.redis_url.clone())
-                .unwrap_or_else(|_| redis::Client::open("redis://mock:6379").unwrap()),
-        ),
+        services,
+        redis: redis_client,
     }
 }
 
 async fn setup_benchmark_app() -> axum::Router {
-    let state = create_benchmark_app_state();
+    let state = create_benchmark_app_state().await;
 
     axum::Router::new()
         .nest(

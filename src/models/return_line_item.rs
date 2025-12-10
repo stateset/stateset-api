@@ -166,6 +166,7 @@ fn validate_decimal_non_negative(value: &Decimal) -> Result<(), ValidationError>
 mod tests {
     use super::*;
     use chrono::Utc;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_calculate_refund_amount() {
