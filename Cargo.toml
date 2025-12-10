@@ -1,6 +1,6 @@
 [package]
 name = "stateset-api"
-version = "1.0.0"
+version = "0.2.1"
 edition = "2021"
 autobins = false
 
