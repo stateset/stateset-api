@@ -331,71 +331,70 @@ impl ServiceError {
     pub fn database_error_message(message: impl Into<String>) -> Self {
         ServiceError::db_error(message.into())
     }
+
+    /// Returns the HTTP status code for this error.
+    /// This is the single source of truth for error-to-status mapping.
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::NotFound(_) | Self::NotFoundError(_) => StatusCode::NOT_FOUND,
+            Self::ValidationError(_)
+            | Self::InvalidOperation(_)
+            | Self::InvalidInput(_)
+            | Self::OrderError(_)
+            | Self::InventoryError(_)
+            | Self::InvalidStatus(_)
+            | Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::AuthError(_) | Self::Unauthorized(_) | Self::JwtError(_) => {
+                StatusCode::UNAUTHORIZED
+            }
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::EventError(_)
+            | Self::InternalError(_)
+            | Self::InternalServerError
+            | Self::HashError(_)
+            | Self::CacheError(_)
+            | Self::QueueError(_)
+            | Self::SerializationError(_)
+            | Self::MigrationError(_)
+            | Self::Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ExternalServiceError(_) | Self::ExternalApiError(_) => StatusCode::BAD_GATEWAY,
+            Self::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
+            Self::Conflict(_) | Self::ConcurrentModification(_) => StatusCode::CONFLICT,
+            Self::InsufficientStock(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::PaymentFailed(_) => StatusCode::PAYMENT_REQUIRED,
+            Self::CircuitBreakerOpen => StatusCode::SERVICE_UNAVAILABLE,
+        }
+    }
+
+    /// Returns the error message suitable for HTTP responses.
+    /// Internal errors return generic messages to avoid leaking implementation details.
+    pub fn response_message(&self) -> String {
+        match self {
+            // For internal errors, return generic messages to avoid leaking details
+            Self::DatabaseError(_) => "Database error".to_string(),
+            Self::HashError(_)
+            | Self::CacheError(_)
+            | Self::QueueError(_)
+            | Self::SerializationError(_)
+            | Self::MigrationError(_)
+            | Self::Other(_) => "Internal server error".to_string(),
+            Self::InternalServerError => "Internal server error".to_string(),
+            Self::RateLimitExceeded => "Rate limit exceeded".to_string(),
+            Self::CircuitBreakerOpen => "Service temporarily unavailable".to_string(),
+            Self::ConcurrentModification(id) => {
+                format!("Concurrent modification for ID {}", id)
+            }
+            // For user-facing errors, return the actual message
+            _ => self.to_string(),
+        }
+    }
 }
 
 impl IntoResponse for ServiceError {
     fn into_response(self) -> Response {
-        let (status, error_message) = match self {
-            ServiceError::DatabaseError(ref e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            }
-            ServiceError::NotFound(ref e) => (StatusCode::NOT_FOUND, e.to_string()),
-            ServiceError::ValidationError(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
-            ServiceError::AuthError(ref e) => (StatusCode::UNAUTHORIZED, e.to_string()),
-            ServiceError::InvalidOperation(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
-            ServiceError::InvalidInput(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
-            ServiceError::EventError(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            ServiceError::InternalError(ref e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            }
-            ServiceError::NotFoundError(ref e) => (StatusCode::NOT_FOUND, e.to_string()),
-            ServiceError::OrderError(ref e) => (StatusCode::BAD_REQUEST, e.to_string()),
-            ServiceError::InventoryError(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            ServiceError::InvalidStatus(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            ServiceError::InternalServerError => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            ),
-            ServiceError::ExternalServiceError(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
-            ServiceError::ExternalApiError(msg) => (StatusCode::BAD_GATEWAY, msg.clone()),
-            ServiceError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
-            ServiceError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
-            ServiceError::JwtError(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
-            ServiceError::HashError(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            ),
-            ServiceError::RateLimitExceeded => (
-                StatusCode::TOO_MANY_REQUESTS,
-                "Rate limit exceeded".to_string(),
-            ),
-            ServiceError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            ServiceError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
-            ServiceError::InsufficientStock(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
-            ServiceError::PaymentFailed(msg) => (StatusCode::PAYMENT_REQUIRED, msg.clone()),
-            ServiceError::CacheError(_)
-            | ServiceError::QueueError(_)
-            | ServiceError::SerializationError(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            ),
-            ServiceError::CircuitBreakerOpen => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Service temporarily unavailable".to_string(),
-            ),
-            ServiceError::MigrationError(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            ),
-            ServiceError::ConcurrentModification(id) => (
-                StatusCode::CONFLICT,
-                format!("Concurrent modification for ID {}", id),
-            ),
-            ServiceError::Other(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            ),
-        };
+        let status = self.status_code();
+        let error_message = self.response_message();
 
         let request_id = current_request_id();
         // Build standardized error response
@@ -447,68 +446,11 @@ pub enum ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        // Delegate to ServiceError's unified status/message methods when applicable
         let (status, error_message) = match &self {
-            ApiError::ServiceError(service_error) => match service_error {
-                ServiceError::NotFound(e) | ServiceError::NotFoundError(e) => {
-                    (StatusCode::NOT_FOUND, e.clone())
-                }
-                ServiceError::ValidationError(e) | ServiceError::InvalidStatus(e) => {
-                    (StatusCode::BAD_REQUEST, e.clone())
-                }
-                ServiceError::AuthError(e)
-                | ServiceError::JwtError(e)
-                | ServiceError::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e.clone()),
-                ServiceError::InvalidOperation(e)
-                | ServiceError::BadRequest(e)
-                | ServiceError::InvalidInput(e) => (StatusCode::BAD_REQUEST, e.clone()),
-                ServiceError::EventError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
-                ServiceError::InternalError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.clone()),
-                ServiceError::HashError(_) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                ),
-                ServiceError::OrderError(e) | ServiceError::InventoryError(e) => {
-                    (StatusCode::BAD_REQUEST, e.clone())
-                }
-                ServiceError::DatabaseError(_) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Database error".to_string(),
-                ),
-                ServiceError::InternalServerError => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                ),
-                ServiceError::ExternalServiceError(e) | ServiceError::ExternalApiError(e) => {
-                    (StatusCode::BAD_GATEWAY, e.clone())
-                }
-                ServiceError::Forbidden(e) => (StatusCode::FORBIDDEN, e.clone()),
-                ServiceError::RateLimitExceeded => (
-                    StatusCode::TOO_MANY_REQUESTS,
-                    "Rate limit exceeded".to_string(),
-                ),
-                ServiceError::Conflict(e) => (StatusCode::CONFLICT, e.clone()),
-                ServiceError::InsufficientStock(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.clone()),
-                ServiceError::PaymentFailed(e) => (StatusCode::PAYMENT_REQUIRED, e.clone()),
-                ServiceError::CacheError(_)
-                | ServiceError::QueueError(_)
-                | ServiceError::SerializationError(_)
-                | ServiceError::MigrationError(_) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                ),
-                ServiceError::CircuitBreakerOpen => (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Service temporarily unavailable".to_string(),
-                ),
-                ServiceError::ConcurrentModification(id) => (
-                    StatusCode::CONFLICT,
-                    format!("Concurrent modification for ID {}", id),
-                ),
-                ServiceError::Other(_) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                ),
-            },
+            ApiError::ServiceError(service_error) => {
+                (service_error.status_code(), service_error.response_message())
+            }
             ApiError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
@@ -602,5 +544,81 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let payload: ErrorResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload.request_id.as_deref(), Some("req-api-42"));
+    }
+
+    #[test]
+    fn service_error_status_code_mapping() {
+        // Test all major error variants map to correct status codes
+        assert_eq!(ServiceError::NotFound("x".into()).status_code(), StatusCode::NOT_FOUND);
+        assert_eq!(ServiceError::ValidationError("x".into()).status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(ServiceError::Unauthorized("x".into()).status_code(), StatusCode::UNAUTHORIZED);
+        assert_eq!(ServiceError::Forbidden("x".into()).status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(ServiceError::RateLimitExceeded.status_code(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(ServiceError::Conflict("x".into()).status_code(), StatusCode::CONFLICT);
+        assert_eq!(ServiceError::InsufficientStock("x".into()).status_code(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(ServiceError::PaymentFailed("x".into()).status_code(), StatusCode::PAYMENT_REQUIRED);
+        assert_eq!(ServiceError::CircuitBreakerOpen.status_code(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(ServiceError::ExternalServiceError("x".into()).status_code(), StatusCode::BAD_GATEWAY);
+        assert_eq!(ServiceError::InternalServerError.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn service_error_response_message_hides_internal_details() {
+        // Internal errors should NOT expose implementation details
+        assert_eq!(
+            ServiceError::HashError("sensitive".into()).response_message(),
+            "Internal server error"
+        );
+        assert_eq!(
+            ServiceError::CacheError("redis failed".into()).response_message(),
+            "Internal server error"
+        );
+        assert_eq!(
+            ServiceError::QueueError("queue issue".into()).response_message(),
+            "Internal server error"
+        );
+
+        // User-facing errors SHOULD include the actual message
+        assert_eq!(
+            ServiceError::NotFound("Order not found".into()).response_message(),
+            "Not found: Order not found"
+        );
+        assert_eq!(
+            ServiceError::ValidationError("Invalid email".into()).response_message(),
+            "Validation error: Invalid email"
+        );
+    }
+
+    #[test]
+    fn api_error_delegates_to_service_error_status() {
+        let service_err = ServiceError::NotFound("test".into());
+
+        // ApiError should use the same status code as ServiceError
+        let status = service_err.status_code();
+        let api_err = ApiError::ServiceError(service_err);
+
+        let api_status = match &api_err {
+            ApiError::ServiceError(se) => se.status_code(),
+            _ => panic!("Expected ServiceError variant"),
+        };
+        assert_eq!(status, api_status);
+        assert_eq!(api_status, StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn acp_error_response_from_service_error() {
+        let validation_err = ServiceError::ValidationError("field required".into());
+        let acp_response = ACPErrorResponse::from(&validation_err);
+
+        assert_eq!(acp_response.error.code, "validation_error");
+        assert!(matches!(acp_response.error.error_type, ACPErrorType::InvalidRequestError));
+
+        let auth_err = ServiceError::Unauthorized("invalid token".into());
+        let acp_response = ACPErrorResponse::from(&auth_err);
+        assert!(matches!(acp_response.error.error_type, ACPErrorType::AuthenticationError));
+
+        let rate_err = ServiceError::RateLimitExceeded;
+        let acp_response = ACPErrorResponse::from(&rate_err);
+        assert!(matches!(acp_response.error.error_type, ACPErrorType::RateLimitError));
     }
 }

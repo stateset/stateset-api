@@ -404,7 +404,7 @@ fn build_cookie(
     value: &str,
     max_age_secs: i64,
     secure: bool,
-) -> Result<axum::http::HeaderValue, axum::http::Error> {
+) -> Result<axum::http::HeaderValue, axum::http::header::InvalidHeaderValue> {
     let mut cookie = format!(
         "{}={}; HttpOnly; Path=/; Max-Age={}; SameSite=Lax",
         name, value, max_age_secs

@@ -94,6 +94,22 @@ pub struct ReleaseReservationCommand {
 }
 
 /// Service for managing inventory quantities rooted in the item_master table.
+///
+/// This service provides comprehensive inventory management capabilities including:
+/// - Listing and filtering inventory across locations
+/// - Adjusting inventory quantities with optimistic locking
+/// - Reserving and releasing inventory for orders
+/// - Batch operations for bulk inventory updates
+///
+/// # Thread Safety
+/// All operations are thread-safe and use database transactions for consistency.
+///
+/// # Error Handling
+/// Operations return `ServiceError` variants for different failure modes:
+/// - `ValidationError` for invalid input parameters
+/// - `NotFound` for missing inventory items
+/// - `InsufficientStock` when reserve operations exceed available quantity
+/// - `ConcurrentModification` when optimistic locking fails
 #[derive(Clone)]
 pub struct InventoryService {
     db_pool: Arc<DatabaseConnection>,
@@ -101,6 +117,11 @@ pub struct InventoryService {
 }
 
 impl InventoryService {
+    /// Creates a new InventoryService instance.
+    ///
+    /// # Arguments
+    /// * `db_pool` - Database connection pool for persistence operations
+    /// * `event_sender` - Channel sender for emitting inventory events
     pub fn new(db_pool: Arc<DatabaseConnection>, event_sender: EventSender) -> Self {
         Self {
             db_pool,
@@ -109,7 +130,18 @@ impl InventoryService {
     }
 
     /// Returns a paginated list of inventory snapshots.
-    /// Uses batch loading to avoid N+1 queries.
+    ///
+    /// Uses batch loading to avoid N+1 queries when fetching location balances.
+    ///
+    /// # Arguments
+    /// * `page` - Page number (1-indexed, must be > 0)
+    /// * `limit` - Items per page (must be 1-1000)
+    ///
+    /// # Returns
+    /// A tuple of (snapshots, total_count) for pagination
+    ///
+    /// # Errors
+    /// Returns `ValidationError` if page or limit are out of valid ranges
     #[instrument(skip(self))]
     pub async fn list_inventory(
         &self,

@@ -68,11 +68,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Auth service for handlers/services requiring it
     let auth_cfg = api::auth::AuthConfig::new(
         cfg.jwt_secret.clone(),
-        "stateset-api".to_string(),
-        "stateset-auth".to_string(),
+        cfg.auth_issuer.clone(),
+        cfg.auth_audience.clone(),
         Duration::from_secs(cfg.jwt_expiration as u64),
         Duration::from_secs(cfg.refresh_token_expiration as u64),
-        "sk_".to_string(),
+        cfg.api_key_prefix.clone(),
     )
     .context("failed to create auth config")?;
     let auth_service = Arc::new(api::auth::AuthService::new(auth_cfg, db_arc.clone()));

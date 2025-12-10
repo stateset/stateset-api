@@ -312,6 +312,20 @@ pub struct AppConfig {
     /// Circuit breaker backoff multiplier
     #[serde(default = "default_circuit_breaker_multiplier")]
     pub circuit_breaker_backoff_multiplier: f64,
+
+    // ========== Auth Configuration ==========
+
+    /// API key prefix (e.g., "sk_" for secret keys)
+    #[serde(default = "default_api_key_prefix")]
+    pub api_key_prefix: String,
+
+    /// JWT issuer name
+    #[serde(default = "default_auth_issuer")]
+    pub auth_issuer: String,
+
+    /// JWT audience/subject
+    #[serde(default = "default_auth_audience")]
+    pub auth_audience: String,
 }
 
 impl AppConfig {
@@ -402,6 +416,10 @@ impl AppConfig {
             circuit_breaker_failure_threshold: default_circuit_breaker_failures(),
             circuit_breaker_timeout_secs: default_circuit_breaker_timeout(),
             circuit_breaker_backoff_multiplier: default_circuit_breaker_multiplier(),
+            // Auth defaults
+            api_key_prefix: default_api_key_prefix(),
+            auth_issuer: default_auth_issuer(),
+            auth_audience: default_auth_audience(),
         };
         config.db_url = config.database_url.clone();
         config
@@ -650,6 +668,18 @@ fn default_circuit_breaker_timeout() -> u64 {
 
 fn default_circuit_breaker_multiplier() -> f64 {
     2.0 // Backoff multiplier
+}
+
+fn default_api_key_prefix() -> String {
+    "sk_".to_string() // Default API key prefix
+}
+
+fn default_auth_issuer() -> String {
+    "stateset-api".to_string() // Default JWT issuer
+}
+
+fn default_auth_audience() -> String {
+    "stateset-auth".to_string() // Default JWT audience
 }
 
 fn validate_message_queue_backend(value: &str) -> Result<(), ValidationError> {

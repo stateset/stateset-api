@@ -2,6 +2,7 @@ use crate::{
     errors::ApiError,
     handlers::common::{created_response, success_response},
 };
+use validator::Validate;
 
 // For now, use a placeholder AppState type until module dependencies are resolved
 #[derive(Clone)]
@@ -23,7 +24,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// JWT Claims structure
@@ -35,18 +36,25 @@ pub struct Claims {
     pub iat: usize,    // Issued at
 }
 
-/// Login request payload
-#[derive(Debug, Deserialize)]
+/// Login request payload with validation
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(email)]
+    #[validate(length(min = 1, max = 255))]
     pub email: String,
+    #[validate(length(min = 1, max = 128))]
     pub password: String,
 }
 
-/// Register request payload  
-#[derive(Debug, Deserialize)]
+/// Register request payload with validation
+#[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
+    #[validate(email)]
+    #[validate(length(min = 1, max = 255))]
     pub email: String,
+    #[validate(length(min = 8, max = 128))]
     pub password: String,
+    #[validate(length(min = 1, max = 100))]
     pub name: String,
 }
 
@@ -78,18 +86,20 @@ pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Validate input using derive-based validation
+    if let Err(validation_errors) = payload.validate() {
+        warn!(email = %payload.email, "Login validation failed");
+        return Err(ApiError::ValidationError(
+            validation_errors.to_string(),
+        ));
+    }
+
     // In a real implementation, you would:
     // 1. Hash the provided password
     // 2. Query the database for the user
     // 3. Compare password hashes
     // 4. Validate user status (active, verified, etc.)
-
-    // Mock user validation for demonstration
-    if payload.email.is_empty() || payload.password.is_empty() {
-        return Err(ApiError::ValidationError(
-            "Email and password are required".to_string(),
-        ));
-    }
+    // 5. Implement rate limiting / account lockout for brute force protection
 
     // Mock successful authentication
     let user_id = Uuid::new_v4().to_string();
@@ -183,18 +193,20 @@ pub async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // In a real implementation, you would:
-    // 1. Validate email format and password strength
-    // 2. Check if user already exists
-    // 3. Hash the password
-    // 4. Store user in database
-    // 5. Send verification email
-
-    if payload.email.is_empty() || payload.password.is_empty() || payload.name.is_empty() {
+    // Validate input using derive-based validation
+    if let Err(validation_errors) = payload.validate() {
+        warn!(email = %payload.email, "Registration validation failed");
         return Err(ApiError::ValidationError(
-            "Email, password, and name are required".to_string(),
+            validation_errors.to_string(),
         ));
     }
+
+    // In a real implementation, you would:
+    // 1. Check if user already exists (return 409 Conflict if so)
+    // 2. Hash the password using Argon2
+    // 3. Store user in database
+    // 4. Send verification email
+    // 5. Implement rate limiting for registration attempts
 
     // Mock user creation
     let user_id = Uuid::new_v4().to_string();
