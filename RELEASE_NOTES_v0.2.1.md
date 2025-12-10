@@ -1,4 +1,4 @@
-# StateSet API v1.0.0 - Production Ready Release
+# StateSet API v0.2.1 - Production Ready Release
 
 🎉 **First Production-Ready Release**
 
@@ -198,7 +198,7 @@ This milestone release marks StateSet API as production-ready with a perfect **1
 
 ---
 
-## 🆕 What's New in v1.0.0
+## 🆕 What's New in v0.2.1
 
 ### Production Readiness
 - ✨ **10/10 Production Readiness Score** achieved
@@ -259,8 +259,8 @@ cargo build --release
 docker-compose up -d
 
 # Or build and run manually
-docker build -t stateset-api:1.0.0 .
-docker run -p 8080:8080 stateset-api:1.0.0
+docker build -t stateset-api:0.2.1 .
+docker run -p 8080:8080 stateset-api:0.2.1
 ```
 
 ### Environment Variables
@@ -302,7 +302,7 @@ APP__ENVIRONMENT=production
 
 ## ⬆️ Upgrading
 
-Fresh installation recommended for v1.0.0.
+Fresh installation recommended for v0.2.1.
 
 For existing deployments:
 1. Back up your database
@@ -362,13 +362,13 @@ See `production_api_deployment.md` for:
 
 ## 🏆 Achievement Summary
 
-### Before v1.0.0
+### Before v0.2.1
 - Multiple compilation warnings
 - Some panic risks
 - Incomplete documentation
 - No comprehensive deployment guide
 
-### v1.0.0 Release
+### v0.2.1 Release
 - ✅ **Zero compilation errors**
 - ✅ **584 passing tests**
 - ✅ **Zero panic risks in critical paths**
@@ -378,7 +378,7 @@ See `production_api_deployment.md` for:
 
 ---
 
-**🎉 Congratulations! StateSet API v1.0.0 is production-ready!**
+**🎉 Congratulations! StateSet API v0.2.1 is production-ready!**
 
 *Ready to power your e-commerce, manufacturing, and supply chain operations.*
 
