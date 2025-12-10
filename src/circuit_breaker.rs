@@ -150,8 +150,8 @@ impl CircuitBreaker {
         }
     }
 
-    /// Handle successful execution
-    fn on_success(&self) {
+    /// Handle successful execution - call when an operation succeeds
+    pub fn on_success(&self) {
         let mut state = match self.state.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -181,8 +181,8 @@ impl CircuitBreaker {
         }
     }
 
-    /// Handle failed execution
-    fn on_failure(&self) {
+    /// Handle failed execution - call when an operation fails
+    pub fn on_failure(&self) {
         let mut state = match self.state.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),

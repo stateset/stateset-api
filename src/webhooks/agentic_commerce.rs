@@ -1,4 +1,5 @@
 use crate::errors::ServiceError;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -179,9 +180,11 @@ impl AgenticCommerceWebhookService {
                 }
             }
 
-            // Exponential backoff: 1s, 2s, 4s
+            // Exponential backoff with jitter: 1s, 2s, 4s + 0-500ms jitter
             if attempt < self.max_retries {
-                let backoff = Duration::from_secs(2_u64.pow(attempt - 1));
+                let base_backoff = 2_u64.pow(attempt - 1);
+                let jitter_ms = rand::thread_rng().gen_range(0..500);
+                let backoff = Duration::from_millis(base_backoff * 1000 + jitter_ms);
                 tokio::time::sleep(backoff).await;
             }
         }

@@ -60,6 +60,9 @@ impl IntoGrpcStatus for ServiceError {
             ServiceError::CircuitBreakerOpen => {
                 Status::unavailable("Service temporarily unavailable")
             }
+            ServiceError::ServiceUnavailable(msg) => {
+                Status::unavailable(format!("Service unavailable: {}", msg))
+            }
             ServiceError::MigrationError(msg) => {
                 error!("Migration error: {}", msg);
                 Status::internal("Database migration failed")

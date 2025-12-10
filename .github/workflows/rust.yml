@@ -74,6 +74,11 @@ jobs:
     - name: Lint with clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
 
+    - name: Security audit
+      run: |
+        cargo install cargo-audit --features=fix
+        cargo audit
+
     - name: Build
       run: cargo build --verbose --all-features
 

@@ -9,7 +9,7 @@ use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use stateset_api as api;
 
@@ -236,68 +236,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut layer = api::rate_limiter::RateLimitLayer::new(rl_cfg, rl_backend);
 
-    // Optional: path policy overrides in config (format: "/api/v1/orders:60:60,/api/v1/inventory:120:60")
-    if let Some(policies) = &cfg.rate_limit_path_policies {
-        let mut parsed = Vec::new();
-        for spec in policies
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            let parts: Vec<&str> = spec.split(':').collect();
-            if parts.len() == 3 {
-                if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
-                    parsed.push(api::rate_limiter::PathPolicy {
-                        prefix: parts[0].to_string(),
-                        requests_per_window: limit,
-                        window_duration: Duration::from_secs(win),
-                    });
-                }
-            }
-        }
-        if !parsed.is_empty() {
-            layer = layer.with_policies(parsed);
-        }
+    // Parse rate limit policies using validated parsing (logs warnings for invalid entries)
+    let parsed_policies = api::rate_limiter::parse_all_policies(
+        cfg.rate_limit_path_policies.as_deref(),
+        cfg.rate_limit_api_key_policies.as_deref(),
+        cfg.rate_limit_user_policies.as_deref(),
+    );
+
+    // Log any warnings from policy parsing
+    for warning in &parsed_policies.warnings {
+        warn!("Rate limit policy configuration: {}", warning);
     }
 
-    // Per API key policies: "key1:200:60,key2:1000:60"
-    if let Some(api_key_specs) = &cfg.rate_limit_api_key_policies {
-        let mut map = std::collections::HashMap::new();
-        for spec in api_key_specs
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            let parts: Vec<&str> = spec.split(':').collect();
-            if parts.len() == 3 {
-                if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
-                    map.insert(parts[0].to_string(), (limit, Duration::from_secs(win)));
-                }
-            }
-        }
-        if !map.is_empty() {
-            layer = layer.with_api_key_policies(map);
-        }
+    // Apply parsed policies
+    if !parsed_policies.path_policies.is_empty() {
+        info!(
+            "Configured {} path-based rate limit policies",
+            parsed_policies.path_policies.len()
+        );
+        layer = layer.with_policies(parsed_policies.path_policies);
     }
 
-    // Per user policies: "user123:500:60,user456:50:60"
-    if let Some(user_specs) = &cfg.rate_limit_user_policies {
-        let mut map = std::collections::HashMap::new();
-        for spec in user_specs
-            .split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            let parts: Vec<&str> = spec.split(':').collect();
-            if parts.len() == 3 {
-                if let (Ok(limit), Ok(win)) = (parts[1].parse::<u32>(), parts[2].parse::<u64>()) {
-                    map.insert(parts[0].to_string(), (limit, Duration::from_secs(win)));
-                }
-            }
-        }
-        if !map.is_empty() {
-            layer = layer.with_user_policies(map);
-        }
+    if !parsed_policies.api_key_policies.is_empty() {
+        info!(
+            "Configured {} API key rate limit policies",
+            parsed_policies.api_key_policies.len()
+        );
+        layer = layer.with_api_key_policies(parsed_policies.api_key_policies);
+    }
+
+    if !parsed_policies.user_policies.is_empty() {
+        info!(
+            "Configured {} user rate limit policies",
+            parsed_policies.user_policies.len()
+        );
+        layer = layer.with_user_policies(parsed_policies.user_policies);
     }
 
     app = app.layer(layer);

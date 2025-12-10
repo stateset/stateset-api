@@ -244,8 +244,10 @@ impl AuthConfig {
         let secret = &self.jwt_secret;
 
         // Check if all characters are the same
-        if secret.chars().all(|c| c == secret.chars().next().unwrap()) {
-            return true;
+        if let Some(first_char) = secret.chars().next() {
+            if secret.chars().all(|c| c == first_char) {
+                return true;
+            }
         }
 
         // Check if it's a common pattern

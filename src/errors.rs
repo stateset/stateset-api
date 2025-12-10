@@ -276,6 +276,9 @@ pub enum ServiceError {
     #[error("Circuit breaker open")]
     CircuitBreakerOpen,
 
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     #[error("Migration error: {0}")]
     MigrationError(String),
 
@@ -363,7 +366,7 @@ impl ServiceError {
             Self::Conflict(_) | Self::ConcurrentModification(_) => StatusCode::CONFLICT,
             Self::InsufficientStock(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::PaymentFailed(_) => StatusCode::PAYMENT_REQUIRED,
-            Self::CircuitBreakerOpen => StatusCode::SERVICE_UNAVAILABLE,
+            Self::CircuitBreakerOpen | Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 
@@ -382,6 +385,7 @@ impl ServiceError {
             Self::InternalServerError => "Internal server error".to_string(),
             Self::RateLimitExceeded => "Rate limit exceeded".to_string(),
             Self::CircuitBreakerOpen => "Service temporarily unavailable".to_string(),
+            Self::ServiceUnavailable(msg) => format!("Service unavailable: {}", msg),
             Self::ConcurrentModification(id) => {
                 format!("Concurrent modification for ID {}", id)
             }

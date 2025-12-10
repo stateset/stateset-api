@@ -1,5 +1,6 @@
 pub mod query_builder;
 
+use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
 use crate::config::AppConfig;
 use crate::errors::{AppError, ServiceError};
 use anyhow::Context;
@@ -489,6 +490,293 @@ impl DatabaseAccess {
     pub async fn get(&self) -> Result<&DatabaseConnection, ServiceError> {
         // This is a compatibility method for code that uses pool.get() pattern
         Ok(&self.pool)
+    }
+}
+
+/// Configuration for database circuit breaker
+#[derive(Debug, Clone)]
+pub struct DbCircuitBreakerConfig {
+    /// Number of failures before opening the circuit
+    pub failure_threshold: u32,
+    /// Duration to wait before transitioning from Open to HalfOpen
+    pub timeout: Duration,
+    /// Number of successful requests needed in HalfOpen to close the circuit
+    pub success_threshold: u32,
+}
+
+impl Default for DbCircuitBreakerConfig {
+    fn default() -> Self {
+        Self {
+            failure_threshold: 5,
+            timeout: Duration::from_secs(30),
+            success_threshold: 2,
+        }
+    }
+}
+
+/// Database access wrapper with circuit breaker, retry logic, and metrics
+///
+/// This provides protection against cascading failures when the database
+/// is experiencing issues. When failures exceed the threshold, the circuit
+/// opens and requests fail fast rather than waiting for timeouts.
+#[derive(Clone)]
+pub struct ResilientDatabaseAccess {
+    pool: Arc<DbPool>,
+    retry_config: RetryConfig,
+    circuit_breaker: Arc<CircuitBreaker>,
+}
+
+impl ResilientDatabaseAccess {
+    /// Create a new resilient database access instance with default configurations
+    pub fn new(pool: Arc<DbPool>) -> Self {
+        let cb_config = CircuitBreakerConfig::default();
+        Self {
+            pool,
+            retry_config: RetryConfig::default(),
+            circuit_breaker: Arc::new(CircuitBreaker::with_config(cb_config)),
+        }
+    }
+
+    /// Create a new instance with custom retry and circuit breaker configurations
+    pub fn with_config(
+        pool: Arc<DbPool>,
+        retry_config: RetryConfig,
+        cb_config: DbCircuitBreakerConfig,
+    ) -> Self {
+        let circuit_config = CircuitBreakerConfig {
+            failure_threshold: cb_config.failure_threshold,
+            timeout: cb_config.timeout,
+            success_threshold: cb_config.success_threshold,
+        };
+        Self {
+            pool,
+            retry_config,
+            circuit_breaker: Arc::new(CircuitBreaker::with_config(circuit_config)),
+        }
+    }
+
+    /// Get the current circuit breaker state
+    pub fn circuit_state(&self) -> CircuitState {
+        self.circuit_breaker.state()
+    }
+
+    /// Check if the circuit is allowing requests
+    pub fn is_circuit_closed(&self) -> bool {
+        matches!(self.circuit_breaker.state(), CircuitState::Closed)
+    }
+
+    /// Get a reference to the connection pool
+    pub fn get_pool(&self) -> &DbPool {
+        &self.pool
+    }
+
+    /// Execute a database operation with circuit breaker protection
+    ///
+    /// If the circuit is open, this will fail fast with an error instead
+    /// of attempting the operation. This prevents overwhelming an already
+    /// struggling database with more requests.
+    pub async fn execute<F, Fut, T>(&self, operation: &str, f: F) -> Result<T, ServiceError>
+    where
+        F: FnOnce(&DbPool) -> Fut + Send,
+        Fut: Future<Output = Result<T, DbErr>> + Send,
+        T: Send + 'static,
+    {
+        let state = self.circuit_breaker.state();
+
+        // Check circuit state first
+        match state {
+            CircuitState::Open => {
+                counter!("stateset_db.circuit_breaker.rejected", 1, "operation" => operation.to_string());
+                warn!(
+                    operation = %operation,
+                    "Database circuit breaker is open, rejecting request"
+                );
+                return Err(ServiceError::ServiceUnavailable(
+                    "Database service temporarily unavailable (circuit breaker open)".to_string(),
+                ));
+            }
+            CircuitState::HalfOpen => {
+                debug!(
+                    operation = %operation,
+                    "Database circuit breaker is half-open, allowing probe request"
+                );
+            }
+            CircuitState::Closed => {}
+        }
+
+        let db = &*self.pool;
+        let start = std::time::Instant::now();
+
+        debug!(operation = %operation, "Starting database operation with circuit breaker protection");
+
+        let result = f(db).await;
+        let elapsed = start.elapsed();
+
+        match result {
+            Ok(value) => {
+                self.circuit_breaker.on_success();
+                histogram!("stateset_db.operation.duration", elapsed, "operation" => operation.to_string());
+                counter!("stateset_db.operation.success", 1, "operation" => operation.to_string());
+                debug!(operation = %operation, duration = ?elapsed, "Database operation completed successfully");
+                Ok(value)
+            }
+            Err(e) => {
+                // Only trip circuit on connection-related errors
+                if is_retryable_error(&e) {
+                    self.circuit_breaker.on_failure();
+                    counter!("stateset_db.circuit_breaker.failure_recorded", 1, "operation" => operation.to_string());
+                }
+                error!(operation = %operation, error = %e, "Database operation failed");
+                counter!("stateset_db.operation.error", 1, "operation" => operation.to_string());
+                Err(ServiceError::DatabaseError(e))
+            }
+        }
+    }
+
+    /// Execute a database operation with both circuit breaker and retry logic
+    ///
+    /// This combines circuit breaker protection with automatic retries for
+    /// transient failures. Retries only occur within the context of the
+    /// circuit breaker - if the circuit opens, no more retries will be attempted.
+    pub async fn execute_with_retry<F, Fut, T>(
+        &self,
+        operation: &str,
+        f: F,
+    ) -> Result<T, ServiceError>
+    where
+        F: Fn() -> Fut + Send,
+        Fut: Future<Output = Result<T, DbErr>> + Send,
+        T: Send + 'static,
+    {
+        // Check circuit state first
+        if matches!(self.circuit_breaker.state(), CircuitState::Open) {
+            counter!("stateset_db.circuit_breaker.rejected", 1, "operation" => operation.to_string());
+            warn!(
+                operation = %operation,
+                "Database circuit breaker is open, rejecting request"
+            );
+            return Err(ServiceError::ServiceUnavailable(
+                "Database service temporarily unavailable (circuit breaker open)".to_string(),
+            ));
+        }
+
+        let start = std::time::Instant::now();
+        let mut attempts = 0;
+        let mut delay = self.retry_config.initial_delay;
+
+        loop {
+            attempts += 1;
+
+            // Re-check circuit state before each attempt
+            if attempts > 1 && matches!(self.circuit_breaker.state(), CircuitState::Open) {
+                warn!(
+                    operation = %operation,
+                    attempts = attempts,
+                    "Circuit opened during retry attempts, aborting"
+                );
+                return Err(ServiceError::ServiceUnavailable(
+                    "Database circuit breaker opened during operation".to_string(),
+                ));
+            }
+
+            match f().await {
+                Ok(result) => {
+                    self.circuit_breaker.on_success();
+                    let elapsed = start.elapsed();
+                    histogram!("stateset_db.operation.duration", elapsed, "operation" => operation.to_string());
+
+                    if attempts > 1 {
+                        info!(
+                            operation = %operation,
+                            attempts = attempts,
+                            "Database operation succeeded after {} attempts",
+                            attempts
+                        );
+                        counter!("stateset_db.retry.success", 1, "operation" => operation.to_string());
+                    }
+                    return Ok(result);
+                }
+                Err(err) => {
+                    let is_retryable = is_retryable_error(&err);
+
+                    if is_retryable {
+                        self.circuit_breaker.on_failure();
+                    }
+
+                    if attempts >= self.retry_config.max_retries || !is_retryable {
+                        error!(
+                            operation = %operation,
+                            attempts = attempts,
+                            error = %err,
+                            "Database operation failed after {} attempts",
+                            attempts
+                        );
+                        counter!("stateset_db.retry.exhausted", 1, "operation" => operation.to_string());
+                        return Err(ServiceError::db_error(err));
+                    }
+
+                    warn!(
+                        operation = %operation,
+                        attempts = attempts,
+                        max_retries = self.retry_config.max_retries,
+                        delay_ms = delay.as_millis() as u64,
+                        error = %err,
+                        "Retryable database error, waiting {:?} before retry",
+                        delay
+                    );
+                    counter!("stateset_db.retry.attempt", 1, "operation" => operation.to_string());
+
+                    sleep(delay).await;
+
+                    // Exponential backoff with max cap
+                    delay = Duration::from_secs_f64(
+                        (delay.as_secs_f64() * self.retry_config.backoff_multiplier)
+                            .min(self.retry_config.max_delay.as_secs_f64()),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Check if the database connection is healthy
+    pub async fn health_check(&self) -> Result<(), ServiceError> {
+        let db = &*self.pool;
+        let start = std::time::Instant::now();
+
+        debug!("Performing database health check");
+
+        let result = db.ping().await;
+        let elapsed = start.elapsed();
+        gauge!("stateset_db.health_check.latency_ms", elapsed.as_millis() as f64);
+
+        match result {
+            Ok(_) => {
+                self.circuit_breaker.on_success();
+                debug!(latency_ms = elapsed.as_millis() as u64, "Database health check passed");
+                counter!("stateset_db.health_check.passed", 1);
+                Ok(())
+            }
+            Err(e) => {
+                self.circuit_breaker.on_failure();
+                error!(error = %e, "Database health check failed");
+                counter!("stateset_db.health_check.failed", 1);
+                Err(ServiceError::db_error(e))
+            }
+        }
+    }
+
+    /// Get circuit breaker metrics for monitoring
+    pub fn circuit_breaker_metrics(&self) -> crate::circuit_breaker::CircuitBreakerMetrics {
+        self.circuit_breaker.metrics()
+    }
+}
+
+impl std::fmt::Debug for ResilientDatabaseAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResilientDatabaseAccess")
+            .field("circuit_state", &self.circuit_breaker.state())
+            .field("retry_config", &self.retry_config)
+            .finish()
     }
 }
 

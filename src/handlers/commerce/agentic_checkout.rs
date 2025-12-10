@@ -1265,7 +1265,9 @@ fn service_error_status(error: &ServiceError) -> StatusCode {
             StatusCode::BAD_GATEWAY
         }
         ServiceError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
-        ServiceError::CircuitBreakerOpen => StatusCode::SERVICE_UNAVAILABLE,
+        ServiceError::CircuitBreakerOpen | ServiceError::ServiceUnavailable(_) => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
         ServiceError::DatabaseError(_)
         | ServiceError::InternalError(_)
         | ServiceError::EventError(_)

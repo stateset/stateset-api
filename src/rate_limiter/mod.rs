@@ -856,6 +856,360 @@ impl RateLimitStats {
     }
 }
 
+/// Errors that can occur when parsing rate limit policy strings
+#[derive(Debug, Error)]
+pub enum PolicyParseError {
+    #[error("Invalid policy format for '{spec}': expected 'path:limit:window_secs' or 'key:limit:window_secs', got {parts} parts")]
+    InvalidFormat { spec: String, parts: usize },
+
+    #[error("Invalid limit value '{value}' in policy '{spec}': {reason}")]
+    InvalidLimit {
+        spec: String,
+        value: String,
+        reason: String,
+    },
+
+    #[error("Invalid window duration '{value}' in policy '{spec}': {reason}")]
+    InvalidWindow {
+        spec: String,
+        value: String,
+        reason: String,
+    },
+
+    #[error("Empty policy specification")]
+    EmptySpec,
+
+    #[error("Path policy must start with '/': got '{path}'")]
+    InvalidPathFormat { path: String },
+
+    #[error("Window duration must be at least 1 second, got {window_secs}")]
+    WindowTooSmall { window_secs: u64 },
+
+    #[error("Limit must be at least 1, got {limit}")]
+    LimitTooSmall { limit: u32 },
+}
+
+/// Result of parsing rate limit policies
+#[derive(Debug)]
+pub struct ParsedPolicies {
+    /// Successfully parsed path policies
+    pub path_policies: Vec<PathPolicy>,
+    /// Successfully parsed API key policies
+    pub api_key_policies: HashMap<String, (u32, Duration)>,
+    /// Successfully parsed user policies
+    pub user_policies: HashMap<String, (u32, Duration)>,
+    /// Any warnings or non-fatal issues encountered
+    pub warnings: Vec<String>,
+}
+
+impl Default for ParsedPolicies {
+    fn default() -> Self {
+        Self {
+            path_policies: Vec::new(),
+            api_key_policies: HashMap::new(),
+            user_policies: HashMap::new(),
+            warnings: Vec::new(),
+        }
+    }
+}
+
+/// Parse a path policy specification string.
+///
+/// Format: "path:limit:window_secs"
+/// Example: "/api/v1/orders:100:60"
+///
+/// # Arguments
+/// * `spec` - The policy specification string
+///
+/// # Returns
+/// * `Ok(PathPolicy)` - Successfully parsed policy
+/// * `Err(PolicyParseError)` - Parse error with details
+pub fn parse_path_policy(spec: &str) -> Result<PathPolicy, PolicyParseError> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return Err(PolicyParseError::EmptySpec);
+    }
+
+    let parts: Vec<&str> = spec.split(':').collect();
+    if parts.len() != 3 {
+        return Err(PolicyParseError::InvalidFormat {
+            spec: spec.to_string(),
+            parts: parts.len(),
+        });
+    }
+
+    let path = parts[0].trim();
+    if !path.starts_with('/') {
+        return Err(PolicyParseError::InvalidPathFormat {
+            path: path.to_string(),
+        });
+    }
+
+    let limit: u32 = parts[1].trim().parse().map_err(|e| PolicyParseError::InvalidLimit {
+        spec: spec.to_string(),
+        value: parts[1].to_string(),
+        reason: format!("{}", e),
+    })?;
+
+    if limit < 1 {
+        return Err(PolicyParseError::LimitTooSmall { limit });
+    }
+
+    let window_secs: u64 = parts[2].trim().parse().map_err(|e| PolicyParseError::InvalidWindow {
+        spec: spec.to_string(),
+        value: parts[2].to_string(),
+        reason: format!("{}", e),
+    })?;
+
+    if window_secs < 1 {
+        return Err(PolicyParseError::WindowTooSmall { window_secs });
+    }
+
+    Ok(PathPolicy {
+        prefix: path.to_string(),
+        requests_per_window: limit,
+        window_duration: Duration::from_secs(window_secs),
+    })
+}
+
+/// Parse a key-based policy specification string (for API keys or users).
+///
+/// Format: "key:limit:window_secs"
+/// Example: "sk_live_abc123:1000:60"
+///
+/// # Arguments
+/// * `spec` - The policy specification string
+///
+/// # Returns
+/// * `Ok((key, (limit, duration)))` - Successfully parsed policy
+/// * `Err(PolicyParseError)` - Parse error with details
+pub fn parse_key_policy(spec: &str) -> Result<(String, (u32, Duration)), PolicyParseError> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return Err(PolicyParseError::EmptySpec);
+    }
+
+    let parts: Vec<&str> = spec.split(':').collect();
+    if parts.len() != 3 {
+        return Err(PolicyParseError::InvalidFormat {
+            spec: spec.to_string(),
+            parts: parts.len(),
+        });
+    }
+
+    let key = parts[0].trim();
+    if key.is_empty() {
+        return Err(PolicyParseError::EmptySpec);
+    }
+
+    let limit: u32 = parts[1].trim().parse().map_err(|e| PolicyParseError::InvalidLimit {
+        spec: spec.to_string(),
+        value: parts[1].to_string(),
+        reason: format!("{}", e),
+    })?;
+
+    if limit < 1 {
+        return Err(PolicyParseError::LimitTooSmall { limit });
+    }
+
+    let window_secs: u64 = parts[2].trim().parse().map_err(|e| PolicyParseError::InvalidWindow {
+        spec: spec.to_string(),
+        value: parts[2].to_string(),
+        reason: format!("{}", e),
+    })?;
+
+    if window_secs < 1 {
+        return Err(PolicyParseError::WindowTooSmall { window_secs });
+    }
+
+    Ok((key.to_string(), (limit, Duration::from_secs(window_secs))))
+}
+
+/// Parse multiple path policies from a comma-separated string.
+///
+/// Format: "path1:limit1:window1,path2:limit2:window2"
+/// Example: "/api/v1/orders:100:60,/api/v1/inventory:200:60"
+///
+/// # Arguments
+/// * `policies_str` - Comma-separated policy specifications
+///
+/// # Returns
+/// * `Ok(Vec<PathPolicy>)` - Successfully parsed policies (may be empty if all failed)
+/// * Logs warnings for any policies that failed to parse
+pub fn parse_path_policies(policies_str: &str) -> (Vec<PathPolicy>, Vec<String>) {
+    let mut policies = Vec::new();
+    let mut warnings = Vec::new();
+
+    for spec in policies_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        match parse_path_policy(spec) {
+            Ok(policy) => policies.push(policy),
+            Err(e) => warnings.push(format!("Skipping invalid path policy '{}': {}", spec, e)),
+        }
+    }
+
+    (policies, warnings)
+}
+
+/// Parse multiple key policies from a comma-separated string.
+///
+/// Format: "key1:limit1:window1,key2:limit2:window2"
+/// Example: "sk_live_abc:1000:60,sk_live_xyz:500:60"
+///
+/// # Arguments
+/// * `policies_str` - Comma-separated policy specifications
+///
+/// # Returns
+/// * Parsed policies as HashMap and any warnings
+pub fn parse_key_policies(policies_str: &str) -> (HashMap<String, (u32, Duration)>, Vec<String>) {
+    let mut policies = HashMap::new();
+    let mut warnings = Vec::new();
+
+    for spec in policies_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        match parse_key_policy(spec) {
+            Ok((key, value)) => {
+                if policies.contains_key(&key) {
+                    warnings.push(format!("Duplicate key '{}' in policies, using last value", key));
+                }
+                policies.insert(key, value);
+            }
+            Err(e) => warnings.push(format!("Skipping invalid key policy '{}': {}", spec, e)),
+        }
+    }
+
+    (policies, warnings)
+}
+
+/// Parse all rate limit policies from configuration strings.
+///
+/// This is the main entry point for parsing rate limit policies from environment
+/// variables or configuration files. It validates all policies and returns
+/// structured results with any warnings.
+///
+/// # Arguments
+/// * `path_policies` - Optional path policies string
+/// * `api_key_policies` - Optional API key policies string
+/// * `user_policies` - Optional user policies string
+///
+/// # Returns
+/// * `ParsedPolicies` - Contains all successfully parsed policies and warnings
+pub fn parse_all_policies(
+    path_policies: Option<&str>,
+    api_key_policies: Option<&str>,
+    user_policies: Option<&str>,
+) -> ParsedPolicies {
+    let mut result = ParsedPolicies::default();
+
+    if let Some(path_str) = path_policies {
+        let (policies, warnings) = parse_path_policies(path_str);
+        result.path_policies = policies;
+        result.warnings.extend(warnings);
+    }
+
+    if let Some(api_key_str) = api_key_policies {
+        let (policies, warnings) = parse_key_policies(api_key_str);
+        result.api_key_policies = policies;
+        result.warnings.extend(warnings);
+    }
+
+    if let Some(user_str) = user_policies {
+        let (policies, warnings) = parse_key_policies(user_str);
+        result.user_policies = policies;
+        result.warnings.extend(warnings);
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod policy_parsing_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_valid_path_policy() {
+        let policy = parse_path_policy("/api/v1/orders:100:60").unwrap();
+        assert_eq!(policy.prefix, "/api/v1/orders");
+        assert_eq!(policy.requests_per_window, 100);
+        assert_eq!(policy.window_duration, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_parse_path_policy_with_spaces() {
+        let policy = parse_path_policy("  /api/v1/orders : 100 : 60  ").unwrap();
+        assert_eq!(policy.prefix, "/api/v1/orders");
+        assert_eq!(policy.requests_per_window, 100);
+    }
+
+    #[test]
+    fn test_parse_path_policy_invalid_format() {
+        let result = parse_path_policy("/api/v1/orders:100");
+        assert!(matches!(result, Err(PolicyParseError::InvalidFormat { .. })));
+    }
+
+    #[test]
+    fn test_parse_path_policy_no_leading_slash() {
+        let result = parse_path_policy("api/v1/orders:100:60");
+        assert!(matches!(result, Err(PolicyParseError::InvalidPathFormat { .. })));
+    }
+
+    #[test]
+    fn test_parse_path_policy_invalid_limit() {
+        let result = parse_path_policy("/api:abc:60");
+        assert!(matches!(result, Err(PolicyParseError::InvalidLimit { .. })));
+    }
+
+    #[test]
+    fn test_parse_path_policy_zero_limit() {
+        let result = parse_path_policy("/api:0:60");
+        assert!(matches!(result, Err(PolicyParseError::LimitTooSmall { .. })));
+    }
+
+    #[test]
+    fn test_parse_path_policy_zero_window() {
+        let result = parse_path_policy("/api:100:0");
+        assert!(matches!(result, Err(PolicyParseError::WindowTooSmall { .. })));
+    }
+
+    #[test]
+    fn test_parse_valid_key_policy() {
+        let (key, (limit, duration)) = parse_key_policy("sk_live_abc123:1000:60").unwrap();
+        assert_eq!(key, "sk_live_abc123");
+        assert_eq!(limit, 1000);
+        assert_eq!(duration, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_parse_multiple_path_policies() {
+        let (policies, warnings) = parse_path_policies(
+            "/api/v1/orders:100:60,/api/v1/inventory:200:60,invalid,/api/v1/users:50:30"
+        );
+        assert_eq!(policies.len(), 3);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("invalid"));
+    }
+
+    #[test]
+    fn test_parse_multiple_key_policies() {
+        let (policies, warnings) = parse_key_policies(
+            "key1:100:60,key2:200:60,bad_policy,key3:50:30"
+        );
+        assert_eq!(policies.len(), 3);
+        assert_eq!(warnings.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_all_policies() {
+        let result = parse_all_policies(
+            Some("/api/v1/orders:100:60"),
+            Some("sk_live_test:500:60"),
+            Some("user123:200:60"),
+        );
+        assert_eq!(result.path_policies.len(), 1);
+        assert_eq!(result.api_key_policies.len(), 1);
+        assert_eq!(result.user_policies.len(), 1);
+        assert!(result.warnings.is_empty());
+    }
+}
+
 #[cfg(test)]
 mod rate_limiter_shared_store_tests {
     use super::*;
