@@ -184,7 +184,117 @@ ERP platforms are systems of record for **finance, procurement, manufacturing, a
 
 ---
 
-## 7. Practical takeaways
+## 7. Performance perspective
+
+StateSet’s core is built in Rust on Axum/Tokio with a CQRS + outbox architecture. The repo includes explicit performance baselines and tuning guidance, which makes it easier to reason about performance than with most SaaS or monolithic platforms.
+
+### 7.1 StateSet baseline (single instance)
+
+From `docs/PERFORMANCE_TUNING.md`, a default deployment is expected to deliver roughly:
+
+- **Latency (p50 / p95 / p99)**  
+  - `GET /health`: ~5 / 10 / 15 ms  
+  - `GET /orders`: ~30 / 80 / 150 ms  
+  - `POST /orders`: ~50 / 120 / 200 ms  
+  - `POST /inventory/reserve`: ~45 / 110 / 190 ms
+- **Throughput**  
+  - Simple reads: **2000+ req/s**  
+  - Complex queries: **500–1000 req/s**  
+  - Writes w/ validation: **800–1200 req/s**
+- **Resource footprint**  
+  - Memory: **~200–400 MB** baseline  
+  - CPU: low idle, **40–60% under load** at these rates
+
+These numbers are for a single node and scale linearly with horizontal replicas when the database/cache are sized appropriately.
+
+### 7.2 Why StateSet tends to be fast
+
+- **Rust runtime**: no GC pauses, low per‑request overhead, predictable tail latency under load.
+- **Async I/O + structured concurrency** (Tokio): handles high parallelism efficiently.
+- **CQRS separation**: keeps read paths optimized and reduces write contention.
+- **Outbox/eventing**: moves slow integration work off request threads, improving p95/p99.
+- **gRPC for service‑to‑service calls**: higher throughput and lower overhead than JSON REST between internal components.
+- **Explicit caching + indexing guidance**: Redis caching and DB index patterns are first‑class in the docs.
+
+### 7.3 Relative performance vs other categories
+
+**SaaS commerce platforms (Shopify, commercetools, fabric, VTEX, SFCC)**  
+- Typically provide **excellent global uptime and elastic scale**, but per‑request latency includes WAN hops to the vendor’s region and multi‑tenant throttling.  
+- You can optimize client usage (batching, GraphQL, caching) but **cannot tune the core runtime or DB schema**.  
+- For high‑velocity internal ops (inventory reservation, fulfillment, returns) running StateSet **inside your VPC** often yields lower and more controllable p95/p99.  
+- For global storefront delivery, SaaS platforms may benefit from **vendor‑managed CDN/edge caching**, which can outperform any self‑hosted setup unless you invest similarly.
+
+**Monolithic/self‑hosted storefront suites (Magento)**  
+- Performance is highly dependent on **caching layers and infrastructure tuning**; uncached PHP monolith paths generally exhibit higher CPU/memory overhead and less predictable tail latency.  
+- StateSet’s headless Rust services usually achieve **higher throughput per node** and smaller steady‑state memory, especially on write‑heavy OMS flows.
+
+**Open‑source headless retail cores (Medusa)**  
+- Node/TypeScript stacks do well on I/O‑bound workloads, but **GC and single‑threaded event loops** can create noisier p95/p99 under bursts.  
+- StateSet’s Rust + Tokio model tends to keep **tail latency steadier** for CPU‑heavy operations (pricing rules, allocation logic) and large fan‑out event processing.
+
+**Dedicated OMS suites**  
+- Enterprise OMS products are built for correctness and omnichannel orchestration, not ultra‑low‑latency storefront calls; they often rely on **heavier rule engines and integration middleware**.  
+- StateSet aims for **storefront‑grade latency on OMS actions**, with orchestration extended through events rather than synchronous coupling.
+
+**ERP systems**  
+- ERPs are optimized for **financial integrity and planning**, not high‑TPS real‑time APIs; interactive calls are often slower and many integrations are batch/IDoc style.  
+- StateSet is designed to absorb **high‑frequency commerce events**, then sync summarized transactions to ERP.
+
+### 7.4 What this means in practice
+
+- If your bottleneck is **checkout or API‑driven omnichannel execution**, StateSet’s Rust core is a strong fit.  
+- If your bottleneck is **global storefront rendering**, you’ll still need CDN/edge strategies (whether you pair StateSet with a headless frontend or a SaaS storefront).  
+- If you require **deep retail optimization engines** (store picking algorithms, network ATP), a dedicated OMS may complement StateSet rather than be replaced by it.
+
+---
+
+## 8. Comparison with WMS systems
+
+Warehouse Management Systems (WMS) focus on **warehouse execution**: labor/task management, RF scanning, wave planning, slotting, yard/dock control, robotics/automation, and deep location‑level inventory. StateSet includes warehousing and inventory workflows, but is positioned as a **network‑level operations backbone** rather than a full warehouse‑floor system.
+
+| WMS category / examples | What they are best at | How StateSet compares |
+|---|---|---|
+| **Enterprise WMS suites** (Manhattan WMS, Blue Yonder WMS, SAP EWM, Oracle WMS Cloud) | High‑volume DC execution, advanced picking/packing/waves, labor optimization, automation/robotics integrations | StateSet handles inventory truth, reservations, allocations, ASN/receiving, and fulfillment state, but does not attempt to replicate deep warehouse‑floor optimization or labor tooling. |
+| **SMB / 3PL‑oriented WMS** (Logiwa, Extensiv, ShipHero, 3PL Central, etc.) | Faster deployment for smaller networks, standard pick/pack/ship, 3PL billing workflows | StateSet can cover many SMB execution needs directly when warehouses are simple, and integrates cleanly via APIs/webhooks when a dedicated WMS is preferred. |
+
+**Typical integration pattern:**
+1. **StateSet** decides *what* to fulfill and *where* (order routing, reservations, allocations).
+2. **WMS** executes the physical work (pick, pack, ship, putaway) and pushes confirmations back.
+
+**When StateSet can replace WMS:** small warehouse footprints, light wave/slotting needs, desire to keep ops in one system.  
+**When a WMS is required:** high‑throughput DCs, labor optimization, automation/robotics, complex bin/location control.
+
+---
+
+## 9. Comparison with logistics, TMS, and 3PL platforms
+
+Transportation Management Systems (TMS) and shipping platforms specialize in **carrier selection, freight/parcel rating, route optimization, label generation, and real‑time transportation visibility**. StateSet includes shipment creation and tracking, but not a full transportation optimization engine.
+
+| Logistics category / examples | What they are best at | How StateSet compares |
+|---|---|---|
+| **Parcel/label + tracking platforms** (ShipStation, EasyPost, AfterShip, Narvar, etc.) | Multi‑carrier labels, tracking pages, exception workflows, consumer notifications | StateSet can emit shipments/ASNs and track statuses; it typically integrates to these services for labels, rate shopping, and last‑mile UX. |
+| **Freight / TMS suites** (Descartes, MercuryGate, project44 visibility, etc.) | Contract freight rating, routing, tendering, dock scheduling, multi‑leg visibility | StateSet is not a freight optimizer; it is the order/inventory system that feeds shipment intents and consumes transportation events. |
+| **3PL networks** (DHL/ShipBob/Flexport‑style providers) | Physical fulfillment, distributed inventory, SLAs, customs/brokerage | StateSet acts as the control plane for orders and inventory, integrating via EDI/API/webhooks for fulfillment and inventory updates. |
+
+**When StateSet is enough for shipping:** simple parcel flows, basic carrier integrations, and internal fulfillment.  
+**When a TMS/3PL platform is needed:** freight optimization, global multi‑leg transport, or outsourcing physical fulfillment.
+
+---
+
+## 10. Comparison with PIM, CMS, and catalog enrichment systems
+
+Product Information Management (PIM) and CMS tools manage **rich product content and omnichannel syndication**. StateSet includes a product catalog and variants for transactional commerce, but PIM/CMS systems are built for **content depth and marketing workflows**.
+
+| System category / examples | What they are best at | How StateSet compares |
+|---|---|---|
+| **PIM / DAM** (Akeneo, Salsify, Pimcore, Syndigo) | Product enrichment, taxonomy/attributes, channel feeds, digital asset management | StateSet stores transactional SKU/variant/pricing/inventory and supports core attributes, but PIM tools are better for long‑form content and multi‑channel publishing. |
+| **Headless CMS / experience layers** (Contentful, Sanity, AEM, Bloomreach) | Page composition, content workflows, localization, experience A/B testing | StateSet focuses on commerce/ops APIs; CMS owns storefront content and calls StateSet for carts, pricing, availability, and order execution. |
+
+**Typical integration pattern:** PIM/CMS is the **content master**; StateSet is the **transaction + availability master**.
+
+---
+
+## 11. Practical takeaways
 
 - **Choose StateSet** when operations (OMS, inventory allocation, returns, manufacturing, procurement) are central, you want to self‑host, and you need high‑throughput APIs with deep customization.
 - **Choose Shopify or VTEX** for fastest hosted storefront + ecosystem leverage.
