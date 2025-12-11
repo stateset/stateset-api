@@ -455,40 +455,54 @@ pub fn extract_ip_key(request: &Request) -> String {
     "ip:unknown".to_string()
 }
 
+/// Extracts owned auth context from the request so it can be used in async code without
+/// requiring the whole `Request` (which is not `Sync`) to live across awaits.
+fn extract_auth_context(request: &Request) -> (Option<AuthUser>, Option<String>, Option<String>) {
+    let auth_user = request.extensions().get::<AuthUser>().cloned();
+    let bearer_token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|auth_header| auth_header.to_str().ok())
+        .and_then(|raw| raw.strip_prefix("Bearer ").map(str::trim))
+        .map(str::to_owned);
+    let header_user_id = request
+        .headers()
+        .get("x-user-id")
+        .and_then(|user_id| user_id.to_str().ok())
+        .map(str::to_owned);
+
+    (auth_user, bearer_token, header_user_id)
+}
+
 /// Extracts a rate limit key for authenticated users.
 ///
 /// Priority:
 /// 1. AuthUser from request extensions (set by auth middleware after JWT validation)
-/// 2. x-user-id header (for internal/service-to-service calls)
-/// 3. None if no user context available
+/// 2. Bearer token validated via AuthService
+/// 3. x-user-id header (for internal/service-to-service calls)
+/// 4. None if no user context available
 pub async fn extract_user_key(
-    request: &Request,
+    auth_user: Option<AuthUser>,
+    bearer_token: Option<String>,
+    header_user_id: Option<String>,
     auth_service: Option<&Arc<AuthService>>,
 ) -> Option<String> {
-    // Primary: Get user ID from validated AuthUser in request extensions
-    // This is populated by the auth middleware after JWT token validation
-    if let Some(auth_user) = request.extensions().get::<AuthUser>() {
+    if let Some(auth_user) = auth_user {
         return Some(format!("user:{}", auth_user.user_id));
     }
 
     // Try to resolve user from a Bearer token using the shared AuthService
     if let Some(service) = auth_service {
-        if let Some(auth_header) = request.headers().get(header::AUTHORIZATION) {
-            if let Ok(raw) = auth_header.to_str() {
-                if let Some(token) = raw.strip_prefix("Bearer ").map(str::trim) {
-                    if let Ok(claims) = service.validate_token(token).await {
-                        return Some(format!("user:{}", claims.sub));
-                    }
-                }
+        if let Some(token) = bearer_token {
+            if let Ok(claims) = service.validate_token(&token).await {
+                return Some(format!("user:{}", claims.sub));
             }
         }
     }
 
     // Fallback: x-user-id header for internal service-to-service calls
-    if let Some(user_id) = request.headers().get("x-user-id") {
-        if let Ok(user_str) = user_id.to_str() {
-            return Some(format!("user:{}", user_str));
-        }
+    if let Some(user_str) = header_user_id {
+        return Some(format!("user:{}", user_str));
     }
 
     None
@@ -514,9 +528,10 @@ pub async fn rate_limit_middleware(
     let rate_limiter = RateLimiter::in_memory(config.clone());
 
     // Extract key (prefer API key, then user, then IP)
+    let (auth_user, bearer_token, header_user_id) = extract_auth_context(&request);
     let key = if let Some(k) = extract_api_key(&request) {
         k
-    } else if let Some(u) = extract_user_key(&request, None).await {
+    } else if let Some(u) = extract_user_key(auth_user, bearer_token, header_user_id, None).await {
         u
     } else {
         extract_ip_key(&request)
@@ -679,9 +694,13 @@ where
             }
 
             // Extract key (prefer API key, then user, then IP)
+            let (auth_user, bearer_token, header_user_id) = extract_auth_context(&request);
             let key = if let Some(k) = extract_api_key(&request) {
                 k
-            } else if let Some(u) = extract_user_key(&request, auth_service.as_ref()).await {
+            } else if let Some(u) =
+                extract_user_key(auth_user, bearer_token, header_user_id, auth_service.as_ref())
+                    .await
+            {
                 u
             } else {
                 extract_ip_key(&request)
