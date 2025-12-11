@@ -4,15 +4,15 @@
 [![Rust CI](https://github.com/stateset/stateset-api/actions/workflows/rust.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/rust.yml)
 [![Security Scan](https://github.com/stateset/stateset-api/actions/workflows/security.yml/badge.svg)](https://github.com/stateset/stateset-api/actions/workflows/security.yml)
 [![codecov](https://codecov.io/gh/stateset/stateset-api/branch/master/graph/badge.svg)](https://codecov.io/gh/stateset/stateset-api)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust Version](https://img.shields.io/badge/rust-1.90%2B-blue.svg)](https://www.rust-lang.org)
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
+[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 [![GitHub release](https://img.shields.io/github/v/release/stateset/stateset-api)](https://github.com/stateset/stateset-api/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![code style: rustfmt](https://img.shields.io/badge/code%20style-rustfmt-orange.svg)](https://github.com/rust-lang/rustfmt)
 
 StateSet API is a comprehensive, scalable, and robust backend system for order management, inventory control, returns processing, warranty management, shipment tracking, and work order handling. Built with Rust, it leverages modern web technologies and best practices to provide a high-performance, reliable solution for e-commerce and manufacturing businesses.
 
-**Stats**: 584 Rust source files • ~113,000 lines of code • 100% safe Rust
+**Stats**: ~590 Rust source files • ~113,000 lines of code • 100% safe Rust
 
 **Quick Links**: [Getting Started](#getting-started) | [Documentation](#documentation) | [API Endpoints](#api-endpoints) | [Deployment](docs/DEPLOYMENT.md) | [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md)
 
@@ -97,7 +97,7 @@ Our carefully selected tech stack ensures high performance, scalability, and mai
 ### Core Technologies
 - **Language**: Rust (for performance, safety, and concurrency)
 - **Web Framework**: [Axum](https://github.com/tokio-rs/axum/) (async web framework from the Tokio team)
-- **Database**: PostgreSQL with [SeaORM](https://www.sea-ql.org/SeaORM) (async ORM)
+- **Database**: SQLite (dev default) and PostgreSQL (prod) via [SeaORM](https://www.sea-ql.org/SeaORM) (async ORM)
 - **Async Runtime**: Tokio (efficient async runtime for Rust)
 
 ### API Protocols
@@ -180,7 +180,7 @@ stateset-api/
 ### Prerequisites
 
 Ensure you have the following installed:
-- Rust (latest stable)
+- Rust 1.75+ (latest stable recommended)
 - Protocol Buffer compiler (for gRPC)
 
 Note: The app defaults to SQLite for local development (via SeaORM). PostgreSQL is optional and can be enabled by changing configuration.
@@ -398,19 +398,15 @@ cargo test
 
 StateSet API provides a rich set of RESTful endpoints:
 
-### Authentication (`/api/v1/auth`)
-- `POST /auth/login` - Authenticate user and get JWT tokens
-- `POST /auth/register` - Register a new user
-- `POST /auth/logout` - Revoke the current access token and all associated refresh tokens
-- `POST /auth/password/change` - Change the password for the authenticated user
-- `POST /auth/password/reset/request` - Request a password reset token (delivered via email in production)
-- `POST /auth/password/reset/confirm` - Complete a password reset with the issued token
-- `GET /auth/api-keys` - List API keys for the authenticated user (requires `api-keys:read`)
+### Authentication (`/auth`)
+- `POST /auth/login` - Authenticate user and get JWT access + refresh tokens
+- `POST /auth/refresh` - Refresh JWT tokens
+- `POST /auth/logout` - Revoke the current access token and associated refresh tokens
 - `POST /auth/api-keys` - Issue a new API key (requires `api-keys:create`)
-- `DELETE /auth/api-keys/{id}` - Revoke an API key (requires `api-keys:delete`)
 
 #### Auth and Permissions
-- Use `POST /api/v1/auth/login` with `{ email, password }` to obtain a JWT `access_token` and `refresh_token`.
+- Use `POST /auth/login` with `{ email, password }` to obtain a JWT `access_token` and `refresh_token`.
+- Use `POST /auth/refresh` with `{ refresh_token }` to rotate tokens when the access token expires.
 - Send `Authorization: Bearer <access_token>` on protected routes. API keys are also supported via `X-API-Key`.
 - Endpoints are permission-gated (e.g., `orders:read`, `orders:create`). Admins have full access.
 - Standard error responses include JSON with `error.code` and HTTP status; `X-Request-Id` is included on responses for tracing.
@@ -568,8 +564,8 @@ StateSet API provides a rich set of RESTful endpoints:
 - `DELETE /admin/outbox/{id}` - Delete outbox event
 
 ### Health & Metrics
-- `GET /status` - API status and version information
-- `GET /health` - Health check (DB, Redis, cache status)
+- `GET /api/v1/status` - API status and version information
+- `GET /api/v1/health` - Health check (DB, Redis, cache status)
 - `GET /metrics` - Prometheus metrics (text format)
 - `GET /metrics/json` - Metrics in JSON format
 
@@ -632,6 +628,8 @@ Environment variables:
 
 ### 📚 Complete Documentation Suite
 
+**Public docs**: The hosted, end‑user API docs live at https://docs.stateset.com (this repo’s `/docs` folder contains deeper implementation and ops material).
+
 **Start Here:**
 - **[Business Getting Started Guide](docs/GETTING_STARTED_BUSINESS.md)** 🚀 - Complete guide for businesses launching ecommerce on Stateset
 - **[Business Quick Reference Card](docs/BUSINESS_QUICK_REFERENCE.md)** ⚡ - One-page cheat sheet with all essential commands and endpoints
@@ -664,6 +662,13 @@ Environment variables:
 - **[Security Policy](SECURITY.md)** - Security guidelines and reporting
 - **[Roadmap](ROADMAP.md)** - Feature roadmap and planning
 - **[Changelog](CHANGELOG.md)** - Release history and changes
+
+### Related Projects
+
+- [stateset-sync-server](https://github.com/stateset/stateset-sync-server) - Multi‑tenant orchestration and integrations.
+- [stateset-agents](https://github.com/stateset/stateset-agents) - RL framework for training multi‑turn agents.
+- [stateset-nsr](https://github.com/stateset/stateset-nsr) - Neuro‑symbolic reasoning engine for explainable automation.
+- [core](https://github.com/stateset/core) - Cosmos SDK blockchain for on‑chain commerce.
 
 ## Performance
 
@@ -704,7 +709,7 @@ Security is a top priority. If you discover a security vulnerability, please fol
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is source-available under the Business Source License 1.1 (BSL 1.1). See the [LICENSE](LICENSE) file for terms and the Change Date when it converts to Apache 2.0.
 
 ## Acknowledgments
 

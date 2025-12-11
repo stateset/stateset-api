@@ -255,7 +255,7 @@ See [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for roadmap to 100% produ
 
 ## 📄 License
 
-MIT License
+Business Source License 1.1 (BSL 1.1) - see [LICENSE](../LICENSE).
 
 ---
 

@@ -981,7 +981,7 @@ agentic_server/
 
 ## License
 
-MIT
+Business Source License 1.1 (BSL 1.1) - see [LICENSE](../LICENSE).
 
 ## Resources
 

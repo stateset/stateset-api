@@ -522,7 +522,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see [LICENSE](../LICENSE) file for details.
+Business Source License 1.1 (BSL 1.1) - see [LICENSE](../LICENSE) file for details.
 
 ---
 

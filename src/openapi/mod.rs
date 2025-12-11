@@ -66,8 +66,8 @@ List endpoints support pagination with the following query parameters:
             url = "https://stateset.io"
         ),
         license(
-            name = "MIT",
-            url = "https://opensource.org/licenses/MIT"
+            name = "Business Source License 1.1",
+            url = "https://github.com/stateset/stateset-api/blob/master/LICENSE"
         )
     ),
     servers(
