@@ -157,7 +157,7 @@ impl From<&ServiceError> for ACPErrorResponse {
             ServiceError::InvalidOperation(msg) => {
                 ACPErrorResponse::invalid_request("invalid_operation", msg.clone(), None)
             }
-            ServiceError::NotFound(msg) | ServiceError::NotFoundError(msg) => {
+            ServiceError::NotFound(msg) => {
                 ACPErrorResponse::invalid_request("resource_not_found", msg.clone(), None)
             }
             ServiceError::AuthError(msg) | ServiceError::Unauthorized(msg) => {
@@ -213,11 +213,6 @@ pub enum ServiceError {
 
     #[error("Concurrent modification: {0}")]
     ConcurrentModification(Uuid),
-
-    /// Deprecated: Use `NotFound` instead. This variant exists for backward compatibility.
-    #[deprecated(since = "0.1.0", note = "Use ServiceError::NotFound instead")]
-    #[error("Not found error: {0}")]
-    NotFoundError(String),
 
     #[error("Order error: {0}")]
     OrderError(String),
@@ -340,7 +335,7 @@ impl ServiceError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::NotFound(_) | Self::NotFoundError(_) => StatusCode::NOT_FOUND,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::ValidationError(_)
             | Self::InvalidOperation(_)
             | Self::InvalidInput(_)

@@ -265,6 +265,15 @@ impl AuthConfig {
     }
 }
 
+/// Token blacklist entry (for in-memory backend)
+#[derive(Clone, Debug)]
+pub struct BlacklistedToken {
+    /// JWT ID of the blacklisted token
+    pub jti: String,
+    /// When this blacklist entry expires
+    pub expiry: DateTime<Utc>,
+}
+
 /// Token blacklist backend abstraction for scalable token revocation
 #[derive(Clone)]
 pub enum TokenBlacklistBackend {
@@ -294,13 +303,6 @@ pub struct AuthService {
     pub config: AuthConfig,
     pub db: Arc<DatabaseConnection>,
     blacklist: TokenBlacklistBackend,
-}
-
-/// Token blacklist entry (for in-memory backend)
-#[derive(Clone, Debug)]
-struct BlacklistedToken {
-    jti: String,
-    expiry: DateTime<Utc>,
 }
 
 impl AuthService {
@@ -1104,7 +1106,6 @@ impl IntoResponse for AuthError {
 /// Extract AuthUser from request extensions.
 /// Assumes `auth_middleware` has populated `AuthUser` in request extensions.
 #[async_trait::async_trait]
-#[async_trait::async_trait]
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
@@ -1407,5 +1408,344 @@ where
             role_middleware,
         ))
         .with_auth()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test AuthConfig creation - minimum JWT secret length
+    #[test]
+    fn test_auth_config_creation_jwt_secret_length() {
+        let result = AuthConfig::new(
+            "short".to_string(), // Too short
+            "test".to_string(),
+            "test".to_string(),
+            Duration::from_secs(300),
+            Duration::from_secs(86400),
+            "sk_".to_string(),
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(AuthError::ConfigurationError(msg)) => {
+                assert!(msg.contains("JWT secret must be at least"));
+            }
+            _ => panic!("Expected ConfigurationError"),
+        }
+    }
+
+    /// Test AuthConfig creation - valid configuration
+    #[test]
+    fn test_auth_config_creation_valid() {
+        let result = AuthConfig::new(
+            "a".repeat(64), // Meets minimum length
+            "test-app".to_string(),
+            "stateset".to_string(),
+            Duration::from_secs(300),
+            Duration::from_secs(86400),
+            "sk_".to_string(),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    /// Test AuthConfig creation with various token expiry values
+    #[test]
+    fn test_auth_config_creation_token_expiry() {
+        // Short but valid expiration should work
+        let result = AuthConfig::new(
+            "a".repeat(64),
+            "test".to_string(),
+            "test".to_string(),
+            Duration::from_secs(60), // 1 minute
+            Duration::from_secs(86400),
+            "sk_".to_string(),
+        );
+
+        assert!(result.is_ok());
+    }
+
+    /// Test AuthUser creation and serialization
+    #[test]
+    fn test_auth_user_creation() {
+        let user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: Some("Test User".to_string()),
+            email: Some("test@example.com".to_string()),
+            roles: vec!["user".to_string(), "admin".to_string()],
+            permissions: vec!["read".to_string(), "write".to_string()],
+            tenant_id: Some(Uuid::new_v4().to_string()),
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        assert_eq!(user.email, Some("test@example.com".to_string()));
+        assert!(user.roles.contains(&"admin".to_string()));
+        assert!(user.permissions.contains(&"write".to_string()));
+        assert!(user.tenant_id.is_some());
+    }
+
+    /// Test AuthUser has_role method
+    #[test]
+    fn test_auth_user_has_role() {
+        let user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: None,
+            email: Some("test@example.com".to_string()),
+            roles: vec!["user".to_string(), "moderator".to_string()],
+            permissions: vec![],
+            tenant_id: None,
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        assert!(user.has_role("user"));
+        assert!(user.has_role("moderator"));
+        assert!(!user.has_role("admin"));
+    }
+
+    /// Test AuthUser has_permission method
+    #[test]
+    fn test_auth_user_has_permission() {
+        let user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: None,
+            email: Some("test@example.com".to_string()),
+            roles: vec![],
+            permissions: vec!["orders:read".to_string(), "orders:write".to_string()],
+            tenant_id: None,
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        assert!(user.has_permission("orders:read"));
+        assert!(user.has_permission("orders:write"));
+        assert!(!user.has_permission("orders:delete"));
+    }
+
+    /// Test AuthUser admin has all permissions
+    #[test]
+    fn test_auth_user_admin_has_all_permissions() {
+        let admin_user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: None,
+            email: Some("admin@example.com".to_string()),
+            roles: vec!["admin".to_string()],
+            permissions: vec![], // No explicit permissions
+            tenant_id: None,
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        // Admin should have all permissions even without explicit ones
+        assert!(admin_user.has_permission("orders:read"));
+        assert!(admin_user.has_permission("orders:delete"));
+        assert!(admin_user.has_permission("any:permission"));
+    }
+
+    /// Test AuthUser is_admin method
+    #[test]
+    fn test_auth_user_is_admin() {
+        let admin_user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: None,
+            email: Some("admin@example.com".to_string()),
+            roles: vec!["admin".to_string()],
+            permissions: vec![],
+            tenant_id: None,
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        let regular_user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: None,
+            email: Some("user@example.com".to_string()),
+            roles: vec!["user".to_string()],
+            permissions: vec![],
+            tenant_id: None,
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        assert!(admin_user.is_admin());
+        assert!(!regular_user.is_admin());
+    }
+
+    /// Test AuthUser belongs_to_tenant method
+    #[test]
+    fn test_auth_user_belongs_to_tenant() {
+        let tenant_id = Uuid::new_v4().to_string();
+        let user = AuthUser {
+            user_id: Uuid::new_v4().to_string(),
+            name: None,
+            email: None,
+            roles: vec![],
+            permissions: vec![],
+            tenant_id: Some(tenant_id.clone()),
+            token_id: Uuid::new_v4().to_string(),
+            is_api_key: false,
+        };
+
+        assert!(user.belongs_to_tenant(&tenant_id));
+        assert!(!user.belongs_to_tenant("other-tenant"));
+    }
+
+    /// Test Claims structure
+    #[test]
+    fn test_claims_structure() {
+        let now = Utc::now().timestamp();
+        let claims = Claims {
+            sub: Uuid::new_v4().to_string(),
+            name: Some("Test User".to_string()),
+            email: Some("test@example.com".to_string()),
+            roles: vec!["user".to_string()],
+            permissions: vec!["read".to_string()],
+            tenant_id: None,
+            jti: Uuid::new_v4().to_string(),
+            iat: now,
+            exp: now + 3600,
+            nbf: now,
+            iss: "stateset".to_string(),
+            aud: "test-app".to_string(),
+            scope: None,
+        };
+
+        assert_eq!(claims.email, Some("test@example.com".to_string()));
+        assert!(claims.roles.contains(&"user".to_string()));
+        assert_eq!(claims.iss, "stateset");
+        assert!(!claims.jti.is_empty());
+    }
+
+    /// Test BlacklistedToken structure
+    #[test]
+    fn test_blacklisted_token_structure() {
+        let token = BlacklistedToken {
+            jti: "test-jti-123".to_string(),
+            expiry: Utc::now() + chrono::Duration::hours(1),
+        };
+
+        assert_eq!(token.jti, "test-jti-123");
+        assert!(token.expiry > Utc::now());
+    }
+
+    /// Test TokenBlacklistBackend debug format
+    #[test]
+    fn test_token_blacklist_backend_debug() {
+        let in_memory = TokenBlacklistBackend::InMemory(Arc::new(RwLock::new(Vec::new())));
+        let debug_str = format!("{:?}", in_memory);
+        assert_eq!(debug_str, "InMemory");
+    }
+
+    /// Test AuthError variants display correctly
+    #[test]
+    fn test_auth_error_display() {
+        assert_eq!(
+            format!("{}", AuthError::MissingAuth),
+            "Missing authentication"
+        );
+        assert_eq!(
+            format!("{}", AuthError::InvalidCredentials),
+            "Invalid credentials"
+        );
+        assert_eq!(
+            format!("{}", AuthError::TokenExpired),
+            "Token has expired"
+        );
+        assert_eq!(
+            format!("{}", AuthError::InvalidApiKey),
+            "Invalid API key"
+        );
+        assert_eq!(
+            format!("{}", AuthError::UserNotFound),
+            "User not found"
+        );
+        assert_eq!(
+            format!("{}", AuthError::InsufficientPermissions),
+            "Insufficient permissions"
+        );
+    }
+
+    /// Test AuthError IntoResponse trait
+    #[test]
+    fn test_auth_error_into_response() {
+        // Test that all error variants can be converted to responses
+        let errors = vec![
+            AuthError::MissingAuth,
+            AuthError::InvalidCredentials,
+            AuthError::InvalidToken,
+            AuthError::TokenExpired,
+            AuthError::InvalidApiKey,
+            AuthError::UserNotFound,
+            AuthError::InsufficientPermissions,
+        ];
+
+        for error in errors {
+            // Each error should produce a valid HTTP response
+            let response = error.into_response();
+            // Response status should be 4xx (client error)
+            assert!(response.status().is_client_error());
+        }
+    }
+
+    /// Test CreateApiKeyRequest structure
+    #[test]
+    fn test_create_api_key_request() {
+        let request = CreateApiKeyRequest {
+            name: "Production API Key".to_string(),
+        };
+
+        assert_eq!(request.name, "Production API Key");
+    }
+
+    /// Test RefreshTokenRequest structure
+    #[test]
+    fn test_refresh_token_request() {
+        let request = RefreshTokenRequest {
+            refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...".to_string(),
+        };
+
+        assert!(!request.refresh_token.is_empty());
+    }
+
+    /// Test AuthConfig security requirements
+    #[test]
+    fn test_auth_config_security_requirements() {
+        // Valid config with secure values
+        let config = AuthConfig::new(
+            "a".repeat(64),
+            "test".to_string(),
+            "test".to_string(),
+            Duration::from_secs(300), // 5 minutes - good default
+            Duration::from_secs(86400), // 24 hours - good default
+            "sk_".to_string(),
+        )
+        .expect("Should create valid config");
+
+        // Ensure minimum reasonable values
+        assert!(config.access_token_expiration.as_secs() >= 60);
+        assert!(config.access_token_expiration.as_secs() <= 86400);
+        assert!(config.refresh_token_expiration >= config.access_token_expiration);
+    }
+
+    /// Test that refresh token must be longer than access token
+    #[test]
+    fn test_auth_config_token_expiration_ordering() {
+        // Valid: refresh > access
+        let valid = AuthConfig::new(
+            "a".repeat(64),
+            "test".to_string(),
+            "test".to_string(),
+            Duration::from_secs(300),
+            Duration::from_secs(86400),
+            "sk_".to_string(),
+        );
+        assert!(valid.is_ok());
+
+        // Access token should be shorter than refresh token
+        let config = valid.unwrap();
+        assert!(config.access_token_expiration < config.refresh_token_expiration);
     }
 }

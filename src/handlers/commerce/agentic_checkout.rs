@@ -1246,7 +1246,7 @@ fn map_service_error(error: crate::errors::ServiceError) -> ApiError {
 
 fn service_error_status(error: &ServiceError) -> StatusCode {
     match error {
-        ServiceError::NotFound(_) | ServiceError::NotFoundError(_) => StatusCode::NOT_FOUND,
+        ServiceError::NotFound(_) => StatusCode::NOT_FOUND,
         ServiceError::ValidationError(_)
         | ServiceError::InvalidStatus(_)
         | ServiceError::InvalidOperation(_)

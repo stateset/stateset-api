@@ -11,9 +11,7 @@ pub trait IntoGrpcStatus {
 impl IntoGrpcStatus for ServiceError {
     fn into_grpc_status(self) -> Status {
         match self {
-            ServiceError::NotFound(msg) | ServiceError::NotFoundError(msg) => {
-                Status::not_found(msg)
-            }
+            ServiceError::NotFound(msg) => Status::not_found(msg),
             ServiceError::ValidationError(msg)
             | ServiceError::InvalidStatus(msg)
             | ServiceError::InvalidInput(msg) => Status::invalid_argument(msg),

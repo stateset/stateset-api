@@ -3,6 +3,16 @@ name = "stateset-api"
 version = "0.2.1"
 edition = "2021"
 autobins = false
+description = "A comprehensive backend system for order management, inventory control, returns processing, warranty management, shipment tracking, and work order handling"
+authors = ["Stateset, Inc. <support@stateset.io>"]
+license-file = "LICENSE"
+repository = "https://github.com/stateset/stateset-api"
+homepage = "https://stateset.com"
+documentation = "https://docs.stateset.com"
+readme = "README.md"
+keywords = ["api", "ecommerce", "inventory", "orders", "rust"]
+categories = ["web-programming", "web-programming::http-server"]
+rust-version = "1.75"
 
 [workspace]
 members = [".", "migrations", "simple_api", "src/bin/only_standalone"]
@@ -37,7 +47,7 @@ strum = { version = "0.26", features = ["derive"] }
 http = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-migrations = { path = "migrations" }
+# migrations crate is workspace-only (for running migrations binary), not needed for library
 # OpenAPI documentation
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid", "decimal"] }
 utoipa-swagger-ui = { version = "8", features = ["axum"] }

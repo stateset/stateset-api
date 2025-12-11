@@ -268,7 +268,7 @@ impl CheckoutService {
     fn calculate_shipping_rate(
         &self,
         method: &ShippingMethod,
-        address: &Address,
+        _address: &Address,
     ) -> Result<ShippingRate, ServiceError> {
         // Simplified shipping calculation
         let base_rate = match method {
@@ -289,7 +289,7 @@ impl CheckoutService {
     }
 
     /// Calculate tax
-    fn calculate_tax(&self, subtotal: Decimal, address: &Address) -> Result<Decimal, ServiceError> {
+    fn calculate_tax(&self, subtotal: Decimal, _address: &Address) -> Result<Decimal, ServiceError> {
         // Simplified tax calculation - would integrate with tax provider
         let tax_rate = Decimal::new(875, 3); // 8.75%
         Ok(subtotal * tax_rate / Decimal::from(100))

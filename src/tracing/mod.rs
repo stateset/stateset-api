@@ -426,7 +426,7 @@ where
         let user_agent = RequestLogger::extract_user_agent(request.headers());
 
         // Create tracer and span for OpenTelemetry
-        let current_otel_ctx = OtelContext::current();
+        let _current_otel_ctx = OtelContext::current();
         let tracer = global::tracer("stateset-api");
         let mut span = tracer.start(format!("{} {}", method, path));
 
