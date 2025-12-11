@@ -644,7 +644,7 @@ const paymentMethod = {
 
 ## License
 
-StablePay is part of the Stateset API and is licensed under the MIT License.
+StablePay is part of the StateSet API and is licensed under the same Business Source License (BSL) 1.1 as the rest of the project, unless explicitly stated otherwise. See [LICENSE](../../LICENSE).
 
 ## Credits
 
@@ -655,4 +655,3 @@ Built with ❤️ by the Stateset team.
 **Ready to reduce your payment costs by 47%?**
 
 [Get Started](https://stateset.io/stablepay/signup) | [View Demo](./demos/stablepay_demo.sh) | [Read Docs](https://docs.stateset.io/stablepay)
-

@@ -715,7 +715,7 @@ cargo tarpaulin --out Html
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) for details
+Business Source License (BSL) 1.1 - See [LICENSE](LICENSE). The work converts to Apache 2.0 on the Change Date specified in the license.
 
 ---
 

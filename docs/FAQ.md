@@ -35,13 +35,13 @@ Real-world impact:
 
 ### Is StateSet API open source?
 
-Yes! StateSet API is MIT licensed. You can:
-- ✅ Use it commercially
+StateSet API is **source‑available** under the Business Source License (BSL) 1.1. You can:
+- ✅ Use it commercially for your own operations
 - ✅ Modify the source code
 - ✅ Distribute your modifications
-- ✅ Use it in proprietary software
+- ✅ Embed it in proprietary software
 
-See [LICENSE](../LICENSE) for details.
+The BSL restricts offering StateSet as a hosted/embedded service to third parties without a commercial license. See [LICENSE](../LICENSE) and [Licensing Options](guides/LICENSE_TYPES.md) for details.
 
 ### What databases are supported?
 
@@ -955,19 +955,11 @@ See [Troubleshooting Guide](./TROUBLESHOOTING.md) for common issues and solution
 
 ### Can I use this commercially?
 
-**Yes!** StateSet API is MIT licensed, which allows:
-- ✅ Commercial use
-- ✅ Modification
-- ✅ Distribution
-- ✅ Private use
+**Yes.** StateSet API is licensed under BSL 1.1, which allows commercial use for your own business and client deployments. It also allows modification and redistribution.
 
-**No restrictions on:**
-- Number of users
-- Revenue
-- Industry
-- Geographic location
+**Key restriction:** you may not offer StateSet to third parties on a hosted or embedded “as‑a‑service” basis without a commercial license.
 
-See [LICENSE](../LICENSE) for full terms.
+See [LICENSE](../LICENSE) and [Licensing Options](guides/LICENSE_TYPES.md) for full terms and examples.
 
 ### Do I need to pay for support?
 
