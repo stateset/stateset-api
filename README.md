@@ -235,6 +235,9 @@ cargo run --bin grpc-server     # Start gRPC server
 cargo run --bin stateset-cli -- --help  # CLI help
 ```
 
+The `openapi-export` binary generates the current v1 OpenAPI spec to
+`openapi/openapi.json` and `openapi/stateset-api.v1.json`.
+
 ## Stateset CLI
 
 This repository also provides a CLI binary (`stateset-cli`) that reuses the same service layer as the HTTP API. It is ideal for local development, quick smoke tests, or scripting operational tasks without crafting raw REST requests.

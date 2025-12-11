@@ -10,9 +10,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = PathBuf::from("openapi");
     fs::create_dir_all(&output_dir)?;
 
-    let output_path = output_dir.join("stateset-api.v1.json");
-    fs::write(&output_path, json)?;
+    let versioned_path = output_dir.join("stateset-api.v1.json");
+    fs::write(&versioned_path, &json)?;
 
-    println!("OpenAPI spec written to {}", output_path.display());
+    // Standard filename for tooling that expects `openapi.json`
+    let standard_path = output_dir.join("openapi.json");
+    fs::write(&standard_path, &json)?;
+
+    println!(
+        "OpenAPI spec written to {} and {}",
+        versioned_path.display(),
+        standard_path.display()
+    );
     Ok(())
 }

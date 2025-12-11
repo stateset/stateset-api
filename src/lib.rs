@@ -390,10 +390,6 @@ pub fn api_v1_routes() -> Router<AppState> {
         )
         .with_permission(perm::RETURNS_CREATE);
 
-    let returns_delete = Router::new()
-        // .route("/returns/:id", axum::routing::delete(handlers::returns::delete_return::<AppState>))
-        .with_permission(perm::RETURNS_REJECT);
-
     // Shipments routes with permission gating
     let shipments_read = Router::new()
         .route("/shipments", get(handlers::shipments::list_shipments))
@@ -422,10 +418,6 @@ pub fn api_v1_routes() -> Router<AppState> {
             axum::routing::post(handlers::shipments::mark_delivered),
         )
         .with_permission(perm::SHIPMENTS_UPDATE);
-
-    let shipments_delete = Router::new()
-        // .route("/shipments/:id", axum::routing::delete(handlers::shipments::delete_shipment::<AppState>))
-        .with_permission(perm::SHIPMENTS_DELETE);
 
     // Warranties routes with permission gating
     let warranties_read = Router::new()
@@ -536,11 +528,9 @@ pub fn api_v1_routes() -> Router<AppState> {
         // Returns API (auth + permissions)
         .merge(returns_read)
         .merge(returns_write)
-        .merge(returns_delete)
         // Shipments API (auth + permissions)
         .merge(shipments_read)
         .merge(shipments_write)
-        .merge(shipments_delete)
         // Warranties API (auth + permissions)
         .merge(warranties_read)
         .merge(warranties_create)

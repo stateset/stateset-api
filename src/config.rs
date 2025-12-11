@@ -764,8 +764,8 @@ fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-fn validate_tax_rate(rate: &f64) -> Result<(), ValidationError> {
-    if !rate.is_finite() || *rate < 0.0 || *rate > 1.0 {
+fn validate_tax_rate(rate: f64) -> Result<(), ValidationError> {
+    if !rate.is_finite() || rate < 0.0 || rate > 1.0 {
         let mut err = ValidationError::new("default_tax_rate");
         err.message = Some("default_tax_rate must be a finite value between 0.0 and 1.0".into());
         return Err(err);
@@ -773,8 +773,8 @@ fn validate_tax_rate(rate: &f64) -> Result<(), ValidationError> {
     Ok(())
 }
 
-fn validate_event_channel_capacity(capacity: &usize) -> Result<(), ValidationError> {
-    if *capacity == 0 {
+fn validate_event_channel_capacity(capacity: usize) -> Result<(), ValidationError> {
+    if capacity == 0 {
         let mut err = ValidationError::new("event_channel_capacity");
         err.message = Some("event_channel_capacity must be greater than 0".into());
         return Err(err);
