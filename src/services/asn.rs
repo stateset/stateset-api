@@ -132,7 +132,10 @@ impl ASNService {
 
     /// Cancels an ASN
     #[instrument(skip(self))]
-    pub async fn cancel_asn(&self, command: CancelASNCommand) -> Result<CancelASNResult, ServiceError> {
+    pub async fn cancel_asn(
+        &self,
+        command: CancelASNCommand,
+    ) -> Result<CancelASNResult, ServiceError> {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await
@@ -183,7 +186,10 @@ impl ASNService {
 
     /// Adds an item to an ASN
     #[instrument(skip(self))]
-    pub async fn add_item_to_asn(&self, command: AddItemToASNCommand) -> Result<AddItemToASNResult, ServiceError> {
+    pub async fn add_item_to_asn(
+        &self,
+        command: AddItemToASNCommand,
+    ) -> Result<AddItemToASNResult, ServiceError> {
         command
             .execute(self.db_pool.clone(), self.event_sender.clone())
             .await
@@ -353,7 +359,10 @@ impl ASNService {
             .exec(db)
             .await
             .map_err(|e| {
-                error!("Failed to delete item {} from ASN {}: {}", item_id, asn_id, e);
+                error!(
+                    "Failed to delete item {} from ASN {}: {}",
+                    item_id, asn_id, e
+                );
                 ServiceError::db_error(e)
             })?;
 

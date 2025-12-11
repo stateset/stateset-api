@@ -236,7 +236,11 @@ async fn test_add_same_item_increases_quantity() {
     let body = response_json(get_response).await;
     let items = body["data"]["items"].as_array().unwrap();
 
-    assert_eq!(items.len(), 1, "Should have one item with increased quantity");
+    assert_eq!(
+        items.len(),
+        1,
+        "Should have one item with increased quantity"
+    );
     assert_eq!(items[0]["quantity"], 2);
 }
 
@@ -550,7 +554,11 @@ async fn test_add_nonexistent_variant_fails() {
         )
         .await;
 
-    assert_eq!(response.status(), 404, "Should fail for nonexistent variant");
+    assert_eq!(
+        response.status(),
+        404,
+        "Should fail for nonexistent variant"
+    );
 }
 
 #[tokio::test]
@@ -563,7 +571,11 @@ async fn test_cart_requires_authentication() {
         .request(Method::POST, "/api/v1/carts", Some(json!({})), None)
         .await;
 
-    assert_eq!(response.status(), 401, "Unauthenticated request should fail");
+    assert_eq!(
+        response.status(),
+        401,
+        "Unauthenticated request should fail"
+    );
 }
 
 // ==================== Multiple Items Tests ====================
@@ -584,8 +596,11 @@ async fn test_cart_with_multiple_different_items() {
     let variants: Vec<_> = futures::future::join_all((1..=5).map(|i| {
         let app = &app;
         async move {
-            app.seed_product_variant(&format!("MULTI-{}", i), dec!(10.00) * rust_decimal::Decimal::from(i))
-                .await
+            app.seed_product_variant(
+                &format!("MULTI-{}", i),
+                dec!(10.00) * rust_decimal::Decimal::from(i),
+            )
+            .await
         }
     }))
     .await;

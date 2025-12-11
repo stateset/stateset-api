@@ -202,10 +202,9 @@ impl InventoryReservationService {
         query = query.order_by_desc(inventory_reservation::Column::CreatedAt);
 
         let paginator = query.paginate(db, limit);
-        let total = paginator
-            .num_items()
-            .await
-            .map_err(|e| ServiceError::InternalError(format!("Failed to count reservations: {}", e)))?;
+        let total = paginator.num_items().await.map_err(|e| {
+            ServiceError::InternalError(format!("Failed to count reservations: {}", e))
+        })?;
 
         let models = paginator.fetch_page(page - 1).await.map_err(|e| {
             ServiceError::InternalError(format!("Failed to fetch reservations page: {}", e))
@@ -251,14 +250,11 @@ impl InventoryReservationService {
             .map_err(ServiceError::db_error)?;
 
         let active = InventoryReservationEntity::find()
-            .filter(
-                inventory_reservation::Column::Status
-                    .is_in([
-                        ReservationStatus::Pending.as_str(),
-                        ReservationStatus::Confirmed.as_str(),
-                        ReservationStatus::Allocated.as_str(),
-                    ]),
-            )
+            .filter(inventory_reservation::Column::Status.is_in([
+                ReservationStatus::Pending.as_str(),
+                ReservationStatus::Confirmed.as_str(),
+                ReservationStatus::Allocated.as_str(),
+            ]))
             .count(db)
             .await
             .map_err(ServiceError::db_error)?;
@@ -275,14 +271,11 @@ impl InventoryReservationService {
         let expiring_soon = InventoryReservationEntity::find()
             .filter(inventory_reservation::Column::ExpiresAt.gt(now))
             .filter(inventory_reservation::Column::ExpiresAt.lt(now + Duration::hours(24)))
-            .filter(
-                inventory_reservation::Column::Status
-                    .is_in([
-                        ReservationStatus::Pending.as_str(),
-                        ReservationStatus::Confirmed.as_str(),
-                        ReservationStatus::Allocated.as_str(),
-                    ]),
-            )
+            .filter(inventory_reservation::Column::Status.is_in([
+                ReservationStatus::Pending.as_str(),
+                ReservationStatus::Confirmed.as_str(),
+                ReservationStatus::Allocated.as_str(),
+            ]))
             .count(db)
             .await
             .map_err(ServiceError::db_error)?;

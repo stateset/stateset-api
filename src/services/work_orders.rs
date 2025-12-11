@@ -686,15 +686,27 @@ mod tests {
     #[test]
     fn test_in_progress_transitions() {
         // InProgress can transition to Completed or Cancelled
-        assert!(is_valid_transition(&WorkOrderStatus::InProgress, &WorkOrderStatus::Completed));
-        assert!(is_valid_transition(&WorkOrderStatus::InProgress, &WorkOrderStatus::Cancelled));
+        assert!(is_valid_transition(
+            &WorkOrderStatus::InProgress,
+            &WorkOrderStatus::Completed
+        ));
+        assert!(is_valid_transition(
+            &WorkOrderStatus::InProgress,
+            &WorkOrderStatus::Cancelled
+        ));
     }
 
     #[test]
     fn test_terminal_state_transitions() {
         // Completed and Cancelled are terminal states
-        assert!(!is_valid_transition(&WorkOrderStatus::Completed, &WorkOrderStatus::Pending));
-        assert!(!is_valid_transition(&WorkOrderStatus::Cancelled, &WorkOrderStatus::InProgress));
+        assert!(!is_valid_transition(
+            &WorkOrderStatus::Completed,
+            &WorkOrderStatus::Pending
+        ));
+        assert!(!is_valid_transition(
+            &WorkOrderStatus::Cancelled,
+            &WorkOrderStatus::InProgress
+        ));
     }
 
     fn is_valid_transition(from: &WorkOrderStatus, to: &WorkOrderStatus) -> bool {
@@ -749,7 +761,10 @@ mod tests {
     #[test]
     fn test_title_max_length() {
         let title = "A".repeat(200);
-        assert!(title.len() <= 255, "Title should be within reasonable length");
+        assert!(
+            title.len() <= 255,
+            "Title should be within reasonable length"
+        );
     }
 
     #[test]

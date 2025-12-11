@@ -21,12 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Init DB
     let db_pool = api::db::establish_connection_from_app_config(&cfg).await?;
     if cfg.auto_migrate {
-        api::db::run_migrations(&db_pool)
-            .await
-            .map_err(|e| {
-                error!("Failed running migrations: {}", e);
-                e
-            })?;
+        api::db::run_migrations(&db_pool).await.map_err(|e| {
+            error!("Failed running migrations: {}", e);
+            e
+        })?;
     }
 
     // Init Redis client (construction only; connection checked in health)
@@ -187,7 +185,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
         )
         .nest("/api/v1", api::api_v1_routes())
-        .nest("/auth", api::auth::auth_routes().with_state(auth_service.clone()))
+        .nest(
+            "/auth",
+            api::auth::auth_routes().with_state(auth_service.clone()),
+        )
         .merge(api::openapi::swagger_ui())
         // HTTP tracing layer for consistent request/response telemetry
         .layer(api::tracing::configure_http_tracing())

@@ -98,8 +98,18 @@ impl Model {
     /// Example: ARM-202412-00123
     pub fn generate_serial_number(subassembly_type: &str, sequence: u32) -> String {
         let now = Utc::now();
-        let type_code = subassembly_type.to_uppercase().chars().take(4).collect::<String>();
-        format!("{}-{:04}{:02}-{:05}", type_code, now.date_naive().year(), now.date_naive().month(), sequence)
+        let type_code = subassembly_type
+            .to_uppercase()
+            .chars()
+            .take(4)
+            .collect::<String>();
+        format!(
+            "{}-{:04}{:02}-{:05}",
+            type_code,
+            now.date_naive().year(),
+            now.date_naive().month(),
+            sequence
+        )
     }
 
     /// Check if subassembly is available for installation

@@ -81,7 +81,11 @@ async fn test_process_payment_success() {
     let status = response.status();
     let body = response_json(response).await;
 
-    assert_eq!(status, 201, "Payment should be created, got {} with body: {:?}", status, body);
+    assert_eq!(
+        status, 201,
+        "Payment should be created, got {} with body: {:?}",
+        status, body
+    );
     assert!(body["success"].as_bool().unwrap_or(false));
 
     let payment = &body["data"];
@@ -220,11 +224,7 @@ async fn test_process_payment_negative_amount_fails() {
         .request_authenticated(Method::POST, "/api/v1/payments", Some(payment_payload))
         .await;
 
-    assert_eq!(
-        response.status(),
-        400,
-        "Negative amount should be rejected"
-    );
+    assert_eq!(response.status(), 400, "Negative amount should be rejected");
 }
 
 // ==================== Payment Retrieval Tests ====================
@@ -428,7 +428,9 @@ async fn test_refund_payment_full() {
     let app = TestApp::new().await;
 
     // Create order and successful payment
-    let variant = app.seed_product_variant("PAY-REFUND-SKU", dec!(100.00)).await;
+    let variant = app
+        .seed_product_variant("PAY-REFUND-SKU", dec!(100.00))
+        .await;
 
     let order_payload = json!({
         "customer_id": Uuid::new_v4().to_string(),
@@ -484,7 +486,11 @@ async fn test_refund_payment_full() {
     });
 
     let response = app
-        .request_authenticated(Method::POST, "/api/v1/payments/refund", Some(refund_payload))
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/payments/refund",
+            Some(refund_payload),
+        )
         .await;
 
     // Refund endpoint may or may not exist - check for success or 404
@@ -558,7 +564,11 @@ async fn test_refund_payment_partial() {
     });
 
     let response = app
-        .request_authenticated(Method::POST, "/api/v1/payments/refund", Some(refund_payload))
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/payments/refund",
+            Some(refund_payload),
+        )
         .await;
 
     // Check for expected responses
@@ -646,7 +656,12 @@ async fn test_payment_requires_authentication() {
     });
 
     let response = app
-        .request(Method::POST, "/api/v1/payments", Some(payment_payload), None)
+        .request(
+            Method::POST,
+            "/api/v1/payments",
+            Some(payment_payload),
+            None,
+        )
         .await;
 
     assert_eq!(
@@ -711,7 +726,9 @@ async fn test_payment_with_payment_method_id() {
 async fn test_payment_large_amount() {
     let app = TestApp::new().await;
 
-    let variant = app.seed_product_variant("PAY-LARGE-SKU", dec!(99999.99)).await;
+    let variant = app
+        .seed_product_variant("PAY-LARGE-SKU", dec!(99999.99))
+        .await;
 
     let order_payload = json!({
         "customer_id": Uuid::new_v4().to_string(),

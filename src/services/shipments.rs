@@ -384,14 +384,7 @@ mod tests {
 
     #[test]
     fn test_common_carriers() {
-        let carriers = vec![
-            "UPS",
-            "FedEx",
-            "USPS",
-            "DHL",
-            "Amazon Logistics",
-            "OnTrac",
-        ];
+        let carriers = vec!["UPS", "FedEx", "USPS", "DHL", "Amazon Logistics", "OnTrac"];
 
         for carrier in carriers {
             assert!(!carrier.is_empty());
@@ -549,9 +542,7 @@ mod tests {
     #[test]
     fn test_delivery_confirmation_command() {
         let shipment_id = Uuid::new_v4();
-        let command = ConfirmShipmentDeliveryCommand {
-            shipment_id,
-        };
+        let command = ConfirmShipmentDeliveryCommand { shipment_id };
 
         assert_eq!(command.shipment_id, shipment_id);
     }
@@ -559,9 +550,7 @@ mod tests {
     #[test]
     fn test_delivery_confirmation_uuid_not_nil() {
         let shipment_id = Uuid::new_v4();
-        let command = ConfirmShipmentDeliveryCommand {
-            shipment_id,
-        };
+        let command = ConfirmShipmentDeliveryCommand { shipment_id };
 
         assert!(!command.shipment_id.is_nil());
     }

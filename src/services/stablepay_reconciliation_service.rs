@@ -6,7 +6,8 @@ use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

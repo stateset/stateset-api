@@ -51,19 +51,21 @@ pub mod user_role;
 
 // Feature modules
 mod api_key_service;
+pub mod oauth2;
 mod permissions;
 mod rate_limit;
 mod rbac;
 mod types;
-pub mod oauth2;
 
 // Re-exports
 pub use api_key_service::*;
+pub use oauth2::{
+    OAuth2Config, OAuth2Provider, OAuth2ProviderConfig, OAuth2Service, OAuth2UserInfo,
+};
 pub use permissions::*;
 pub use rate_limit::*;
 pub use rbac::*;
 pub use types::*;
-pub use oauth2::{OAuth2Config, OAuth2Provider, OAuth2ProviderConfig, OAuth2Service, OAuth2UserInfo};
 
 use self::api_key::Entity as ApiKeyEntity;
 use self::api_key_permission::Entity as ApiKeyPermissionEntity;
@@ -507,9 +509,8 @@ impl AuthService {
                     Ok(mut conn) => {
                         // Set the key with expiry matching the token's remaining lifetime
                         // This ensures automatic cleanup when the token would have expired anyway
-                        let result: Result<(), redis::RedisError> = conn
-                            .set_ex(&key, "revoked", ttl_secs.max(1) as usize)
-                            .await;
+                        let result: Result<(), redis::RedisError> =
+                            conn.set_ex(&key, "revoked", ttl_secs.max(1) as usize).await;
 
                         if let Err(e) = result {
                             error!(error = %e, jti = %claims.jti, "Failed to add token to Redis blacklist");
@@ -539,7 +540,9 @@ impl AuthService {
         match &self.blacklist {
             TokenBlacklistBackend::InMemory(blacklist) => {
                 let blacklist = blacklist.read().await;
-                blacklist.iter().any(|t| t.jti == token_id && t.expiry > Utc::now())
+                blacklist
+                    .iter()
+                    .any(|t| t.jti == token_id && t.expiry > Utc::now())
             }
             TokenBlacklistBackend::Redis { client, namespace } => {
                 let key = format!("{}:{}", namespace, token_id);
@@ -876,23 +879,50 @@ impl AuthService {
         hex::encode(hasher.finalize())
     }
 
-    /// Generate a secure API key
-    pub fn generate_api_key(&self, name: &str) -> ApiKeyCreationResponse {
+    /// Generate and persist a secure API key
+    pub async fn generate_api_key(
+        &self,
+        name: &str,
+        owner: &AuthUser,
+        expires_in_days: Option<i64>,
+    ) -> Result<ApiKeyCreationResponse, AuthError> {
+        let owner_id =
+            Uuid::parse_str(&owner.user_id).map_err(|_| AuthError::InvalidCredentials)?;
+
         // Generate a random string for the key
         let key_bytes: Vec<u8> = thread_rng().sample_iter(&Alphanumeric).take(32).collect();
         let key = String::from_utf8(key_bytes).unwrap();
 
         // Prefix the key
         let api_key = format!("{}{}", self.config.api_key_prefix, key);
+        let key_hash = Self::hash_api_key(&api_key);
 
-        // In a real implementation, you would hash and store this key
-        // and associate it with a user and permissions
+        let now = Utc::now();
+        let expires_at = expires_in_days.filter(|days| *days > 0).unwrap_or(90);
+        let expires_at = now + ChronoDuration::days(expires_at);
 
-        ApiKeyCreationResponse {
+        let model = api_key::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            name: Set(name.to_string()),
+            key_hash: Set(key_hash),
+            user_id: Set(owner_id),
+            tenant_id: Set(owner.tenant_id.clone()),
+            created_at: Set(now),
+            expires_at: Set(Some(expires_at)),
+            last_used_at: Set(None),
+            revoked: Set(false),
+        };
+
+        model
+            .insert(&*self.db)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(ApiKeyCreationResponse {
             api_key,
             name: name.to_string(),
-            expires_at: Utc::now() + ChronoDuration::days(30),
-        }
+            expires_at,
+        })
     }
 }
 
@@ -1358,8 +1388,10 @@ async fn create_api_key_handler(
         return Err(AuthError::InsufficientPermissions);
     }
 
-    // Generate a new API key
-    let api_key_response = auth_service.generate_api_key(&request.name);
+    // Generate and persist a new API key
+    let api_key_response = auth_service
+        .generate_api_key(&request.name, &auth_user, request.expires_in_days)
+        .await?;
 
     Ok(Json(api_key_response))
 }
@@ -1374,6 +1406,8 @@ pub struct RefreshTokenRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateApiKeyRequest {
     pub name: String,
+    #[serde(default)]
+    pub expires_in_days: Option<i64>,
 }
 
 /// Type alias for backwards compatibility
@@ -1650,18 +1684,9 @@ mod tests {
             format!("{}", AuthError::InvalidCredentials),
             "Invalid credentials"
         );
-        assert_eq!(
-            format!("{}", AuthError::TokenExpired),
-            "Token has expired"
-        );
-        assert_eq!(
-            format!("{}", AuthError::InvalidApiKey),
-            "Invalid API key"
-        );
-        assert_eq!(
-            format!("{}", AuthError::UserNotFound),
-            "User not found"
-        );
+        assert_eq!(format!("{}", AuthError::TokenExpired), "Token has expired");
+        assert_eq!(format!("{}", AuthError::InvalidApiKey), "Invalid API key");
+        assert_eq!(format!("{}", AuthError::UserNotFound), "User not found");
         assert_eq!(
             format!("{}", AuthError::InsufficientPermissions),
             "Insufficient permissions"
@@ -1718,7 +1743,7 @@ mod tests {
             "a".repeat(64),
             "test".to_string(),
             "test".to_string(),
-            Duration::from_secs(300), // 5 minutes - good default
+            Duration::from_secs(300),   // 5 minutes - good default
             Duration::from_secs(86400), // 24 hours - good default
             "sk_".to_string(),
         )

@@ -246,7 +246,11 @@ impl AgenticCheckoutService {
 
         // Validate and load promotion if provided
         let promotion = if let Some(ref promo_code) = request.promotion_code {
-            match self.promotion_service.find_active_promotion(promo_code).await {
+            match self
+                .promotion_service
+                .find_active_promotion(promo_code)
+                .await
+            {
                 Ok(Some(promo)) => {
                     info!("Applied promotion: {} ({})", promo.name, promo_code);
                     Some(promo)
@@ -272,8 +276,12 @@ impl AgenticCheckoutService {
                 .unwrap_or_else(|_| chrono::Duration::seconds(SESSION_TTL_SECS as i64));
 
         // Calculate totals with promotion applied
-        let totals =
-            self.calculate_totals_with_promotion(&line_items, request.fulfillment_address.as_ref(), None, promotion.as_ref())?;
+        let totals = self.calculate_totals_with_promotion(
+            &line_items,
+            request.fulfillment_address.as_ref(),
+            None,
+            promotion.as_ref(),
+        )?;
 
         // Determine fulfillment options
         let fulfillment_options =
@@ -1093,7 +1101,8 @@ impl AgenticCheckoutService {
 
         // Apply promotion discount
         let promotion_discount = if let Some(promo) = promotion {
-            self.promotion_service.calculate_discount(promo, items_base)
+            self.promotion_service
+                .calculate_discount(promo, items_base)
                 .unwrap_or(0)
         } else {
             0

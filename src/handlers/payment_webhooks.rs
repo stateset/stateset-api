@@ -26,20 +26,25 @@ pub async fn payment_webhook(
 ) -> Result<impl IntoResponse, ServiceError> {
     let payload = body.clone();
 
-    // Verify signature if configured
-    if let Some(secret) = state.config.payment_webhook_secret.clone() {
-        let ok = verify_signature(
-            &headers,
-            &payload,
-            &secret,
-            state.config.payment_webhook_tolerance_secs.unwrap_or(300),
-        );
-        if !ok {
-            warn!("Payment webhook signature verification failed");
-            return Err(ServiceError::Unauthorized(
-                "invalid webhook signature".to_string(),
-            ));
-        }
+    // Require a configured secret; reject unsigned webhooks to avoid spoofed events.
+    let Some(secret) = state.config.payment_webhook_secret.as_ref() else {
+        warn!("Payment webhook rejected because APP__PAYMENT_WEBHOOK_SECRET is not set");
+        return Err(ServiceError::Unauthorized(
+            "webhook signature verification is not configured".to_string(),
+        ));
+    };
+
+    let ok = verify_signature(
+        &headers,
+        &payload,
+        secret,
+        state.config.payment_webhook_tolerance_secs.unwrap_or(300),
+    );
+    if !ok {
+        warn!("Payment webhook signature verification failed");
+        return Err(ServiceError::Unauthorized(
+            "invalid webhook signature".to_string(),
+        ));
     }
 
     // Parse JSON

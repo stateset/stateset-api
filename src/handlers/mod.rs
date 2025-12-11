@@ -21,10 +21,10 @@ pub mod work_orders;
 // pub mod suppliers; // Disabled due to missing service dependencies
 pub mod agents;
 pub mod commerce;
-pub mod outbox_admin;
-pub mod users;
 pub mod manufacturing;
 pub mod oauth2;
+pub mod outbox_admin;
+pub mod users;
 
 use crate::events::EventSender;
 use crate::message_queue::MessageQueue;

@@ -109,8 +109,7 @@ mod tests {
         body::{to_bytes, Body},
         http::{Request, StatusCode},
         routing::get,
-        ServiceExt,
-        Router,
+        Router, ServiceExt,
     };
     use tower::ServiceExt;
 

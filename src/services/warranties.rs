@@ -324,7 +324,10 @@ mod tests {
     #[test]
     fn test_negative_extension_validation() {
         let additional_months = -1;
-        assert!(additional_months <= 0, "Negative months should fail validation");
+        assert!(
+            additional_months <= 0,
+            "Negative months should fail validation"
+        );
     }
 
     #[test]
@@ -336,7 +339,10 @@ mod tests {
     #[test]
     fn test_positive_extension_validation() {
         let additional_months = 3;
-        assert!(additional_months > 0, "Positive months should pass validation");
+        assert!(
+            additional_months > 0,
+            "Positive months should pass validation"
+        );
     }
 
     // ==================== UUID Tests ====================

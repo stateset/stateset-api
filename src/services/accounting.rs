@@ -1,7 +1,7 @@
 use crate::{
     entities::ledger_entry::{
-        ActiveModel as LedgerEntryActive, LedgerEntryStatus,
-        LedgerEntryType, Model as LedgerEntryModel,
+        ActiveModel as LedgerEntryActive, LedgerEntryStatus, LedgerEntryType,
+        Model as LedgerEntryModel,
     },
     errors::AppError,
 };
@@ -122,7 +122,10 @@ impl AccountingService {
             created_by: Set(None),
         };
 
-        let debit = debit_entry.insert(&txn).await.map_err(AppError::DatabaseError)?;
+        let debit = debit_entry
+            .insert(&txn)
+            .await
+            .map_err(AppError::DatabaseError)?;
         let credit = credit_entry
             .insert(&txn)
             .await
@@ -174,7 +177,10 @@ impl AccountingService {
             created_by: Set(None),
         };
 
-        let result = entry.insert(&*self.db).await.map_err(AppError::DatabaseError)?;
+        let result = entry
+            .insert(&*self.db)
+            .await
+            .map_err(AppError::DatabaseError)?;
 
         info!(
             entry_id = %result.id,

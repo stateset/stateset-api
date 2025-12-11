@@ -6,17 +6,14 @@ use axum::{
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
+use slog::Drain;
 use stateset_api::{
-    config, db,
-    events::EventSender,
-    handlers::AppServices,
-    message_queue::InMemoryMessageQueue,
+    config, db, events::EventSender, handlers::AppServices, message_queue::InMemoryMessageQueue,
     AppState,
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower::ServiceExt;
-use slog::Drain;
 
 // Benchmark setup
 async fn create_benchmark_app_state() -> AppState {
@@ -70,8 +67,10 @@ async fn create_benchmark_app_state() -> AppState {
         base_logger,
     );
 
-    let inventory_service =
-        stateset_api::services::inventory::InventoryService::new(db_arc.clone(), event_sender.clone());
+    let inventory_service = stateset_api::services::inventory::InventoryService::new(
+        db_arc.clone(),
+        event_sender.clone(),
+    );
 
     AppState {
         db: db_arc,
@@ -202,7 +201,7 @@ mod load_tests {
     use tokio::time::sleep;
 
     #[tokio::test]
-#[ignore = "requires SQLite and Redis integration environment"]
+    #[ignore = "requires SQLite and Redis integration environment"]
     async fn test_sustained_load() {
         println!("🏋️ Running sustained load test...");
 
@@ -257,7 +256,7 @@ mod load_tests {
     }
 
     #[tokio::test]
-#[ignore = "requires SQLite and Redis integration environment"]
+    #[ignore = "requires SQLite and Redis integration environment"]
     async fn test_memory_usage() {
         println!("🧠 Testing memory usage under load...");
 
@@ -290,7 +289,7 @@ mod load_tests {
     }
 
     #[tokio::test]
-#[ignore = "requires SQLite and Redis integration environment"]
+    #[ignore = "requires SQLite and Redis integration environment"]
     async fn test_database_connection_pool() {
         println!("💾 Testing database connection pool...");
 

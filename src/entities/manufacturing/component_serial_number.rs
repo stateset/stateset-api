@@ -80,7 +80,10 @@ impl ActiveModelBehavior for ActiveModel {
 impl Model {
     /// Check if component is available for installation
     pub fn is_available(&self) -> bool {
-        matches!(self.status, ComponentStatus::InStock | ComponentStatus::Allocated)
+        matches!(
+            self.status,
+            ComponentStatus::InStock | ComponentStatus::Allocated
+        )
     }
 
     /// Mark component as installed

@@ -228,7 +228,6 @@ pub struct AppConfig {
     pub agentic_commerce_signature_tolerance_secs: Option<u64>,
 
     // ========== OAuth2 Configuration ==========
-
     /// Enable OAuth2 authentication
     #[serde(default)]
     pub oauth2_enabled: bool,
@@ -278,7 +277,6 @@ pub struct AppConfig {
     pub oauth2_microsoft_tenant_id: Option<String>,
 
     // ========== API Pagination Configuration ==========
-
     /// Default page size for paginated API responses
     #[serde(default = "default_api_page_size")]
     pub api_default_page_size: u32,
@@ -300,7 +298,6 @@ pub struct AppConfig {
     pub max_string_length: usize,
 
     // ========== Circuit Breaker Configuration ==========
-
     /// Number of failures before circuit breaker opens
     #[serde(default = "default_circuit_breaker_failures")]
     pub circuit_breaker_failure_threshold: u32,
@@ -314,7 +311,6 @@ pub struct AppConfig {
     pub circuit_breaker_backoff_multiplier: f64,
 
     // ========== Auth Configuration ==========
-
     /// API key prefix (e.g., "sk_" for secret keys)
     #[serde(default = "default_api_key_prefix")]
     pub api_key_prefix: String,
@@ -462,13 +458,9 @@ impl AppConfig {
             &self.oauth2_google_client_secret,
             &self.oauth2_google_redirect_url,
         ) {
-            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => {
-                Some(OAuth2ProviderConfig::google(
-                    id.clone(),
-                    secret.clone(),
-                    redirect.clone(),
-                ))
-            }
+            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => Some(
+                OAuth2ProviderConfig::google(id.clone(), secret.clone(), redirect.clone()),
+            ),
             _ => None,
         };
 
@@ -477,13 +469,9 @@ impl AppConfig {
             &self.oauth2_github_client_secret,
             &self.oauth2_github_redirect_url,
         ) {
-            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => {
-                Some(OAuth2ProviderConfig::github(
-                    id.clone(),
-                    secret.clone(),
-                    redirect.clone(),
-                ))
-            }
+            (Some(id), Some(secret), Some(redirect)) if !id.is_empty() => Some(
+                OAuth2ProviderConfig::github(id.clone(), secret.clone(), redirect.clone()),
+            ),
             _ => None,
         };
 
@@ -711,7 +699,8 @@ fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
     // Enforce minimum length (should be 64+ for HS256)
     if trimmed.len() < 64 {
         let mut err = ValidationError::new("jwt_secret");
-        err.message = Some("JWT secret must be at least 64 characters for adequate security".into());
+        err.message =
+            Some("JWT secret must be at least 64 characters for adequate security".into());
         return Err(err);
     }
 
@@ -754,7 +743,8 @@ fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
     let unique_chars: std::collections::HashSet<char> = trimmed.chars().collect();
     if unique_chars.len() < 10 {
         let mut err = ValidationError::new("jwt_secret");
-        err.message = Some("JWT secret must have at least 10 unique characters for adequate entropy".into());
+        err.message =
+            Some("JWT secret must have at least 10 unique characters for adequate entropy".into());
         return Err(err);
     }
 
@@ -869,7 +859,8 @@ pub fn load_config() -> Result<AppConfig, AppConfigError> {
         error!("JWT secret is not configured. Set APP__JWT_SECRET environment variable with a secure random string (minimum 64 characters).");
         error!("Generate a secure secret with: openssl rand -base64 64");
         return Err(AppConfigError::Load(ConfigError::NotFound(
-            "jwt_secret is required but not configured. Set APP__JWT_SECRET environment variable.".into()
+            "jwt_secret is required but not configured. Set APP__JWT_SECRET environment variable."
+                .into(),
         )));
     }
 

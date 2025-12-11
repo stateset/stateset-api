@@ -203,7 +203,10 @@ impl CreatePurchaseOrderCommand {
                     let new_item = purchase_order_item_entity::ActiveModel {
                         purchase_order_id: Set(saved_po.id),
                         sku: Set(item.product_id.to_string()), // Using product_id as SKU
-                        product_name: Set(item.description.clone().unwrap_or_else(|| format!("Product {}", item.product_id))),
+                        product_name: Set(item
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| format!("Product {}", item.product_id))),
                         quantity_ordered: Set(item.quantity),
                         quantity_received: Set(0),
                         unit_cost: Set(

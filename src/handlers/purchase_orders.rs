@@ -573,7 +573,10 @@ pub async fn submit_purchase_order(
         .await
         .map_err(map_service_error)?;
 
-    info!("Purchase order submitted: {} (status: {})", result.id, result.status);
+    info!(
+        "Purchase order submitted: {} (status: {})",
+        result.id, result.status
+    );
 
     Ok(success_response(serde_json::json!({
         "id": result.id,
@@ -620,7 +623,10 @@ pub async fn reject_purchase_order(
         .await
         .map_err(map_service_error)?;
 
-    info!("Purchase order rejected: {} (reason: {})", result.id, result.rejection_reason);
+    info!(
+        "Purchase order rejected: {} (reason: {})",
+        result.id, result.rejection_reason
+    );
 
     Ok(success_response(serde_json::json!({
         "id": result.id,

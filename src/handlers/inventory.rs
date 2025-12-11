@@ -172,7 +172,11 @@ pub struct InventoryFilters {
 }))]
 pub struct CreateInventoryRequest {
     /// SKU or item number (1-100 characters)
-    #[validate(length(min = 1, max = 100, message = "Item number must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Item number must be between 1 and 100 characters"
+    ))]
     #[schema(example = "SKU-WIDGET-001")]
     pub item_number: String,
     /// Item description (max 500 characters)
@@ -738,7 +742,10 @@ async fn inventory_page(
             page,
             per_page,
             filters.product_id.as_deref(),
-            filters.location_id.as_deref().and_then(|s| s.parse::<i32>().ok()),
+            filters
+                .location_id
+                .as_deref()
+                .and_then(|s| s.parse::<i32>().ok()),
             low_stock_threshold,
         )
         .await?;
@@ -1089,7 +1096,11 @@ pub async fn get_reservation_stats(
 /// Request for bulk inventory adjustment.
 #[derive(Debug, Deserialize, Serialize, Validate, ToSchema)]
 pub struct BulkAdjustRequest {
-    #[validate(length(min = 1, max = 100, message = "Must have between 1 and 100 adjustments"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Must have between 1 and 100 adjustments"
+    ))]
     pub adjustments: Vec<BulkAdjustmentItem>,
 }
 
@@ -1097,7 +1108,11 @@ pub struct BulkAdjustRequest {
 #[derive(Debug, Deserialize, Serialize, Validate, ToSchema)]
 pub struct BulkAdjustmentItem {
     /// Item number/SKU (1-100 characters)
-    #[validate(length(min = 1, max = 100, message = "Item number must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Item number must be between 1 and 100 characters"
+    ))]
     pub item_number: String,
     /// Location ID (must be positive)
     #[validate(range(min = 1, message = "Location ID must be positive"))]

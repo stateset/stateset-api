@@ -237,7 +237,9 @@ impl CustomerService {
             let customer_model = Customer::find_by_id(customer_id)
                 .one(&txn)
                 .await?
-                .ok_or_else(|| ServiceError::NotFound(format!("Customer {} not found", customer_id)))?;
+                .ok_or_else(|| {
+                    ServiceError::NotFound(format!("Customer {} not found", customer_id))
+                })?;
             let mut customer: customer::ActiveModel = customer_model.into();
 
             if input.is_default_shipping.unwrap_or(false) {
@@ -650,7 +652,12 @@ mod tests {
         let valid_codes = vec!["US", "CA", "GB", "DE", "FR", "JP", "AU"];
 
         for code in valid_codes {
-            assert_eq!(code.len(), 2, "Country code {} should be 2 characters", code);
+            assert_eq!(
+                code.len(),
+                2,
+                "Country code {} should be 2 characters",
+                code
+            );
             assert!(code.chars().all(|c| c.is_ascii_uppercase()));
         }
     }

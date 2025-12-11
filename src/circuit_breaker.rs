@@ -226,10 +226,10 @@ impl CircuitBreaker {
             state: state.state.clone(),
             failure_count: state.failure_count,
             success_count: state.success_count,
-            total_calls: 0,        // Would track with atomic counters in production
-            total_failures: 0,     // Would track with atomic counters in production
-            total_successes: 0,    // Would track with atomic counters in production
-            state_transitions: 0,  // Would track with atomic counters in production
+            total_calls: 0,       // Would track with atomic counters in production
+            total_failures: 0,    // Would track with atomic counters in production
+            total_successes: 0,   // Would track with atomic counters in production
+            state_transitions: 0, // Would track with atomic counters in production
         }
     }
 }

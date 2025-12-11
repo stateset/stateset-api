@@ -122,7 +122,9 @@ async fn test_order_cancellation_releases_inventory() {
     app.request_authenticated(Method::POST, "/api/v1/inventory", Some(create_inventory))
         .await;
 
-    let variant = app.seed_product_variant("INV-CANCEL-001", dec!(30.00)).await;
+    let variant = app
+        .seed_product_variant("INV-CANCEL-001", dec!(30.00))
+        .await;
 
     // Create an order for 20 units
     let order_payload = json!({
@@ -223,7 +225,10 @@ async fn test_order_fails_insufficient_stock() {
     // - Fail with 400 (insufficient stock)
     // - Succeed (backorder allowed)
     // - Succeed (no stock check at order time)
-    println!("Order with insufficient stock status: {}", response.status());
+    println!(
+        "Order with insufficient stock status: {}",
+        response.status()
+    );
 }
 
 // ==================== Inventory Allocation Tests ====================
@@ -294,7 +299,11 @@ async fn test_inventory_allocation_for_shipment() {
     });
 
     let allocate_response = app
-        .request_authenticated(Method::POST, "/api/v1/inventory/allocate", Some(allocate_payload))
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/inventory/allocate",
+            Some(allocate_payload),
+        )
         .await;
 
     // Allocation endpoint may or may not exist
@@ -354,7 +363,8 @@ async fn test_concurrent_orders_inventory_handling() {
             }]
         });
 
-        let response = app.request_authenticated(Method::POST, "/api/v1/orders", Some(order_payload))
+        let response = app
+            .request_authenticated(Method::POST, "/api/v1/orders", Some(order_payload))
             .await;
         responses.push(response);
     }
@@ -366,10 +376,7 @@ async fn test_concurrent_orders_inventory_handling() {
 
     // Not all orders should succeed if inventory is properly managed
     // (but implementation may vary)
-    println!(
-        "Successful concurrent orders: {} out of 5",
-        successful
-    );
+    println!("Successful concurrent orders: {} out of 5", successful);
 }
 
 // ==================== Return Restocking Tests ====================
@@ -620,7 +627,9 @@ async fn test_backorder_creation() {
     let app = TestApp::new().await;
 
     // Product with no inventory
-    let variant = app.seed_product_variant("INV-BACKORDER-001", dec!(70.00)).await;
+    let variant = app
+        .seed_product_variant("INV-BACKORDER-001", dec!(70.00))
+        .await;
 
     // Try to order without any inventory
     let order_payload = json!({

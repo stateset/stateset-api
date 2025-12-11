@@ -119,11 +119,7 @@ async fn test_create_return_empty_reason_fails() {
         .request_authenticated(Method::POST, "/api/v1/returns", Some(return_payload))
         .await;
 
-    assert_eq!(
-        response.status(),
-        400,
-        "Empty reason should be rejected"
-    );
+    assert_eq!(response.status(), 400, "Empty reason should be rejected");
 }
 
 #[tokio::test]
@@ -325,7 +321,9 @@ async fn test_approve_return() {
     let app = TestApp::new().await;
 
     // Create order and return
-    let variant = app.seed_product_variant("RET-APPROVE-SKU", dec!(100.00)).await;
+    let variant = app
+        .seed_product_variant("RET-APPROVE-SKU", dec!(100.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "approve@test.com",
@@ -396,7 +394,9 @@ async fn test_reject_return() {
     let app = TestApp::new().await;
 
     // Create order and return
-    let variant = app.seed_product_variant("RET-REJECT-SKU", dec!(50.00)).await;
+    let variant = app
+        .seed_product_variant("RET-REJECT-SKU", dec!(50.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "reject@test.com",
@@ -463,7 +463,9 @@ async fn test_list_returns_by_status() {
     let app = TestApp::new().await;
 
     // Create a return
-    let variant = app.seed_product_variant("RET-STATUS-SKU", dec!(40.00)).await;
+    let variant = app
+        .seed_product_variant("RET-STATUS-SKU", dec!(40.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "status@test.com",
@@ -513,7 +515,9 @@ async fn test_complete_return() {
     let app = TestApp::new().await;
 
     // Create order and return
-    let variant = app.seed_product_variant("RET-COMPLETE-SKU", dec!(80.00)).await;
+    let variant = app
+        .seed_product_variant("RET-COMPLETE-SKU", dec!(80.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "complete@test.com",
@@ -576,7 +580,9 @@ async fn test_return_restock_items() {
     let app = TestApp::new().await;
 
     // Create order and return
-    let variant = app.seed_product_variant("RET-RESTOCK-SKU", dec!(60.00)).await;
+    let variant = app
+        .seed_product_variant("RET-RESTOCK-SKU", dec!(60.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "restock@test.com",

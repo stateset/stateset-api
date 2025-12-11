@@ -39,7 +39,9 @@ async fn test_checkout_from_cart() {
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
     // Step 2: Add items to cart
-    let variant = app.seed_product_variant("CHECKOUT-SKU-1", dec!(49.99)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-SKU-1", dec!(49.99))
+        .await;
 
     let add_payload = json!({
         "variant_id": variant.id.to_string(),
@@ -102,7 +104,9 @@ async fn test_checkout_session_creation() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-SESS-SKU", dec!(75.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-SESS-SKU", dec!(75.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -121,15 +125,18 @@ async fn test_checkout_session_creation() {
     });
 
     let response = app
-        .request_authenticated(Method::POST, "/api/v1/checkout/sessions", Some(session_payload))
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/checkout/sessions",
+            Some(session_payload),
+        )
         .await;
 
     // Session endpoint may or may not exist
     if response.status() == 201 || response.status() == 200 {
         let body = response_json(response).await;
         assert!(
-            body["data"]["id"].as_str().is_some()
-                || body["data"]["session_id"].as_str().is_some(),
+            body["data"]["id"].as_str().is_some() || body["data"]["session_id"].as_str().is_some(),
             "Checkout session should have an ID"
         );
     }
@@ -150,7 +157,9 @@ async fn test_checkout_with_different_billing_shipping() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-ADDR-SKU", dec!(100.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-ADDR-SKU", dec!(100.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -188,9 +197,7 @@ async fn test_checkout_with_different_billing_shipping() {
         .await;
 
     assert!(
-        response.status() == 200
-            || response.status() == 201
-            || response.status() == 404,
+        response.status() == 200 || response.status() == 201 || response.status() == 404,
         "Checkout with different addresses should work"
     );
 }
@@ -246,7 +253,9 @@ async fn test_checkout_missing_address_fails() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-NOADDR-SKU", dec!(50.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-NOADDR-SKU", dec!(50.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -292,7 +301,9 @@ async fn test_checkout_with_payment() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-PAY-SKU", dec!(125.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-PAY-SKU", dec!(125.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -324,9 +335,7 @@ async fn test_checkout_with_payment() {
         .await;
 
     assert!(
-        response.status() == 200
-            || response.status() == 201
-            || response.status() == 404,
+        response.status() == 200 || response.status() == 201 || response.status() == 404,
         "Checkout with payment should work or endpoint not found"
     );
 }
@@ -346,7 +355,9 @@ async fn test_checkout_creates_order() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-ORD-SKU", dec!(80.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-ORD-SKU", dec!(80.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -410,7 +421,9 @@ async fn test_checkout_marks_cart_converted() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-CONV-SKU", dec!(60.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-CONV-SKU", dec!(60.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -454,7 +467,9 @@ async fn test_checkout_marks_cart_converted() {
 
             // Cart should be converted or checkout-completed
             assert!(
-                status.contains("convert") || status.contains("checkout") || status.contains("complete"),
+                status.contains("convert")
+                    || status.contains("checkout")
+                    || status.contains("complete"),
                 "Cart status should indicate checkout completion"
             );
         }
@@ -476,7 +491,9 @@ async fn test_checkout_with_discount_code() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-DISC-SKU", dec!(200.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-DISC-SKU", dec!(200.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -542,14 +559,16 @@ async fn test_guest_checkout() {
     });
 
     let response = app
-        .request_authenticated(Method::POST, "/api/v1/checkout/guest", Some(checkout_payload))
+        .request_authenticated(
+            Method::POST,
+            "/api/v1/checkout/guest",
+            Some(checkout_payload),
+        )
         .await;
 
     // Guest checkout may or may not be supported
     assert!(
-        response.status() == 200
-            || response.status() == 201
-            || response.status() == 404,
+        response.status() == 200 || response.status() == 201 || response.status() == 404,
         "Guest checkout should succeed or endpoint not found"
     );
 }
@@ -569,7 +588,9 @@ async fn test_checkout_with_shipping_method() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-SHIP-SKU", dec!(45.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-SHIP-SKU", dec!(45.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,
@@ -623,7 +644,9 @@ async fn test_international_checkout() {
     let cart_body = response_json(cart_response).await;
     let cart_id = cart_body["data"]["id"].as_str().unwrap();
 
-    let variant = app.seed_product_variant("CHECKOUT-INTL-SKU", dec!(150.00)).await;
+    let variant = app
+        .seed_product_variant("CHECKOUT-INTL-SKU", dec!(150.00))
+        .await;
 
     app.request_authenticated(
         Method::POST,

@@ -55,11 +55,7 @@ async fn test_invalid_token_rejected() {
         )
         .await;
 
-    assert_eq!(
-        response.status(),
-        401,
-        "Invalid token should be rejected"
-    );
+    assert_eq!(response.status(), 401, "Invalid token should be rejected");
 }
 
 #[tokio::test]
@@ -70,11 +66,7 @@ async fn test_missing_token_rejected() {
     // Try to access without any token
     let response = app.request(Method::GET, "/api/v1/orders", None, None).await;
 
-    assert_eq!(
-        response.status(),
-        401,
-        "Missing token should be rejected"
-    );
+    assert_eq!(response.status(), 401, "Missing token should be rejected");
 }
 
 #[tokio::test]
@@ -187,16 +179,10 @@ async fn test_admin_has_full_access() {
     let app = TestApp::new().await;
 
     // Admin token should have access to all endpoints
-    let endpoints = vec![
-        "/api/v1/orders",
-        "/api/v1/inventory",
-        "/api/v1/carts",
-    ];
+    let endpoints = vec!["/api/v1/orders", "/api/v1/inventory", "/api/v1/carts"];
 
     for endpoint in endpoints {
-        let response = app
-            .request_authenticated(Method::GET, endpoint, None)
-            .await;
+        let response = app.request_authenticated(Method::GET, endpoint, None).await;
 
         assert!(
             response.status() == 200 || response.status() == 201,
@@ -237,10 +223,8 @@ async fn test_token_contains_required_claims() {
     assert_eq!(parts.len(), 3, "JWT should have 3 parts");
 
     // Decode the payload
-    let payload = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD_NO_PAD,
-        parts[1],
-    );
+    let payload =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD_NO_PAD, parts[1]);
 
     assert!(payload.is_ok(), "Payload should be valid base64");
 }
@@ -319,10 +303,7 @@ async fn test_bearer_token_format() {
         .request_authenticated(Method::GET, "/api/v1/orders", None)
         .await;
 
-    assert!(
-        response.status() == 200,
-        "Bearer token format should work"
-    );
+    assert!(response.status() == 200, "Bearer token format should work");
 }
 
 #[tokio::test]
@@ -335,7 +316,9 @@ async fn test_token_without_bearer_prefix() {
 
     // Try with just the token (no Bearer prefix)
     // This should be handled by the request helper which adds Bearer
-    let response = app.request(Method::GET, "/api/v1/orders", None, Some(token)).await;
+    let response = app
+        .request(Method::GET, "/api/v1/orders", None, Some(token))
+        .await;
 
     // The request helper adds "Bearer " prefix, so this should work
     assert!(
@@ -352,9 +335,9 @@ async fn test_authorization_header_case_insensitive() {
     let app = TestApp::new().await;
 
     // Build a custom request with lowercase "authorization" header
+    use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
-    use axum::body::Body;
 
     let token = app.token();
     let request = Request::builder()
@@ -416,16 +399,10 @@ async fn test_auth_service_token_round_trip() {
 async fn test_same_token_different_endpoints() {
     let app = TestApp::new().await;
 
-    let endpoints = vec![
-        "/api/v1/orders",
-        "/api/v1/carts",
-        "/api/v1/inventory",
-    ];
+    let endpoints = vec!["/api/v1/orders", "/api/v1/carts", "/api/v1/inventory"];
 
     for endpoint in endpoints {
-        let response = app
-            .request_authenticated(Method::GET, endpoint, None)
-            .await;
+        let response = app.request_authenticated(Method::GET, endpoint, None).await;
 
         assert!(
             response.status() == 200 || response.status() == 201,
@@ -442,7 +419,9 @@ async fn test_same_token_different_endpoints() {
 async fn test_empty_token_rejected() {
     let app = TestApp::new().await;
 
-    let response = app.request(Method::GET, "/api/v1/orders", None, Some("")).await;
+    let response = app
+        .request(Method::GET, "/api/v1/orders", None, Some(""))
+        .await;
 
     assert_eq!(response.status(), 401, "Empty token should be rejected");
 }

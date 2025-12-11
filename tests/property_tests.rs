@@ -226,10 +226,7 @@ fn validate_sql_identifier(identifier: &str) -> Result<String, String> {
         return Err("Invalid identifier length".to_string());
     }
 
-    if !identifier
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if !identifier.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err("Invalid characters in identifier".to_string());
     }
 

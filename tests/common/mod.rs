@@ -10,11 +10,11 @@ use axum::{
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sea_orm::{ConnectionTrait, DatabaseBackend as DbBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend as DbBackend, Set, Statement};
 use serde_json::{json, Value};
 use stateset_api::entities::commerce::product_variant;
 use stateset_api::{
-    auth::{AuthConfig, AuthService, Claims, User},
+    auth::{user, user_role, AuthConfig, AuthService, Claims, User},
     config::AppConfig,
     db,
     events::{self, EventSender},
@@ -175,6 +175,35 @@ impl TestApp {
             redis: redis_client,
         };
 
+        let now = Utc::now();
+
+        // Seed a minimal admin user record so auth-dependent flows do not hit missing tables.
+        let user_model = user::ActiveModel {
+            id: Set(user.id),
+            name: Set(user.name.clone()),
+            email: Set(user.email.clone()),
+            password_hash: Set("hashed_test_password".to_string()),
+            tenant_id: Set(None),
+            active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        user_model
+            .insert(&*state.db)
+            .await
+            .expect("insert seed user");
+
+        let user_role_model = user_role::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            user_id: Set(user.id),
+            role_name: Set("admin".to_string()),
+            created_at: Set(now),
+        };
+        user_role_model
+            .insert(&*state.db)
+            .await
+            .expect("insert admin role");
+
         // Ensure generated tokens include admin role and useful permissions.
         std::env::set_var("AUTH_ADMIN", "1");
         std::env::set_var("STATESET_AUTH_ALLOW_ADMIN_OVERRIDE", "1");
@@ -194,7 +223,6 @@ impl TestApp {
             updated_at: Utc::now(),
         };
 
-        let now = Utc::now();
         let access_claims = Claims {
             sub: user.id.to_string(),
             name: Some(user.name.clone()),

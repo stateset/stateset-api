@@ -80,7 +80,9 @@ impl ProductCatalogService {
             .one(&*self.db)
             .await
             .map_err(ServiceError::db_error)?
-            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted product".to_string()))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted product".to_string())
+            })?;
 
         // Publish event
         self.event_sender
@@ -206,7 +208,9 @@ impl ProductCatalogService {
             .one(&*self.db)
             .await
             .map_err(ServiceError::db_error)?
-            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted variant".to_string()))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted variant".to_string())
+            })?;
 
         info!(
             "Created variant {} for product {}",
@@ -696,12 +700,7 @@ mod tests {
 
     #[test]
     fn test_sku_format_valid() {
-        let valid_skus = vec![
-            "SKU-001",
-            "PROD-ABC-123",
-            "ITEM123",
-            "test-sku-001",
-        ];
+        let valid_skus = vec!["SKU-001", "PROD-ABC-123", "ITEM123", "test-sku-001"];
 
         for sku in valid_skus {
             assert!(!sku.is_empty());

@@ -52,9 +52,19 @@ pub async fn sanitize_middleware(request: Request, next: Next) -> Result<Respons
 /// Check if user agent appears suspicious
 fn is_suspicious_user_agent(ua: &str) -> bool {
     let suspicious_patterns = [
-        "sqlmap", "nikto", "nmap", "masscan", "metasploit",
-        "burp", "dirbuster", "gobuster", "wfuzz", "ffuf",
-        "nuclei", "hydra", "medusa",
+        "sqlmap",
+        "nikto",
+        "nmap",
+        "masscan",
+        "metasploit",
+        "burp",
+        "dirbuster",
+        "gobuster",
+        "wfuzz",
+        "ffuf",
+        "nuclei",
+        "hydra",
+        "medusa",
     ];
 
     let ua_lower = ua.to_lowercase();
@@ -66,8 +76,15 @@ fn is_suspicious_user_agent(ua: &str) -> bool {
 /// Check for path traversal patterns
 fn contains_path_traversal(path: &str) -> bool {
     let traversal_patterns = [
-        "..", "%2e%2e", "%252e%252e", "..%2f", "%2f..",
-        "..%5c", "%5c..", "....//", "..;/",
+        "..",
+        "%2e%2e",
+        "%252e%252e",
+        "..%2f",
+        "%2f..",
+        "..%5c",
+        "%5c..",
+        "....//",
+        "..;/",
     ];
 
     let path_lower = path.to_lowercase();
@@ -124,33 +141,61 @@ fn remove_xss_patterns(input: &str) -> String {
 
     // Script tags (various encodings and case variations)
     let script_patterns = [
-        "<script", "</script", "&lt;script", "&lt;/script",
-        "%3cscript", "%3c/script", "&#x3c;script", "&#60;script",
+        "<script",
+        "</script",
+        "&lt;script",
+        "&lt;/script",
+        "%3cscript",
+        "%3c/script",
+        "&#x3c;script",
+        "&#60;script",
     ];
 
     // Event handlers
     let event_handlers = [
-        "onerror=", "onclick=", "onload=", "onmouseover=", "onfocus=",
-        "onblur=", "onchange=", "onsubmit=", "onkeydown=", "onkeyup=",
-        "onkeypress=", "ondblclick=", "onmousedown=", "onmouseup=",
-        "onmouseout=", "onmousemove=", "ondrag=", "ondrop=",
-        "oncontextmenu=", "oninput=", "oninvalid=", "onreset=",
-        "onsearch=", "onselect=", "ontoggle=",
+        "onerror=",
+        "onclick=",
+        "onload=",
+        "onmouseover=",
+        "onfocus=",
+        "onblur=",
+        "onchange=",
+        "onsubmit=",
+        "onkeydown=",
+        "onkeyup=",
+        "onkeypress=",
+        "ondblclick=",
+        "onmousedown=",
+        "onmouseup=",
+        "onmouseout=",
+        "onmousemove=",
+        "ondrag=",
+        "ondrop=",
+        "oncontextmenu=",
+        "oninput=",
+        "oninvalid=",
+        "onreset=",
+        "onsearch=",
+        "onselect=",
+        "ontoggle=",
     ];
 
     // Dangerous protocol handlers
     let protocol_handlers = [
-        "javascript:", "vbscript:", "data:", "file:",
-        "javascript%3a", "vbscript%3a", "data%3a",
+        "javascript:",
+        "vbscript:",
+        "data:",
+        "file:",
+        "javascript%3a",
+        "vbscript%3a",
+        "data%3a",
     ];
 
     // HTML injection patterns
     let html_patterns = [
-        "<iframe", "</iframe", "<object", "</object",
-        "<embed", "</embed", "<form", "</form",
-        "<input", "<button", "<meta", "<link",
-        "<style", "</style", "<svg", "</svg",
-        "<img", "<video", "<audio", "<source",
+        "<iframe", "</iframe", "<object", "</object", "<embed", "</embed", "<form", "</form",
+        "<input", "<button", "<meta", "<link", "<style", "</style", "<svg", "</svg", "<img",
+        "<video", "<audio", "<source",
     ];
 
     // Remove patterns (case-insensitive)
@@ -167,11 +212,7 @@ fn remove_xss_patterns(input: &str) -> String {
             let actual_pos = i + pos;
             let end_pos = actual_pos + pattern.len();
             if end_pos <= result.len() {
-                result = format!(
-                    "{}{}",
-                    &result[..actual_pos],
-                    &result[end_pos..]
-                );
+                result = format!("{}{}", &result[..actual_pos], &result[end_pos..]);
             }
             i = actual_pos;
             if i >= result.len() {

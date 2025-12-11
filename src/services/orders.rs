@@ -244,7 +244,9 @@ impl OrderService {
             .one(db)
             .await
             .map_err(ServiceError::db_error)?
-            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order".to_string()))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted order".to_string())
+            })?;
 
         if let Some(event_sender) = &self.event_sender {
             event_sender
@@ -319,7 +321,9 @@ impl OrderService {
             .one(&txn)
             .await
             .map_err(ServiceError::db_error)?
-            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order".to_string()))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted order".to_string())
+            })?;
 
         let mut saved_items = Vec::with_capacity(input.items.len());
         for item in input.items.drain(..) {
@@ -354,20 +358,19 @@ impl OrderService {
             };
 
             // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
-            OrderItemEntity::insert(am)
-                .exec(&txn)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, order_id = %order_id, "Failed to persist order item");
-                    ServiceError::db_error(e)
-                })?;
+            OrderItemEntity::insert(am).exec(&txn).await.map_err(|e| {
+                error!(error = %e, order_id = %order_id, "Failed to persist order item");
+                ServiceError::db_error(e)
+            })?;
 
             // Query the item back
             let saved = OrderItemEntity::find_by_id(item_id)
                 .one(&txn)
                 .await
                 .map_err(ServiceError::db_error)?
-                .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order item".to_string()))?;
+                .ok_or_else(|| {
+                    ServiceError::NotFound("Failed to retrieve inserted order item".to_string())
+                })?;
             saved_items.push(saved);
         }
 
@@ -464,7 +467,9 @@ impl OrderService {
             .one(&txn)
             .await
             .map_err(ServiceError::db_error)?
-            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order".to_string()))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted order".to_string())
+            })?;
 
         // Enqueue outbox event within the transaction for reliability
         let payload = serde_json::json!({"order_id": order_id.to_string()});
@@ -627,28 +632,29 @@ impl OrderService {
         };
 
         // Use Entity::insert().exec() to avoid last_insert_id issues with UUID PKs on SQLite
-        OrderItemEntity::insert(am)
-            .exec(db)
-            .await
-            .map_err(|e| {
-                error!(error = %e, order_id = %order_id, "Failed to add order item");
-                ServiceError::db_error(e)
-            })?;
+        OrderItemEntity::insert(am).exec(db).await.map_err(|e| {
+            error!(error = %e, order_id = %order_id, "Failed to add order item");
+            ServiceError::db_error(e)
+        })?;
 
         // Query the item back
         let saved = OrderItemEntity::find_by_id(item_id)
             .one(db)
             .await
             .map_err(ServiceError::db_error)?
-            .ok_or_else(|| ServiceError::NotFound("Failed to retrieve inserted order item".to_string()))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound("Failed to retrieve inserted order item".to_string())
+            })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated {
-                order_id,
-                checkout_session_id: None,
-                status: None,
-                refunds: vec![],
-            }).await;
+            sender
+                .send_or_log(Event::OrderUpdated {
+                    order_id,
+                    checkout_session_id: None,
+                    status: None,
+                    refunds: vec![],
+                })
+                .await;
         }
 
         Ok(saved)
@@ -707,12 +713,14 @@ impl OrderService {
         );
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated {
-                order_id,
-                checkout_session_id: None,
-                status: None,
-                refunds: vec![],
-            }).await;
+            sender
+                .send_or_log(Event::OrderUpdated {
+                    order_id,
+                    checkout_session_id: None,
+                    status: None,
+                    refunds: vec![],
+                })
+                .await;
         }
 
         Ok(self.model_to_response(updated))
@@ -884,12 +892,14 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated {
-                order_id,
-                checkout_session_id: None,
-                status: None,
-                refunds: vec![],
-            }).await;
+            sender
+                .send_or_log(Event::OrderUpdated {
+                    order_id,
+                    checkout_session_id: None,
+                    status: None,
+                    refunds: vec![],
+                })
+                .await;
         }
 
         Ok(self.model_to_response(updated))
@@ -939,12 +949,14 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated {
-                order_id,
-                checkout_session_id: None,
-                status: None,
-                refunds: vec![],
-            }).await;
+            sender
+                .send_or_log(Event::OrderUpdated {
+                    order_id,
+                    checkout_session_id: None,
+                    status: None,
+                    refunds: vec![],
+                })
+                .await;
         }
 
         Ok(self.model_to_response(updated))
@@ -1192,16 +1204,13 @@ impl OrderService {
             | (STATUS_PROCESSING, STATUS_CANCELLED) => true,
 
             // From on_hold, can go back to processing or be cancelled
-            (STATUS_ON_HOLD, STATUS_PROCESSING)
-            | (STATUS_ON_HOLD, STATUS_CANCELLED) => true,
+            (STATUS_ON_HOLD, STATUS_PROCESSING) | (STATUS_ON_HOLD, STATUS_CANCELLED) => true,
 
             // From shipped, can go to delivered or on_hold (for delivery issues)
-            (STATUS_SHIPPED, STATUS_DELIVERED)
-            | (STATUS_SHIPPED, STATUS_ON_HOLD) => true,
+            (STATUS_SHIPPED, STATUS_DELIVERED) | (STATUS_SHIPPED, STATUS_ON_HOLD) => true,
 
             // From delivered, can go to refunded or exchanged
-            (STATUS_DELIVERED, STATUS_REFUNDED)
-            | (STATUS_DELIVERED, STATUS_EXCHANGED) => true,
+            (STATUS_DELIVERED, STATUS_REFUNDED) | (STATUS_DELIVERED, STATUS_EXCHANGED) => true,
 
             // From cancelled, can go to refunded
             (STATUS_CANCELLED, STATUS_REFUNDED) => true,
@@ -1432,12 +1441,14 @@ impl OrderService {
         })?;
 
         if let Some(sender) = &self.event_sender {
-            sender.send_or_log(Event::OrderUpdated {
-                order_id,
-                checkout_session_id: None,
-                status: None,
-                refunds: vec![],
-            }).await;
+            sender
+                .send_or_log(Event::OrderUpdated {
+                    order_id,
+                    checkout_session_id: None,
+                    status: None,
+                    refunds: vec![],
+                })
+                .await;
         }
 
         Ok(self.model_to_response(updated))
@@ -1447,8 +1458,8 @@ impl OrderService {
 #[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
-    use std::str::FromStr;
     use sea_orm::DatabaseConnection;
+    use std::str::FromStr;
 
     #[test]
     fn test_model_to_response_conversion() {

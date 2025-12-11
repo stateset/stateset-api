@@ -246,7 +246,10 @@ mod tests {
         // by making is_valid_transition public for testing or using a helper
 
         // Test pending -> processing (valid)
-        assert!(matches!(("pending", "processing"), ("pending", "processing")));
+        assert!(matches!(
+            ("pending", "processing"),
+            ("pending", "processing")
+        ));
         // Test pending -> cancelled (valid)
         assert!(matches!(("pending", "cancelled"), ("pending", "cancelled")));
         // Test pending -> on_hold (valid)
@@ -259,7 +262,10 @@ mod tests {
         let valid_from_processing = vec!["shipped", "cancelled", "on_hold", "failed"];
         for status in valid_from_processing {
             assert!(
-                status == "shipped" || status == "cancelled" || status == "on_hold" || status == "failed",
+                status == "shipped"
+                    || status == "cancelled"
+                    || status == "on_hold"
+                    || status == "failed",
                 "Should be a valid transition target from processing"
             );
         }
@@ -287,14 +293,17 @@ mod tests {
     fn test_invalid_transitions() {
         // These transitions should NOT be allowed
         let invalid_transitions = vec![
-            ("delivered", "pending"),    // Can't go back to pending
-            ("refunded", "processing"),  // Can't process after refund
-            ("shipped", "pending"),      // Can't go back
-            ("cancelled", "shipped"),    // Can't ship cancelled order
+            ("delivered", "pending"),   // Can't go back to pending
+            ("refunded", "processing"), // Can't process after refund
+            ("shipped", "pending"),     // Can't go back
+            ("cancelled", "shipped"),   // Can't ship cancelled order
         ];
 
         for (from, to) in invalid_transitions {
-            assert_ne!(from, to, "Invalid transitions should have different statuses");
+            assert_ne!(
+                from, to,
+                "Invalid transitions should have different statuses"
+            );
         }
     }
 
@@ -406,10 +415,7 @@ mod tests {
     fn test_transition_error_message_format() {
         let from = "delivered";
         let to = "pending";
-        let error_msg = format!(
-            "Cannot transition from status '{}' to '{}'",
-            from, to
-        );
+        let error_msg = format!("Cannot transition from status '{}' to '{}'", from, to);
 
         assert!(error_msg.contains("delivered"));
         assert!(error_msg.contains("pending"));

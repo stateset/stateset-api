@@ -35,7 +35,11 @@ lazy_static! {
 pub struct RejectPurchaseOrderCommand {
     pub id: Uuid,
     pub rejector_id: Uuid,
-    #[validate(length(min = 1, max = 500, message = "Rejection reason is required and must be at most 500 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 500,
+        message = "Rejection reason is required and must be at most 500 characters"
+    ))]
     pub reason: String,
     #[validate(length(max = 1000))]
     pub notes: Option<String>,
@@ -95,9 +99,7 @@ impl RejectPurchaseOrderCommand {
             .one(db)
             .await
             .map_err(|e| {
-                PO_REJECTION_FAILURES
-                    .with_label_values(&["db_error"])
-                    .inc();
+                PO_REJECTION_FAILURES.with_label_values(&["db_error"]).inc();
                 ServiceError::db_error(e)
             })?
             .ok_or_else(|| {
@@ -129,7 +131,9 @@ impl RejectPurchaseOrderCommand {
             .one(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Purchase order {} not found", self.id)))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Purchase order {} not found", self.id))
+            })?;
 
         let mut po: purchase_order_entity::ActiveModel = po.into();
         po.status = Set(PurchaseOrderStatus::Rejected);
@@ -159,9 +163,7 @@ impl RejectPurchaseOrderCommand {
         po.notes = Set(Some(new_notes));
 
         po.update(db).await.map_err(|e| {
-            PO_REJECTION_FAILURES
-                .with_label_values(&["db_error"])
-                .inc();
+            PO_REJECTION_FAILURES.with_label_values(&["db_error"]).inc();
             let msg = format!("Failed to reject purchase order {}: {}", self.id, e);
             error!("{}", msg);
             ServiceError::db_error(e)

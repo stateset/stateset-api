@@ -307,7 +307,11 @@ mod tests {
 
         for status in valid_statuses {
             let normalized = status.trim().to_ascii_lowercase();
-            assert!(!normalized.is_empty(), "Status {} should not be empty", status);
+            assert!(
+                !normalized.is_empty(),
+                "Status {} should not be empty",
+                status
+            );
         }
     }
 
@@ -394,7 +398,10 @@ mod tests {
 
         for reason in valid_reasons {
             assert!(!reason.is_empty());
-            assert!(reason.len() <= 500, "Reason should not exceed 500 characters");
+            assert!(
+                reason.len() <= 500,
+                "Reason should not exceed 500 characters"
+            );
         }
     }
 
@@ -404,7 +411,10 @@ mod tests {
         let long_reason = "A".repeat(1000);
 
         assert!(short_reason.len() >= 3, "Reason should have minimum length");
-        assert!(long_reason.len() > 500, "Very long reason for testing truncation");
+        assert!(
+            long_reason.len() > 500,
+            "Very long reason for testing truncation"
+        );
     }
 
     // ==================== Restock Tests ====================
@@ -420,7 +430,10 @@ mod tests {
         let returned_quantity: i32 = 3;
         let restock_quantity: i32 = 3;
 
-        assert_eq!(returned_quantity, restock_quantity, "Restock should match returned quantity");
+        assert_eq!(
+            returned_quantity, restock_quantity,
+            "Restock should match returned quantity"
+        );
     }
 
     // ==================== Error Handling Tests ====================

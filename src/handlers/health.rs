@@ -1,18 +1,15 @@
+use crate::{errors::ApiError, handlers::AppState};
 use axum::{
-    routing::get,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Json},
+    routing::get,
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 use std::time::Instant;
-use crate::{
-    errors::ApiError,
-    handlers::AppState,
-};
 
 /// Component health status
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,27 +84,33 @@ async fn readiness_check(
     let is_ready = db_result.is_ok();
 
     if is_ready {
-        Ok((StatusCode::OK, Json(json!({
-            "status": "ready",
-            "checks": {
-                "database": {
-                    "status": "up",
-                    "latency_ms": db_latency
-                }
-            },
-            "response_time_ms": start.elapsed().as_millis()
-        }))))
+        Ok((
+            StatusCode::OK,
+            Json(json!({
+                "status": "ready",
+                "checks": {
+                    "database": {
+                        "status": "up",
+                        "latency_ms": db_latency
+                    }
+                },
+                "response_time_ms": start.elapsed().as_millis()
+            })),
+        ))
     } else {
-        Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({
-            "status": "not_ready",
-            "checks": {
-                "database": {
-                    "status": "down",
-                    "error": db_result.err().map(|e| e.to_string())
-                }
-            },
-            "response_time_ms": start.elapsed().as_millis()
-        }))))
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "status": "not_ready",
+                "checks": {
+                    "database": {
+                        "status": "down",
+                        "error": db_result.err().map(|e| e.to_string())
+                    }
+                },
+                "response_time_ms": start.elapsed().as_millis()
+            })),
+        ))
     }
 }
 
@@ -125,10 +128,14 @@ async fn detailed_health_check(
     let db_status = db_result.is_ok();
 
     let db_health = ComponentHealth {
-        status: if db_status { ComponentStatus::Up } else { ComponentStatus::Down },
+        status: if db_status {
+            ComponentStatus::Up
+        } else {
+            ComponentStatus::Down
+        },
         message: db_result.map_or_else(
             |e| format!("Connection failed: {}", e),
-            |_| "Connection successful".to_string()
+            |_| "Connection successful".to_string(),
         ),
         latency_ms: Some(db_latency),
     };
@@ -139,10 +146,14 @@ async fn detailed_health_check(
     let redis_latency = redis_check_start.elapsed().as_millis() as u64;
 
     let redis_health = Some(ComponentHealth {
-        status: if redis_result.is_ok() { ComponentStatus::Up } else { ComponentStatus::Down },
+        status: if redis_result.is_ok() {
+            ComponentStatus::Up
+        } else {
+            ComponentStatus::Down
+        },
         message: redis_result.map_or_else(
             |e| format!("Connection failed: {}", e),
-            |_| "Connection successful".to_string()
+            |_| "Connection successful".to_string(),
         ),
         latency_ms: Some(redis_latency),
     });
@@ -151,7 +162,9 @@ async fn detailed_health_check(
 
     // Determine overall status
     let all_critical_up = db_status;
-    let all_optional_up = redis_health.as_ref().map_or(true, |r| matches!(r.status, ComponentStatus::Up));
+    let all_optional_up = redis_health
+        .as_ref()
+        .map_or(true, |r| matches!(r.status, ComponentStatus::Up));
 
     let overall_status = if all_critical_up && all_optional_up {
         ComponentStatus::Up
@@ -184,8 +197,6 @@ async fn detailed_health_check(
 
 /// Check Redis connection
 async fn check_redis_connection(client: &redis::Client) -> Result<(), String> {
-    
-
     let mut conn = client
         .get_async_connection()
         .await

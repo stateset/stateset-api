@@ -109,7 +109,12 @@ impl Model {
     /// Format: ECO-{YEAR}{MONTH}-{SEQUENCE}
     pub fn generate_eco_number(sequence: u32) -> String {
         let now = Utc::now();
-        format!("ECO-{:04}{:02}-{:05}", now.date_naive().year(), now.date_naive().month(), sequence)
+        format!(
+            "ECO-{:04}{:02}-{:05}",
+            now.date_naive().year(),
+            now.date_naive().month(),
+            sequence
+        )
     }
 
     /// Check if ECO can be released

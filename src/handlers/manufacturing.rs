@@ -8,31 +8,31 @@ use uuid::Uuid;
 
 use crate::{
     dto::manufacturing::{
-        certification::{CreateCertificationRequest, CertificationResponse},
+        certification::{CertificationResponse, CreateCertificationRequest},
         component_serial::{
             ComponentSerialResponse, CreateComponentSerialRequest, InstallComponentRequest,
         },
         ncr::{CloseNcrRequest, CreateNcrRequest, ListNcrQuery, NcrResponse},
-        production::{CreateProductionMetricsRequest, ProductionMetricsResponse, ProductionMetricsQuery},
+        production::{
+            CreateProductionMetricsRequest, ProductionMetricsQuery, ProductionMetricsResponse,
+        },
         robot_serial::{
             CreateRobotSerialRequest, ListRobotSerialsQuery, RobotGenealogyResponse,
             RobotSerialResponse, UpdateRobotSerialRequest,
         },
-        service::{
-            CompleteServiceRequest, CreateServiceRecordRequest, ServiceRecordResponse,
-        },
+        service::{CompleteServiceRequest, CreateServiceRecordRequest, ServiceRecordResponse},
         test_protocol::{CreateTestProtocolRequest, TestProtocolResponse},
         test_result::{CreateTestResultRequest, TestResultResponse},
     },
     entities::manufacturing::{
-        robot_serial_number, component_serial_number, robot_component_genealogy,
-        test_protocol, test_result, non_conformance_report, robot_certification,
-        robot_service_history, production_metrics, production_line,
+        component_serial_number, non_conformance_report, production_line, production_metrics,
+        robot_certification, robot_component_genealogy, robot_serial_number, robot_service_history,
+        test_protocol, test_result,
     },
     AppState,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set, PaginatorTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
 };
 
 // ============================================================================
@@ -268,10 +268,11 @@ pub async fn get_robot_genealogy(
     let mut components = Vec::new();
 
     for gen in genealogy {
-        if let Some(component) = component_serial_number::Entity::find_by_id(gen.component_serial_id)
-            .one(db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        if let Some(component) =
+            component_serial_number::Entity::find_by_id(gen.component_serial_id)
+                .one(db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         {
             components.push(crate::dto::manufacturing::robot_serial::ComponentInRobot {
                 component_serial_number: component.serial_number,
@@ -906,7 +907,10 @@ pub async fn complete_service_record(
         .one(db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Service record not found".to_string()))?;
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            "Service record not found".to_string(),
+        ))?;
 
     let mut service_model: robot_service_history::ActiveModel = service.into();
     service_model.work_performed = Set(Some(payload.work_performed));

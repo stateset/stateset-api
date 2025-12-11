@@ -289,7 +289,11 @@ impl CheckoutService {
     }
 
     /// Calculate tax
-    fn calculate_tax(&self, subtotal: Decimal, _address: &Address) -> Result<Decimal, ServiceError> {
+    fn calculate_tax(
+        &self,
+        subtotal: Decimal,
+        _address: &Address,
+    ) -> Result<Decimal, ServiceError> {
         // Simplified tax calculation - would integrate with tax provider
         let tax_rate = Decimal::new(875, 3); // 8.75%
         Ok(subtotal * tax_rate / Decimal::from(100))
@@ -728,7 +732,9 @@ mod tests {
 
         // The suffix should be uppercase
         let suffix = &order_number[4..];
-        assert!(suffix.chars().all(|c| c.is_uppercase() || c.is_numeric() || c == '-'));
+        assert!(suffix
+            .chars()
+            .all(|c| c.is_uppercase() || c.is_numeric() || c == '-'));
     }
 
     // ==================== Error Handling Tests ====================
@@ -851,7 +857,8 @@ mod tests {
         let shipping_method: Option<ShippingMethod> = Some(ShippingMethod::Standard);
 
         // Session is incomplete if email is missing
-        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        let is_complete =
+            email.is_some() && shipping_address.is_some() && shipping_method.is_some();
         assert!(!is_complete);
     }
 
@@ -861,7 +868,8 @@ mod tests {
         let shipping_address: Option<Address> = None;
         let shipping_method: Option<ShippingMethod> = Some(ShippingMethod::Standard);
 
-        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        let is_complete =
+            email.is_some() && shipping_address.is_some() && shipping_method.is_some();
         assert!(!is_complete);
     }
 
@@ -882,7 +890,8 @@ mod tests {
         });
         let shipping_method: Option<ShippingMethod> = None;
 
-        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        let is_complete =
+            email.is_some() && shipping_address.is_some() && shipping_method.is_some();
         assert!(!is_complete);
     }
 
@@ -903,7 +912,8 @@ mod tests {
         });
         let shipping_method: Option<ShippingMethod> = Some(ShippingMethod::Standard);
 
-        let is_complete = email.is_some() && shipping_address.is_some() && shipping_method.is_some();
+        let is_complete =
+            email.is_some() && shipping_address.is_some() && shipping_method.is_some();
         assert!(is_complete);
     }
 

@@ -13,7 +13,7 @@ mod tests {
     use validator::Validate;
 
     #[tokio::test]
-#[ignore = "requires SQLite and Redis integration environment"]
+    #[ignore = "requires SQLite and Redis integration environment"]
     async fn test_customer_registration_flow() {
         // This is a basic integration test structure
         // In a real scenario, you'd set up a test database
@@ -39,7 +39,7 @@ mod tests {
     }
 
     #[tokio::test]
-#[ignore = "requires SQLite and Redis integration environment"]
+    #[ignore = "requires SQLite and Redis integration environment"]
     async fn test_payment_request_validation() {
         use stateset_api::services::payments::*;
 
@@ -59,7 +59,7 @@ mod tests {
     }
 
     #[tokio::test]
-#[ignore = "requires SQLite and Redis integration environment"]
+    #[ignore = "requires SQLite and Redis integration environment"]
     async fn test_order_creation_request() {
         use stateset_api::handlers::orders::*;
 

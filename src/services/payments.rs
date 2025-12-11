@@ -626,7 +626,8 @@ mod tests {
             "processed_at": null
         }"#;
 
-        let response: PaymentResponse = serde_json::from_str(json).expect("deserialization should succeed");
+        let response: PaymentResponse =
+            serde_json::from_str(json).expect("deserialization should succeed");
         assert_eq!(response.currency, "EUR");
         assert_eq!(response.status, "pending");
         assert_eq!(response.payment_method, "PayPal");
@@ -697,7 +698,11 @@ mod tests {
                 currency: currency.to_string(),
                 description: None,
             };
-            assert!(request.validate().is_ok(), "Currency {} should be valid", currency);
+            assert!(
+                request.validate().is_ok(),
+                "Currency {} should be valid",
+                currency
+            );
         }
     }
 
@@ -714,7 +719,8 @@ mod tests {
 
         for method in methods {
             let json = serde_json::to_string(&method).expect("serialize payment method");
-            let deserialized: PaymentMethod = serde_json::from_str(&json).expect("deserialize payment method");
+            let deserialized: PaymentMethod =
+                serde_json::from_str(&json).expect("deserialize payment method");
             assert_eq!(format!("{:?}", method), format!("{:?}", deserialized));
         }
     }
@@ -732,7 +738,8 @@ mod tests {
 
         for status in statuses {
             let json = serde_json::to_string(&status).expect("serialize payment status");
-            let deserialized: PaymentStatus = serde_json::from_str(&json).expect("deserialize payment status");
+            let deserialized: PaymentStatus =
+                serde_json::from_str(&json).expect("deserialize payment status");
             assert_eq!(status.to_string(), deserialized.to_string());
         }
     }

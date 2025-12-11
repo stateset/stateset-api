@@ -614,7 +614,9 @@ where
                                     .body(Body::from(body_bytes))
                                 {
                                     Ok(resp) => Ok(resp),
-                                    Err(_) => Ok(Response::new(Body::from("Internal Server Error"))),
+                                    Err(_) => {
+                                        Ok(Response::new(Body::from("Internal Server Error")))
+                                    }
                                 };
                             }
                         };
@@ -680,7 +682,9 @@ where
                                     .body(Body::from(body_bytes))
                                 {
                                     Ok(resp) => Ok(resp),
-                                    Err(_) => Ok(Response::new(Body::from("Internal Server Error"))),
+                                    Err(_) => {
+                                        Ok(Response::new(Body::from("Internal Server Error")))
+                                    }
                                 };
                             }
                         };
@@ -1029,19 +1033,15 @@ mod tests {
     {
         fn into_response(self) -> Response<Body> {
             match serde_json::to_vec(&self.0) {
-                Ok(bytes) => {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header("content-type", "application/json")
-                        .body(Body::from(bytes))
-                        .unwrap_or_else(|_| Response::new(Body::from("Serialization Error")))
-                }
-                Err(_) => {
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::empty())
-                        .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error")))
-                }
+                Ok(bytes) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(Body::from(bytes))
+                    .unwrap_or_else(|_| Response::new(Body::from("Serialization Error"))),
+                Err(_) => Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::empty())
+                    .unwrap_or_else(|_| Response::new(Body::from("Internal Server Error"))),
             }
         }
     }

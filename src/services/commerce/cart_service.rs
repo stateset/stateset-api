@@ -534,12 +534,7 @@ impl CartService {
 
         info!(
             "Recalculated cart {}: subtotal=${}, tax=${}, shipping=${}, discount=${}, total=${}",
-            cart_id,
-            subtotal,
-            tax_total,
-            shipping_total,
-            discount_total,
-            total
+            cart_id, subtotal, tax_total, shipping_total, discount_total, total
         );
 
         Ok(cart.update(conn).await?)
@@ -614,7 +609,8 @@ mod tests {
             "currency": "USD"
         }"#;
 
-        let input: CreateCartInput = serde_json::from_str(json).expect("deserialization should succeed");
+        let input: CreateCartInput =
+            serde_json::from_str(json).expect("deserialization should succeed");
         assert_eq!(input.session_id.unwrap(), "sess_abc");
         assert_eq!(input.currency.unwrap(), "USD");
         assert!(input.customer_id.is_none());
@@ -641,9 +637,13 @@ mod tests {
             "quantity": 3
         }"#;
 
-        let input: AddToCartInput = serde_json::from_str(json).expect("deserialization should succeed");
+        let input: AddToCartInput =
+            serde_json::from_str(json).expect("deserialization should succeed");
         assert_eq!(input.quantity, 3);
-        assert_eq!(input.variant_id.to_string(), "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(
+            input.variant_id.to_string(),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
     }
 
     #[test]

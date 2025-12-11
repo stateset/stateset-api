@@ -8,15 +8,15 @@ pub mod warranty;
 pub mod warranty_claim;
 
 // User and commerce entities
-pub mod user_entity;
 pub mod commerce;
 pub mod incoming_shipment_item_entity;
 pub mod inventory_adjustment_entity;
+pub mod inventory_items;
 pub mod inventory_movement_entity;
+pub mod shipment;
+pub mod user_entity;
 pub mod work_order;
 pub mod work_order_note;
-pub mod inventory_items;
-pub mod shipment;
 
 // ERP entities
 pub mod bom_header;

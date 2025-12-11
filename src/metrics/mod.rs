@@ -395,7 +395,8 @@ impl DatabaseMetrics {
             connections_idle: METRICS.get_or_create_gauge("db_connections_idle"),
             connection_pool_size: METRICS.get_or_create_gauge("db_connection_pool_size"),
             transactions_total: METRICS.get_or_create_counter("db_transactions_total"),
-            transaction_duration: METRICS.get_or_create_histogram("db_transaction_duration_seconds"),
+            transaction_duration: METRICS
+                .get_or_create_histogram("db_transaction_duration_seconds"),
             slow_queries: METRICS.get_or_create_counter("db_slow_queries_total"),
             query_errors: METRICS.get_or_create_counter("db_query_errors_total"),
         }

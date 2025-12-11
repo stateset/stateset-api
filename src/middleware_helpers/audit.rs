@@ -87,12 +87,7 @@ const SENSITIVE_PATHS: &[&str] = &[
 ];
 
 /// Headers that contain sensitive information and should be redacted
-const SENSITIVE_HEADERS: &[&str] = &[
-    "authorization",
-    "x-api-key",
-    "cookie",
-    "set-cookie",
-];
+const SENSITIVE_HEADERS: &[&str] = &["authorization", "x-api-key", "cookie", "set-cookie"];
 
 /// Audit logging middleware
 ///
@@ -338,7 +333,8 @@ mod tests {
 
     #[test]
     fn test_extract_resource_info() {
-        let (resource, id) = extract_resource_info("/api/v1/orders/550e8400-e29b-41d4-a716-446655440000");
+        let (resource, id) =
+            extract_resource_info("/api/v1/orders/550e8400-e29b-41d4-a716-446655440000");
         assert_eq!(resource, Some("orders".to_string()));
         assert_eq!(id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
 
@@ -349,7 +345,10 @@ mod tests {
 
     #[test]
     fn test_redact_sensitive() {
-        assert_eq!(redact_sensitive("sk_live_abc123xyz", 4), "sk_l*************");
+        assert_eq!(
+            redact_sensitive("sk_live_abc123xyz", 4),
+            "sk_l*************"
+        );
         assert_eq!(redact_sensitive("abc", 4), "***");
     }
 }

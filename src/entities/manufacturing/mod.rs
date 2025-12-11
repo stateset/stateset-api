@@ -7,14 +7,14 @@ pub mod work_order_note;
 pub mod work_order_task;
 
 // Phase 1: Serial Number & Traceability
-pub mod robot_serial_number;
 pub mod component_serial_number;
 pub mod robot_component_genealogy;
+pub mod robot_serial_number;
 
 // Phase 2: Quality Control & Testing
+pub mod non_conformance_report;
 pub mod test_protocol;
 pub mod test_result;
-pub mod non_conformance_report;
 
 // Phase 3: Configuration Management
 pub mod robot_configuration;

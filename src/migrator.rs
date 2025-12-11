@@ -981,7 +981,11 @@ mod m20230101_000011_create_commerce_tables {
                         .col(ColumnDef::new(ProductVariants::Sku).string().not_null())
                         .col(ColumnDef::new(ProductVariants::Name).string().not_null())
                         .col(ColumnDef::new(ProductVariants::Price).decimal().not_null())
-                        .col(ColumnDef::new(ProductVariants::CompareAtPrice).decimal().null())
+                        .col(
+                            ColumnDef::new(ProductVariants::CompareAtPrice)
+                                .decimal()
+                                .null(),
+                        )
                         .col(ColumnDef::new(ProductVariants::Cost).decimal().null())
                         .col(ColumnDef::new(ProductVariants::Weight).float().null())
                         .col(ColumnDef::new(ProductVariants::Dimensions).json().null())
@@ -1003,8 +1007,16 @@ mod m20230101_000011_create_commerce_tables {
                                 .not_null()
                                 .default(0),
                         )
-                        .col(ColumnDef::new(ProductVariants::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(ProductVariants::UpdatedAt).timestamp().not_null())
+                        .col(
+                            ColumnDef::new(ProductVariants::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ProductVariants::UpdatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -1048,12 +1060,7 @@ mod m20230101_000011_create_commerce_tables {
                                 .not_null()
                                 .default(0),
                         )
-                        .col(
-                            ColumnDef::new(Carts::Total)
-                                .decimal()
-                                .not_null()
-                                .default(0),
-                        )
+                        .col(ColumnDef::new(Carts::Total).decimal().not_null().default(0))
                         .col(ColumnDef::new(Carts::Metadata).json().null())
                         .col(
                             ColumnDef::new(Carts::Status)
@@ -1074,7 +1081,12 @@ mod m20230101_000011_create_commerce_tables {
                     Table::create()
                         .table(CartItems::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(CartItems::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(CartItems::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(CartItems::CartId).uuid().not_null())
                         .col(ColumnDef::new(CartItems::VariantId).uuid().not_null())
                         .col(ColumnDef::new(CartItems::Quantity).integer().not_null())
@@ -1346,12 +1358,22 @@ mod m20230101_000014_create_procurement_tables {
                     Table::create()
                         .table(Suppliers::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(Suppliers::Id).uuid().primary_key().not_null())
+                        .col(
+                            ColumnDef::new(Suppliers::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(Suppliers::Name).string().not_null())
                         .col(ColumnDef::new(Suppliers::ContactEmail).string().null())
                         .col(ColumnDef::new(Suppliers::ContactPhone).string().null())
                         .col(ColumnDef::new(Suppliers::Address).string().null())
-                        .col(ColumnDef::new(Suppliers::Status).string().not_null().default("active"))
+                        .col(
+                            ColumnDef::new(Suppliers::Status)
+                                .string()
+                                .not_null()
+                                .default("active"),
+                        )
                         .col(ColumnDef::new(Suppliers::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(Suppliers::UpdatedAt).timestamp().null())
                         .to_owned(),
@@ -1371,13 +1393,41 @@ mod m20230101_000014_create_procurement_tables {
                                 .auto_increment()
                                 .not_null(),
                         )
-                        .col(ColumnDef::new(PurchaseOrderHeaders::PoNumber).string().not_null())
-                        .col(ColumnDef::new(PurchaseOrderHeaders::TypeCode).string().null())
-                        .col(ColumnDef::new(PurchaseOrderHeaders::VendorId).big_integer().null())
-                        .col(ColumnDef::new(PurchaseOrderHeaders::AgentId).big_integer().null())
-                        .col(ColumnDef::new(PurchaseOrderHeaders::ApprovedFlag).boolean().null())
-                        .col(ColumnDef::new(PurchaseOrderHeaders::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(PurchaseOrderHeaders::UpdatedAt).timestamp().not_null())
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::PoNumber)
+                                .string()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::TypeCode)
+                                .string()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::VendorId)
+                                .big_integer()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::AgentId)
+                                .big_integer()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::ApprovedFlag)
+                                .boolean()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderHeaders::UpdatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -1395,12 +1445,36 @@ mod m20230101_000014_create_procurement_tables {
                                 .auto_increment()
                                 .not_null(),
                         )
-                        .col(ColumnDef::new(PurchaseOrderLines::PoHeaderId).big_integer().not_null())
-                        .col(ColumnDef::new(PurchaseOrderLines::ItemId).big_integer().null())
-                        .col(ColumnDef::new(PurchaseOrderLines::Quantity).integer().not_null())
-                        .col(ColumnDef::new(PurchaseOrderLines::UnitPrice).decimal().not_null())
-                        .col(ColumnDef::new(PurchaseOrderLines::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(PurchaseOrderLines::UpdatedAt).timestamp().not_null())
+                        .col(
+                            ColumnDef::new(PurchaseOrderLines::PoHeaderId)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderLines::ItemId)
+                                .big_integer()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderLines::Quantity)
+                                .integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderLines::UnitPrice)
+                                .decimal()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderLines::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(PurchaseOrderLines::UpdatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -1415,9 +1489,18 @@ mod m20230101_000014_create_procurement_tables {
                         .col(ColumnDef::new(Asns::AsnNumber).string().not_null())
                         .col(ColumnDef::new(Asns::PurchaseOrderId).uuid().null())
                         .col(ColumnDef::new(Asns::SupplierId).uuid().null())
-                        .col(ColumnDef::new(Asns::Status).string().not_null().default("pending"))
+                        .col(
+                            ColumnDef::new(Asns::Status)
+                                .string()
+                                .not_null()
+                                .default("pending"),
+                        )
                         .col(ColumnDef::new(Asns::ShippedDate).timestamp().null())
-                        .col(ColumnDef::new(Asns::ExpectedDeliveryDate).timestamp().null())
+                        .col(
+                            ColumnDef::new(Asns::ExpectedDeliveryDate)
+                                .timestamp()
+                                .null(),
+                        )
                         .col(ColumnDef::new(Asns::Carrier).string().null())
                         .col(ColumnDef::new(Asns::TrackingNumber).string().null())
                         .col(ColumnDef::new(Asns::CreatedAt).timestamp().not_null())
@@ -1434,11 +1517,24 @@ mod m20230101_000014_create_procurement_tables {
                         .if_not_exists()
                         .col(ColumnDef::new(AsnItems::Id).uuid().primary_key().not_null())
                         .col(ColumnDef::new(AsnItems::AsnId).uuid().not_null())
-                        .col(ColumnDef::new(AsnItems::PurchaseOrderItemId).uuid().not_null())
-                        .col(ColumnDef::new(AsnItems::QuantityShipped).integer().not_null())
+                        .col(
+                            ColumnDef::new(AsnItems::PurchaseOrderItemId)
+                                .uuid()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(AsnItems::QuantityShipped)
+                                .integer()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(AsnItems::PackageNumber).string().null())
                         .col(ColumnDef::new(AsnItems::LotNumber).string().null())
-                        .col(ColumnDef::new(AsnItems::Status).string().not_null().default("pending"))
+                        .col(
+                            ColumnDef::new(AsnItems::Status)
+                                .string()
+                                .not_null()
+                                .default("pending"),
+                        )
                         .col(ColumnDef::new(AsnItems::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(AsnItems::UpdatedAt).timestamp().not_null())
                         .to_owned(),
@@ -1447,11 +1543,21 @@ mod m20230101_000014_create_procurement_tables {
         }
 
         async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-            manager.drop_table(Table::drop().table(AsnItems::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(Asns::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(PurchaseOrderLines::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(PurchaseOrderHeaders::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(Suppliers::Table).to_owned()).await
+            manager
+                .drop_table(Table::drop().table(AsnItems::Table).to_owned())
+                .await?;
+            manager
+                .drop_table(Table::drop().table(Asns::Table).to_owned())
+                .await?;
+            manager
+                .drop_table(Table::drop().table(PurchaseOrderLines::Table).to_owned())
+                .await?;
+            manager
+                .drop_table(Table::drop().table(PurchaseOrderHeaders::Table).to_owned())
+                .await?;
+            manager
+                .drop_table(Table::drop().table(Suppliers::Table).to_owned())
+                .await
         }
     }
 
@@ -1544,19 +1650,65 @@ mod m20230101_000015_create_manufacturing_tables {
                     Table::create()
                         .table(ManufactureOrders::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(ManufactureOrders::Id).uuid().primary_key().not_null())
-                        .col(ColumnDef::new(ManufactureOrders::OrderNumber).string().not_null())
-                        .col(ColumnDef::new(ManufactureOrders::ProductId).uuid().not_null())
-                        .col(ColumnDef::new(ManufactureOrders::Quantity).integer().not_null())
-                        .col(ColumnDef::new(ManufactureOrders::Status).string().not_null().default("draft"))
+                        .col(
+                            ColumnDef::new(ManufactureOrders::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::OrderNumber)
+                                .string()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::ProductId)
+                                .uuid()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::Quantity)
+                                .integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::Status)
+                                .string()
+                                .not_null()
+                                .default("draft"),
+                        )
                         .col(ColumnDef::new(ManufactureOrders::Priority).string().null())
-                        .col(ColumnDef::new(ManufactureOrders::ScheduledStartDate).timestamp().null())
-                        .col(ColumnDef::new(ManufactureOrders::ScheduledEndDate).timestamp().null())
-                        .col(ColumnDef::new(ManufactureOrders::ActualStartDate).timestamp().null())
-                        .col(ColumnDef::new(ManufactureOrders::ActualEndDate).timestamp().null())
+                        .col(
+                            ColumnDef::new(ManufactureOrders::ScheduledStartDate)
+                                .timestamp()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::ScheduledEndDate)
+                                .timestamp()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::ActualStartDate)
+                                .timestamp()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::ActualEndDate)
+                                .timestamp()
+                                .null(),
+                        )
                         .col(ColumnDef::new(ManufactureOrders::Notes).string().null())
-                        .col(ColumnDef::new(ManufactureOrders::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(ManufactureOrders::UpdatedAt).timestamp().null())
+                        .col(
+                            ColumnDef::new(ManufactureOrders::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrders::UpdatedAt)
+                                .timestamp()
+                                .null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -1567,14 +1719,48 @@ mod m20230101_000015_create_manufacturing_tables {
                     Table::create()
                         .table(ManufactureOrderLineItems::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(ManufactureOrderLineItems::Id).uuid().primary_key().not_null())
-                        .col(ColumnDef::new(ManufactureOrderLineItems::ManufactureOrderId).uuid().not_null())
-                        .col(ColumnDef::new(ManufactureOrderLineItems::ProductId).uuid().not_null())
-                        .col(ColumnDef::new(ManufactureOrderLineItems::Quantity).integer().not_null())
-                        .col(ColumnDef::new(ManufactureOrderLineItems::UnitCost).decimal().null())
-                        .col(ColumnDef::new(ManufactureOrderLineItems::Status).string().not_null().default("pending"))
-                        .col(ColumnDef::new(ManufactureOrderLineItems::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(ManufactureOrderLineItems::UpdatedAt).timestamp().null())
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::ManufactureOrderId)
+                                .uuid()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::ProductId)
+                                .uuid()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::Quantity)
+                                .integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::UnitCost)
+                                .decimal()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::Status)
+                                .string()
+                                .not_null()
+                                .default("pending"),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(ManufactureOrderLineItems::UpdatedAt)
+                                .timestamp()
+                                .null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -1592,7 +1778,12 @@ mod m20230101_000015_create_manufacturing_tables {
                                 .auto_increment()
                                 .not_null(),
                         )
-                        .col(ColumnDef::new(ItemMaster::OrganizationId).big_integer().not_null().default(1))
+                        .col(
+                            ColumnDef::new(ItemMaster::OrganizationId)
+                                .big_integer()
+                                .not_null()
+                                .default(1),
+                        )
                         .col(ColumnDef::new(ItemMaster::ItemNumber).string().not_null())
                         .col(ColumnDef::new(ItemMaster::Description).string().null())
                         .col(ColumnDef::new(ItemMaster::PrimaryUomCode).string().null())
@@ -1611,15 +1802,51 @@ mod m20230101_000015_create_manufacturing_tables {
                     Table::create()
                         .table(InventoryItems::Table)
                         .if_not_exists()
-                        .col(ColumnDef::new(InventoryItems::Id).uuid().primary_key().not_null())
-                        .col(ColumnDef::new(InventoryItems::ItemMasterId).uuid().not_null())
+                        .col(
+                            ColumnDef::new(InventoryItems::Id)
+                                .uuid()
+                                .primary_key()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryItems::ItemMasterId)
+                                .uuid()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(InventoryItems::LocationId).uuid().null())
-                        .col(ColumnDef::new(InventoryItems::QuantityOnHand).integer().not_null().default(0))
-                        .col(ColumnDef::new(InventoryItems::QuantityReserved).integer().not_null().default(0))
-                        .col(ColumnDef::new(InventoryItems::QuantityAvailable).integer().not_null().default(0))
-                        .col(ColumnDef::new(InventoryItems::ReorderPoint).integer().null())
-                        .col(ColumnDef::new(InventoryItems::ReorderQuantity).integer().null())
-                        .col(ColumnDef::new(InventoryItems::CreatedAt).timestamp().not_null())
+                        .col(
+                            ColumnDef::new(InventoryItems::QuantityOnHand)
+                                .integer()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryItems::QuantityReserved)
+                                .integer()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryItems::QuantityAvailable)
+                                .integer()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryItems::ReorderPoint)
+                                .integer()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryItems::ReorderQuantity)
+                                .integer()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryItems::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
                         .col(ColumnDef::new(InventoryItems::UpdatedAt).timestamp().null())
                         .to_owned(),
                 )
@@ -1627,10 +1854,22 @@ mod m20230101_000015_create_manufacturing_tables {
         }
 
         async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-            manager.drop_table(Table::drop().table(InventoryItems::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(ItemMaster::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(ManufactureOrderLineItems::Table).to_owned()).await?;
-            manager.drop_table(Table::drop().table(ManufactureOrders::Table).to_owned()).await
+            manager
+                .drop_table(Table::drop().table(InventoryItems::Table).to_owned())
+                .await?;
+            manager
+                .drop_table(Table::drop().table(ItemMaster::Table).to_owned())
+                .await?;
+            manager
+                .drop_table(
+                    Table::drop()
+                        .table(ManufactureOrderLineItems::Table)
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .drop_table(Table::drop().table(ManufactureOrders::Table).to_owned())
+                .await
         }
     }
 
@@ -1723,23 +1962,91 @@ mod m20230101_000016_create_inventory_balances_table {
                                 .auto_increment()
                                 .not_null(),
                         )
-                        .col(ColumnDef::new(InventoryBalances::InventoryItemId).big_integer().not_null())
-                        .col(ColumnDef::new(InventoryBalances::LocationId).integer().not_null())
-                        .col(ColumnDef::new(InventoryBalances::QuantityOnHand).decimal().not_null().default(0))
-                        .col(ColumnDef::new(InventoryBalances::QuantityAllocated).decimal().not_null().default(0))
-                        .col(ColumnDef::new(InventoryBalances::QuantityAvailable).decimal().not_null().default(0))
-                        .col(ColumnDef::new(InventoryBalances::ReorderPoint).decimal().null())
-                        .col(ColumnDef::new(InventoryBalances::SafetyStock).decimal().null())
-                        .col(ColumnDef::new(InventoryBalances::ReorderQuantity).decimal().null())
-                        .col(ColumnDef::new(InventoryBalances::MaxStockLevel).decimal().null())
-                        .col(ColumnDef::new(InventoryBalances::LeadTimeDays).integer().null())
-                        .col(ColumnDef::new(InventoryBalances::Version).integer().not_null().default(1))
-                        .col(ColumnDef::new(InventoryBalances::LastCountedAt).timestamp().null())
-                        .col(ColumnDef::new(InventoryBalances::LastCountedBy).string().null())
-                        .col(ColumnDef::new(InventoryBalances::DeletedAt).timestamp().null())
+                        .col(
+                            ColumnDef::new(InventoryBalances::InventoryItemId)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::LocationId)
+                                .integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::QuantityOnHand)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::QuantityAllocated)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::QuantityAvailable)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::ReorderPoint)
+                                .decimal()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::SafetyStock)
+                                .decimal()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::ReorderQuantity)
+                                .decimal()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::MaxStockLevel)
+                                .decimal()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::LeadTimeDays)
+                                .integer()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::Version)
+                                .integer()
+                                .not_null()
+                                .default(1),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::LastCountedAt)
+                                .timestamp()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::LastCountedBy)
+                                .string()
+                                .null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::DeletedAt)
+                                .timestamp()
+                                .null(),
+                        )
                         .col(ColumnDef::new(InventoryBalances::DeletedBy).string().null())
-                        .col(ColumnDef::new(InventoryBalances::CreatedAt).timestamp().not_null())
-                        .col(ColumnDef::new(InventoryBalances::UpdatedAt).timestamp().not_null())
+                        .col(
+                            ColumnDef::new(InventoryBalances::CreatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(InventoryBalances::UpdatedAt)
+                                .timestamp()
+                                .not_null(),
+                        )
                         .to_owned(),
                 )
                 .await?;
@@ -1819,7 +2126,12 @@ mod m20230101_000017_create_payments_table {
                         .col(ColumnDef::new(Payments::Description).string().null())
                         .col(ColumnDef::new(Payments::TransactionId).string().null())
                         .col(ColumnDef::new(Payments::GatewayResponse).json().null())
-                        .col(ColumnDef::new(Payments::RefundedAmount).decimal().not_null().default(0))
+                        .col(
+                            ColumnDef::new(Payments::RefundedAmount)
+                                .decimal()
+                                .not_null()
+                                .default(0),
+                        )
                         .col(ColumnDef::new(Payments::RefundReason).string().null())
                         .col(ColumnDef::new(Payments::CreatedAt).timestamp().not_null())
                         .col(ColumnDef::new(Payments::UpdatedAt).timestamp().null())

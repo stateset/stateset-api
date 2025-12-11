@@ -7,8 +7,7 @@ use crate::{
     errors::ApiError,
     handlers::AppState,
     services::billofmaterials::{
-        AuditBomInput, CreateBomComponentInput, CreateBomInput,
-        UpdateBomInput,
+        AuditBomInput, CreateBomComponentInput, CreateBomInput, UpdateBomInput,
     },
 };
 use axum::{

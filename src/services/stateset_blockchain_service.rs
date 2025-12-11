@@ -354,7 +354,11 @@ impl StateSetBlockchainService {
 
     /// Get account balance
     #[instrument(skip(self))]
-    pub async fn get_balance(&self, address: &str, denom: &str) -> Result<AccountBalance, ServiceError> {
+    pub async fn get_balance(
+        &self,
+        address: &str,
+        denom: &str,
+    ) -> Result<AccountBalance, ServiceError> {
         info!(address = %address, denom = %denom, "Querying account balance");
 
         // In production, query the blockchain via gRPC
@@ -368,7 +372,9 @@ impl StateSetBlockchainService {
 
     /// Get stablecoin balance (ssUSD)
     pub async fn get_stablecoin_balance(&self, address: &str) -> Result<Decimal, ServiceError> {
-        let balance = self.get_balance(address, &self.config.stablecoin_denom).await?;
+        let balance = self
+            .get_balance(address, &self.config.stablecoin_denom)
+            .await?;
         Ok(balance.amount)
     }
 
@@ -519,7 +525,10 @@ impl StateSetBlockchainService {
 
     /// Get settlement details
     #[instrument(skip(self))]
-    pub async fn get_settlement(&self, settlement_id: u64) -> Result<SettlementDetails, ServiceError> {
+    pub async fn get_settlement(
+        &self,
+        settlement_id: u64,
+    ) -> Result<SettlementDetails, ServiceError> {
         info!(settlement_id = settlement_id, "Getting settlement details");
 
         // In production, query the blockchain
@@ -729,7 +738,10 @@ impl StateSetBlockchainService {
 
     /// Get payment channel details
     #[instrument(skip(self))]
-    pub async fn get_channel(&self, channel_id: u64) -> Result<PaymentChannelDetails, ServiceError> {
+    pub async fn get_channel(
+        &self,
+        channel_id: u64,
+    ) -> Result<PaymentChannelDetails, ServiceError> {
         info!(channel_id = channel_id, "Getting channel details");
 
         Ok(PaymentChannelDetails {

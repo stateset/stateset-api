@@ -105,7 +105,12 @@ impl Model {
     /// Format: SVC-{YEAR}{MONTH}-{SEQUENCE}
     pub fn generate_ticket_number(sequence: u32) -> String {
         let now = Utc::now();
-        format!("SVC-{:04}{:02}-{:05}", now.date_naive().year(), now.date_naive().month(), sequence)
+        format!(
+            "SVC-{:04}{:02}-{:05}",
+            now.date_naive().year(),
+            now.date_naive().month(),
+            sequence
+        )
     }
 
     /// Check if service is overdue

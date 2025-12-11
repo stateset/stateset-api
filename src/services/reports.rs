@@ -3,16 +3,12 @@ use crate::{
     db::DbPool,
     entities::purchase_order_headers,
     errors::ServiceError,
-    models::{
-        inventory_items, order, order_line_item, return_entity, suppliers,
-    },
+    models::{inventory_items, order, order_line_item, return_entity, suppliers},
 };
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use redis::Client as RedisClient;
-use sea_orm::{
-    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::collections::HashMap;
@@ -199,9 +195,11 @@ impl ReportService {
 
         for (_order, line_items) in &orders_with_items {
             for item in line_items {
-                let entry = product_sales
-                    .entry(item.product_id.clone())
-                    .or_insert((item.product_name.clone(), 0, 0.0));
+                let entry = product_sales.entry(item.product_id.clone()).or_insert((
+                    item.product_name.clone(),
+                    0,
+                    0.0,
+                ));
                 entry.1 += item.quantity as i64;
                 let line_revenue = (item.sale_price as f64 / 100.0) * item.quantity as f64;
                 entry.2 += line_revenue;
@@ -269,7 +267,10 @@ impl ReportService {
 
         // Calculate on-time delivery rate based on approved orders
         // (In a full implementation, this would compare expected vs actual delivery dates)
-        let approved_orders = purchase_orders.iter().filter(|po| po.approved_flag == Some(true)).count();
+        let approved_orders = purchase_orders
+            .iter()
+            .filter(|po| po.approved_flag == Some(true))
+            .count();
         let on_time_delivery_rate = if total_orders > 0 {
             (approved_orders as f64 / total_orders as f64) * 100.0
         } else {
@@ -382,8 +383,8 @@ mod tests {
     use chrono::NaiveDate;
     use mockall::mock;
     use mockall::predicate::*;
-    use std::str::FromStr;
     use sea_orm::DatabaseConnection;
+    use std::str::FromStr;
 
     mock! {
         pub Database {}

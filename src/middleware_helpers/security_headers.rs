@@ -44,7 +44,7 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     headers.insert(
         HeaderName::from_static("content-security-policy"),
         HeaderValue::from_static(
-            "default-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'"
+            "default-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
         ),
     );
 
@@ -121,14 +121,8 @@ mod tests {
 
         let headers = response.headers();
 
-        assert_eq!(
-            headers.get("x-content-type-options").unwrap(),
-            "nosniff"
-        );
-        assert_eq!(
-            headers.get("x-frame-options").unwrap(),
-            "DENY"
-        );
+        assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
+        assert_eq!(headers.get("x-frame-options").unwrap(), "DENY");
         assert_eq!(
             headers.get("strict-transport-security").unwrap(),
             "max-age=31536000; includeSubDomains; preload"

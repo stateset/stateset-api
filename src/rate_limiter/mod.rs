@@ -519,7 +519,10 @@ pub async fn rate_limit_middleware(
                     let headers = response.headers_mut();
                     headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
                     headers.insert("X-RateLimit-Remaining", num_to_header_value(0));
-                    headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
+                    headers.insert(
+                        "X-RateLimit-Reset",
+                        num_to_header_value(result.reset_time.as_secs()),
+                    );
                 }
 
                 return Err(response);
@@ -532,8 +535,14 @@ pub async fn rate_limit_middleware(
             if config.enable_headers {
                 let headers = response.headers_mut();
                 headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
-                headers.insert("X-RateLimit-Remaining", num_to_header_value(result.remaining));
-                headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
+                headers.insert(
+                    "X-RateLimit-Remaining",
+                    num_to_header_value(result.remaining),
+                );
+                headers.insert(
+                    "X-RateLimit-Reset",
+                    num_to_header_value(result.reset_time.as_secs()),
+                );
             }
 
             Ok(response)
@@ -722,13 +731,21 @@ where
 
                         if rate_limiter.config.enable_headers {
                             let headers = response.headers_mut();
-                            let _ = headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
+                            let _ = headers
+                                .insert("X-RateLimit-Limit", num_to_header_value(result.limit));
                             let _ = headers.insert("X-RateLimit-Remaining", num_to_header_value(0));
-                            let _ = headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
+                            let _ = headers.insert(
+                                "X-RateLimit-Reset",
+                                num_to_header_value(result.reset_time.as_secs()),
+                            );
                             // RFC 9447 headers
-                            let _ = headers.insert("RateLimit-Limit", num_to_header_value(result.limit));
+                            let _ = headers
+                                .insert("RateLimit-Limit", num_to_header_value(result.limit));
                             let _ = headers.insert("RateLimit-Remaining", num_to_header_value(0));
-                            let _ = headers.insert("RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
+                            let _ = headers.insert(
+                                "RateLimit-Reset",
+                                num_to_header_value(result.reset_time.as_secs()),
+                            );
                         }
 
                         return Ok(response);
@@ -759,13 +776,25 @@ where
                     // Add rate limit headers to successful response
                     if rate_limiter.config.enable_headers {
                         let headers = response.headers_mut();
-                        let _ = headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
-                        let _ = headers.insert("X-RateLimit-Remaining", num_to_header_value(result.remaining));
-                        let _ = headers.insert("X-RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
+                        let _ =
+                            headers.insert("X-RateLimit-Limit", num_to_header_value(result.limit));
+                        let _ = headers.insert(
+                            "X-RateLimit-Remaining",
+                            num_to_header_value(result.remaining),
+                        );
+                        let _ = headers.insert(
+                            "X-RateLimit-Reset",
+                            num_to_header_value(result.reset_time.as_secs()),
+                        );
                         // RFC 9447
-                        let _ = headers.insert("RateLimit-Limit", num_to_header_value(result.limit));
-                        let _ = headers.insert("RateLimit-Remaining", num_to_header_value(result.remaining));
-                        let _ = headers.insert("RateLimit-Reset", num_to_header_value(result.reset_time.as_secs()));
+                        let _ =
+                            headers.insert("RateLimit-Limit", num_to_header_value(result.limit));
+                        let _ = headers
+                            .insert("RateLimit-Remaining", num_to_header_value(result.remaining));
+                        let _ = headers.insert(
+                            "RateLimit-Reset",
+                            num_to_header_value(result.reset_time.as_secs()),
+                        );
                     }
 
                     Ok(response)
@@ -945,21 +974,28 @@ pub fn parse_path_policy(spec: &str) -> Result<PathPolicy, PolicyParseError> {
         });
     }
 
-    let limit: u32 = parts[1].trim().parse().map_err(|e| PolicyParseError::InvalidLimit {
-        spec: spec.to_string(),
-        value: parts[1].to_string(),
-        reason: format!("{}", e),
-    })?;
+    let limit: u32 = parts[1]
+        .trim()
+        .parse()
+        .map_err(|e| PolicyParseError::InvalidLimit {
+            spec: spec.to_string(),
+            value: parts[1].to_string(),
+            reason: format!("{}", e),
+        })?;
 
     if limit < 1 {
         return Err(PolicyParseError::LimitTooSmall { limit });
     }
 
-    let window_secs: u64 = parts[2].trim().parse().map_err(|e| PolicyParseError::InvalidWindow {
-        spec: spec.to_string(),
-        value: parts[2].to_string(),
-        reason: format!("{}", e),
-    })?;
+    let window_secs: u64 =
+        parts[2]
+            .trim()
+            .parse()
+            .map_err(|e| PolicyParseError::InvalidWindow {
+                spec: spec.to_string(),
+                value: parts[2].to_string(),
+                reason: format!("{}", e),
+            })?;
 
     if window_secs < 1 {
         return Err(PolicyParseError::WindowTooSmall { window_secs });
@@ -1002,21 +1038,28 @@ pub fn parse_key_policy(spec: &str) -> Result<(String, (u32, Duration)), PolicyP
         return Err(PolicyParseError::EmptySpec);
     }
 
-    let limit: u32 = parts[1].trim().parse().map_err(|e| PolicyParseError::InvalidLimit {
-        spec: spec.to_string(),
-        value: parts[1].to_string(),
-        reason: format!("{}", e),
-    })?;
+    let limit: u32 = parts[1]
+        .trim()
+        .parse()
+        .map_err(|e| PolicyParseError::InvalidLimit {
+            spec: spec.to_string(),
+            value: parts[1].to_string(),
+            reason: format!("{}", e),
+        })?;
 
     if limit < 1 {
         return Err(PolicyParseError::LimitTooSmall { limit });
     }
 
-    let window_secs: u64 = parts[2].trim().parse().map_err(|e| PolicyParseError::InvalidWindow {
-        spec: spec.to_string(),
-        value: parts[2].to_string(),
-        reason: format!("{}", e),
-    })?;
+    let window_secs: u64 =
+        parts[2]
+            .trim()
+            .parse()
+            .map_err(|e| PolicyParseError::InvalidWindow {
+                spec: spec.to_string(),
+                value: parts[2].to_string(),
+                reason: format!("{}", e),
+            })?;
 
     if window_secs < 1 {
         return Err(PolicyParseError::WindowTooSmall { window_secs });
@@ -1040,7 +1083,11 @@ pub fn parse_path_policies(policies_str: &str) -> (Vec<PathPolicy>, Vec<String>)
     let mut policies = Vec::new();
     let mut warnings = Vec::new();
 
-    for spec in policies_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    for spec in policies_str
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         match parse_path_policy(spec) {
             Ok(policy) => policies.push(policy),
             Err(e) => warnings.push(format!("Skipping invalid path policy '{}': {}", spec, e)),
@@ -1064,11 +1111,18 @@ pub fn parse_key_policies(policies_str: &str) -> (HashMap<String, (u32, Duration
     let mut policies = HashMap::new();
     let mut warnings = Vec::new();
 
-    for spec in policies_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    for spec in policies_str
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         match parse_key_policy(spec) {
             Ok((key, value)) => {
                 if policies.contains_key(&key) {
-                    warnings.push(format!("Duplicate key '{}' in policies, using last value", key));
+                    warnings.push(format!(
+                        "Duplicate key '{}' in policies, using last value",
+                        key
+                    ));
                 }
                 policies.insert(key, value);
             }
@@ -1142,13 +1196,19 @@ mod policy_parsing_tests {
     #[test]
     fn test_parse_path_policy_invalid_format() {
         let result = parse_path_policy("/api/v1/orders:100");
-        assert!(matches!(result, Err(PolicyParseError::InvalidFormat { .. })));
+        assert!(matches!(
+            result,
+            Err(PolicyParseError::InvalidFormat { .. })
+        ));
     }
 
     #[test]
     fn test_parse_path_policy_no_leading_slash() {
         let result = parse_path_policy("api/v1/orders:100:60");
-        assert!(matches!(result, Err(PolicyParseError::InvalidPathFormat { .. })));
+        assert!(matches!(
+            result,
+            Err(PolicyParseError::InvalidPathFormat { .. })
+        ));
     }
 
     #[test]
@@ -1160,13 +1220,19 @@ mod policy_parsing_tests {
     #[test]
     fn test_parse_path_policy_zero_limit() {
         let result = parse_path_policy("/api:0:60");
-        assert!(matches!(result, Err(PolicyParseError::LimitTooSmall { .. })));
+        assert!(matches!(
+            result,
+            Err(PolicyParseError::LimitTooSmall { .. })
+        ));
     }
 
     #[test]
     fn test_parse_path_policy_zero_window() {
         let result = parse_path_policy("/api:100:0");
-        assert!(matches!(result, Err(PolicyParseError::WindowTooSmall { .. })));
+        assert!(matches!(
+            result,
+            Err(PolicyParseError::WindowTooSmall { .. })
+        ));
     }
 
     #[test]
@@ -1180,7 +1246,7 @@ mod policy_parsing_tests {
     #[test]
     fn test_parse_multiple_path_policies() {
         let (policies, warnings) = parse_path_policies(
-            "/api/v1/orders:100:60,/api/v1/inventory:200:60,invalid,/api/v1/users:50:30"
+            "/api/v1/orders:100:60,/api/v1/inventory:200:60,invalid,/api/v1/users:50:30",
         );
         assert_eq!(policies.len(), 3);
         assert_eq!(warnings.len(), 1);
@@ -1189,9 +1255,8 @@ mod policy_parsing_tests {
 
     #[test]
     fn test_parse_multiple_key_policies() {
-        let (policies, warnings) = parse_key_policies(
-            "key1:100:60,key2:200:60,bad_policy,key3:50:30"
-        );
+        let (policies, warnings) =
+            parse_key_policies("key1:100:60,key2:200:60,bad_policy,key3:50:30");
         assert_eq!(policies.len(), 3);
         assert_eq!(warnings.len(), 1);
     }

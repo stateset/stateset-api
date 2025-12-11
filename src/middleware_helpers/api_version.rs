@@ -124,10 +124,7 @@ pub async fn api_version_middleware(request: Request, next: Next) -> Response {
 
     // Check if version is supported
     if !requested_version.is_supported() {
-        warn!(
-            "Unsupported API version requested: {}",
-            requested_version
-        );
+        warn!("Unsupported API version requested: {}", requested_version);
         return (
             StatusCode::GONE,
             format!(
@@ -147,27 +144,18 @@ pub async fn api_version_middleware(request: Request, next: Next) -> Response {
 
     // Current API version
     if let Ok(value) = HeaderValue::from_str(&ApiVersion::current().to_string()) {
-        headers.insert(
-            HeaderName::from_static(API_VERSION_RESPONSE_HEADER),
-            value,
-        );
+        headers.insert(HeaderName::from_static(API_VERSION_RESPONSE_HEADER), value);
     }
 
     // Add deprecation warning if using old version
     if requested_version.is_deprecated() {
-        warn!(
-            "Deprecated API version in use: {}",
-            requested_version
-        );
+        warn!("Deprecated API version in use: {}", requested_version);
         if let Ok(value) = HeaderValue::from_str(&format!(
             "API version {} is deprecated. Please upgrade to version {}",
             requested_version,
             ApiVersion::current()
         )) {
-            headers.insert(
-                HeaderName::from_static(API_DEPRECATION_HEADER),
-                value,
-            );
+            headers.insert(HeaderName::from_static(API_DEPRECATION_HEADER), value);
         }
     }
 
@@ -176,9 +164,7 @@ pub async fn api_version_middleware(request: Request, next: Next) -> Response {
 
 /// Get available API versions
 pub fn available_versions() -> Vec<ApiVersion> {
-    vec![
-        ApiVersion::new(1, 0, 0),
-    ]
+    vec![ApiVersion::new(1, 0, 0)]
 }
 
 /// API version info for documentation
@@ -224,10 +210,7 @@ mod tests {
             ApiVersion::from_str("v1.2.3").unwrap(),
             ApiVersion::new(1, 2, 3)
         );
-        assert_eq!(
-            ApiVersion::from_str("2").unwrap(),
-            ApiVersion::new(2, 0, 0)
-        );
+        assert_eq!(ApiVersion::from_str("2").unwrap(), ApiVersion::new(2, 0, 0));
         assert_eq!(
             ApiVersion::from_str("1.5").unwrap(),
             ApiVersion::new(1, 5, 0)

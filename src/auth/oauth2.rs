@@ -341,10 +341,7 @@ impl OAuth2StateStore {
     }
 
     /// Retrieve and remove a PKCE verifier for a state token
-    pub async fn take_verifier(
-        &self,
-        state: &str,
-    ) -> Option<(PkceCodeVerifier, OAuth2Provider)> {
+    pub async fn take_verifier(&self, state: &str) -> Option<(PkceCodeVerifier, OAuth2Provider)> {
         let mut store = self.verifiers.write().await;
         store.remove(state)
     }
@@ -360,7 +357,10 @@ impl OAuth2StateStore {
             for key in to_remove {
                 store.remove(&key);
             }
-            warn!("OAuth2 state store cleanup: removed {} entries", store.len());
+            warn!(
+                "OAuth2 state store cleanup: removed {} entries",
+                store.len()
+            );
         }
     }
 }
@@ -574,7 +574,10 @@ impl OAuth2Service {
     }
 
     /// Parse Google user info response
-    fn parse_google_user_info(&self, raw: &serde_json::Value) -> Result<OAuth2UserInfo, OAuth2Error> {
+    fn parse_google_user_info(
+        &self,
+        raw: &serde_json::Value,
+    ) -> Result<OAuth2UserInfo, OAuth2Error> {
         Ok(OAuth2UserInfo {
             provider_user_id: raw["sub"]
                 .as_str()
@@ -699,7 +702,9 @@ impl OAuth2Service {
             .or_else(|| raw["id"].as_str())
             .or_else(|| raw["user_id"].as_str())
             .ok_or_else(|| {
-                OAuth2Error::UserInfoFailed("Missing user ID field (sub, id, or user_id)".to_string())
+                OAuth2Error::UserInfoFailed(
+                    "Missing user ID field (sub, id, or user_id)".to_string(),
+                )
             })?;
 
         Ok(OAuth2UserInfo {
@@ -736,9 +741,18 @@ mod tests {
 
     #[test]
     fn test_provider_from_str() {
-        assert_eq!("google".parse::<OAuth2Provider>().unwrap(), OAuth2Provider::Google);
-        assert_eq!("GitHub".parse::<OAuth2Provider>().unwrap(), OAuth2Provider::GitHub);
-        assert_eq!("MICROSOFT".parse::<OAuth2Provider>().unwrap(), OAuth2Provider::Microsoft);
+        assert_eq!(
+            "google".parse::<OAuth2Provider>().unwrap(),
+            OAuth2Provider::Google
+        );
+        assert_eq!(
+            "GitHub".parse::<OAuth2Provider>().unwrap(),
+            OAuth2Provider::GitHub
+        );
+        assert_eq!(
+            "MICROSOFT".parse::<OAuth2Provider>().unwrap(),
+            OAuth2Provider::Microsoft
+        );
         assert!("invalid".parse::<OAuth2Provider>().is_err());
     }
 
@@ -799,7 +813,9 @@ mod tests {
         let store = OAuth2StateStore::new();
         let verifier = PkceCodeVerifier::new("test_verifier".to_string());
 
-        store.store_verifier("state1".to_string(), verifier, OAuth2Provider::Google).await;
+        store
+            .store_verifier("state1".to_string(), verifier, OAuth2Provider::Google)
+            .await;
 
         let result = store.take_verifier("state1").await;
         assert!(result.is_some());

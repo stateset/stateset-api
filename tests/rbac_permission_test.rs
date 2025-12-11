@@ -223,11 +223,7 @@ async fn test_invalid_token_access_denied() {
         )
         .await;
 
-    assert_eq!(
-        response.status(),
-        401,
-        "Invalid token should be denied"
-    );
+    assert_eq!(response.status(), 401, "Invalid token should be denied");
 }
 
 // ==================== Resource Ownership Tests ====================
@@ -289,10 +285,9 @@ async fn test_admin_role_present_in_token() {
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() == 3 {
         // JWT has 3 parts
-        if let Ok(payload) = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD_NO_PAD,
-            parts[1],
-        ) {
+        if let Ok(payload) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD_NO_PAD, parts[1])
+        {
             if let Ok(claims) = serde_json::from_slice::<Value>(&payload) {
                 let roles = claims["roles"].as_array();
                 if let Some(roles) = roles {
@@ -316,18 +311,15 @@ async fn test_permission_list_in_token() {
     // Parse the JWT payload
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() == 3 {
-        if let Ok(payload) = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD_NO_PAD,
-            parts[1],
-        ) {
+        if let Ok(payload) =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD_NO_PAD, parts[1])
+        {
             if let Ok(claims) = serde_json::from_slice::<Value>(&payload) {
                 let permissions = claims["permissions"].as_array();
                 if let Some(permissions) = permissions {
                     // Verify expected permissions are present
-                    let perm_strings: Vec<&str> = permissions
-                        .iter()
-                        .filter_map(|p| p.as_str())
-                        .collect();
+                    let perm_strings: Vec<&str> =
+                        permissions.iter().filter_map(|p| p.as_str()).collect();
 
                     assert!(
                         perm_strings.contains(&"orders:read"),
@@ -517,11 +509,7 @@ async fn test_fine_grained_permissions() {
         .request_authenticated(Method::GET, "/api/v1/orders", None)
         .await;
 
-    assert_eq!(
-        list_response.status(),
-        200,
-        "List requires orders:read"
-    );
+    assert_eq!(list_response.status(), 200, "List requires orders:read");
 
     // Create order (orders:create)
     let variant = app

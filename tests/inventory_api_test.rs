@@ -62,9 +62,7 @@ async fn inventory_item_lifecycle() {
     // Fetch the item by ID
     let url = format!("/api/v1/inventory/{}", inventory_item_id);
     eprintln!("Fetching from URL: {}", url);
-    let response = app
-        .request_authenticated(Method::GET, &url, None)
-        .await;
+    let response = app.request_authenticated(Method::GET, &url, None).await;
     eprintln!("GET status: {}", response.status());
     let status = response.status();
     let fetched = response_json(response).await;

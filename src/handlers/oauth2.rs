@@ -145,12 +145,10 @@ pub async fn get_authorize_url(
     State(state): State<OAuth2State>,
     Path(provider): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let provider: OAuth2Provider = provider
-        .parse()
-        .map_err(|_| ApiError::BadRequest {
-            message: format!("Unknown OAuth2 provider: {}", provider),
-            error_code: Some("invalid_provider".to_string()),
-        })?;
+    let provider: OAuth2Provider = provider.parse().map_err(|_| ApiError::BadRequest {
+        message: format!("Unknown OAuth2 provider: {}", provider),
+        error_code: Some("invalid_provider".to_string()),
+    })?;
 
     let auth_response = state
         .oauth2_service
@@ -182,7 +180,10 @@ pub async fn handle_callback(
 ) -> Result<impl IntoResponse, ApiError> {
     // Check for OAuth2 error response
     if let Some(error) = &query.error {
-        let description = query.error_description.as_deref().unwrap_or("Unknown error");
+        let description = query
+            .error_description
+            .as_deref()
+            .unwrap_or("Unknown error");
         warn!(
             provider = %provider,
             error = %error,
@@ -254,7 +255,10 @@ pub async fn handle_callback(
     );
 
     // Redirect to frontend without exposing tokens in the URL; deliver via HttpOnly cookies
-    let redirect_url = format!("{}?provider={}&status=success", state.frontend_url, provider);
+    let redirect_url = format!(
+        "{}?provider={}&status=success",
+        state.frontend_url, provider
+    );
     let mut response = Redirect::temporary(&redirect_url).into_response();
     append_token_cookies(
         &mut response,
@@ -340,7 +344,10 @@ pub async fn exchange_token(
 }
 
 /// Generate JWT tokens for authenticated user
-fn generate_tokens(state: &OAuth2State, user_info: &OAuth2UserInfo) -> Result<(String, String), ApiError> {
+fn generate_tokens(
+    state: &OAuth2State,
+    user_info: &OAuth2UserInfo,
+) -> Result<(String, String), ApiError> {
     let now = Utc::now();
     let exp = (now + Duration::seconds(state.jwt_expiration)).timestamp();
     let jti = Uuid::new_v4().to_string();
@@ -388,10 +395,16 @@ fn append_token_cookies(
 
     for (name, value, max_age) in [
         ("stateset_access_token", access_token, access_max_age),
-        ("stateset_refresh_token", refresh_token, REFRESH_COOKIE_MAX_AGE_SECS),
+        (
+            "stateset_refresh_token",
+            refresh_token,
+            REFRESH_COOKIE_MAX_AGE_SECS,
+        ),
     ] {
         if let Ok(header_value) = build_cookie(name, value, max_age, secure) {
-            response.headers_mut().append(header::SET_COOKIE, header_value);
+            response
+                .headers_mut()
+                .append(header::SET_COOKIE, header_value);
         } else {
             warn!(cookie = %name, "Failed to set auth cookie");
         }

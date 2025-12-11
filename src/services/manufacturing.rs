@@ -1,7 +1,7 @@
 use chrono::{NaiveDate, Utc};
 use metrics::{counter, histogram};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
@@ -434,12 +434,14 @@ impl ManufacturingService {
             counter!("manufacturing.work_orders.completed", 1);
 
             // Calculate cycle time if we have both start and completion dates
-            if let (Some(start), Some(end)) = (
-                updated.actual_start_date,
-                updated.actual_completion_date,
-            ) {
+            if let (Some(start), Some(end)) =
+                (updated.actual_start_date, updated.actual_completion_date)
+            {
                 let cycle_time_days = (end - start).num_days();
-                histogram!("manufacturing.work_orders.cycle_time_days", cycle_time_days as f64);
+                histogram!(
+                    "manufacturing.work_orders.cycle_time_days",
+                    cycle_time_days as f64
+                );
             }
         } else {
             counter!("manufacturing.work_orders.partially_completed", 1);
@@ -454,7 +456,10 @@ impl ManufacturingService {
             let yield_percentage = (total_completed / planned_qty * Decimal::from(100))
                 .to_f64()
                 .unwrap_or(0.0);
-            histogram!("manufacturing.work_orders.yield_percentage", yield_percentage);
+            histogram!(
+                "manufacturing.work_orders.yield_percentage",
+                yield_percentage
+            );
         }
 
         // Send event
@@ -603,10 +608,9 @@ impl ManufacturingService {
             })?;
 
         // Can only hold work orders that are READY or IN_PROGRESS
-        let current_status = work_order
-            .status_code
-            .as_ref()
-            .ok_or_else(|| ServiceError::InvalidOperation("Work order has no status".to_string()))?;
+        let current_status = work_order.status_code.as_ref().ok_or_else(|| {
+            ServiceError::InvalidOperation("Work order has no status".to_string())
+        })?;
 
         if current_status != "READY" && current_status != "IN_PROGRESS" {
             return Err(ServiceError::InvalidOperation(format!(

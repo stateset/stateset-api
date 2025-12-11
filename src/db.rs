@@ -46,7 +46,7 @@ impl Default for RetryConfig {
 /// Determines if an error is retryable (transient)
 fn is_retryable_error(err: &DbErr) -> bool {
     match err {
-        DbErr::Conn(_) => true, // Connection errors are retryable
+        DbErr::Conn(_) => true,              // Connection errors are retryable
         DbErr::ConnectionAcquire(_) => true, // Pool exhaustion is retryable
         DbErr::Query(ref runtime_err) => {
             let msg = runtime_err.to_string().to_lowercase();
@@ -118,7 +118,8 @@ where
 
                 // Exponential backoff with max cap
                 delay = Duration::from_secs_f64(
-                    (delay.as_secs_f64() * config.backoff_multiplier).min(config.max_delay.as_secs_f64())
+                    (delay.as_secs_f64() * config.backoff_multiplier)
+                        .min(config.max_delay.as_secs_f64()),
                 );
             }
         }
@@ -471,10 +472,16 @@ impl DatabaseAccess {
         });
 
         let elapsed = start.elapsed();
-        gauge!("stateset_db.health_check.latency_ms", elapsed.as_millis() as f64);
+        gauge!(
+            "stateset_db.health_check.latency_ms",
+            elapsed.as_millis() as f64
+        );
 
         if result.is_ok() {
-            debug!(latency_ms = elapsed.as_millis() as u64, "Database health check passed");
+            debug!(
+                latency_ms = elapsed.as_millis() as u64,
+                "Database health check passed"
+            );
             counter!("stateset_db.health_check.passed", 1);
         }
 
@@ -747,12 +754,18 @@ impl ResilientDatabaseAccess {
 
         let result = db.ping().await;
         let elapsed = start.elapsed();
-        gauge!("stateset_db.health_check.latency_ms", elapsed.as_millis() as f64);
+        gauge!(
+            "stateset_db.health_check.latency_ms",
+            elapsed.as_millis() as f64
+        );
 
         match result {
             Ok(_) => {
                 self.circuit_breaker.on_success();
-                debug!(latency_ms = elapsed.as_millis() as u64, "Database health check passed");
+                debug!(
+                    latency_ms = elapsed.as_millis() as u64,
+                    "Database health check passed"
+                );
                 counter!("stateset_db.health_check.passed", 1);
                 Ok(())
             }

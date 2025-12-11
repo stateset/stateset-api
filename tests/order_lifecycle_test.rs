@@ -68,14 +68,8 @@ async fn test_order_lifecycle_pending_to_confirmed() {
     // May or may not have confirm endpoint
     if confirm_response.status() == 200 {
         let body = response_json(confirm_response).await;
-        let status = body["data"]["status"]
-            .as_str()
-            .unwrap_or("")
-            .to_lowercase();
-        assert!(
-            status.contains("confirm"),
-            "Order should be confirmed"
-        );
+        let status = body["data"]["status"].as_str().unwrap_or("").to_lowercase();
+        assert!(status.contains("confirm"), "Order should be confirmed");
     }
 }
 
@@ -85,7 +79,9 @@ async fn test_order_lifecycle_full_flow() {
     let app = TestApp::new().await;
 
     // Step 1: Create order
-    let variant = app.seed_product_variant("LIFE-FULL-SKU", dec!(100.00)).await;
+    let variant = app
+        .seed_product_variant("LIFE-FULL-SKU", dec!(100.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "fullflow@test.com",
@@ -134,7 +130,11 @@ async fn test_order_lifecycle_full_flow() {
         .request_authenticated(Method::GET, &format!("/api/v1/orders/{}", order_id), None)
         .await;
 
-    assert_eq!(get_response.status(), 200, "Should be able to retrieve order");
+    assert_eq!(
+        get_response.status(),
+        200,
+        "Should be able to retrieve order"
+    );
 }
 
 #[tokio::test]
@@ -199,7 +199,9 @@ async fn test_order_cancellation() {
     let app = TestApp::new().await;
 
     // Create order
-    let variant = app.seed_product_variant("LIFE-CANCEL-SKU", dec!(60.00)).await;
+    let variant = app
+        .seed_product_variant("LIFE-CANCEL-SKU", dec!(60.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "cancel@test.com",
@@ -237,14 +239,8 @@ async fn test_order_cancellation() {
     // Cancel endpoint may or may not exist
     if cancel_response.status() == 200 {
         let body = response_json(cancel_response).await;
-        let status = body["data"]["status"]
-            .as_str()
-            .unwrap_or("")
-            .to_lowercase();
-        assert!(
-            status.contains("cancel"),
-            "Order should be cancelled"
-        );
+        let status = body["data"]["status"].as_str().unwrap_or("").to_lowercase();
+        assert!(status.contains("cancel"), "Order should be cancelled");
     }
 }
 
@@ -353,7 +349,9 @@ async fn test_order_archival() {
 async fn test_order_status_transitions() {
     let app = TestApp::new().await;
 
-    let variant = app.seed_product_variant("LIFE-TRANS-SKU", dec!(80.00)).await;
+    let variant = app
+        .seed_product_variant("LIFE-TRANS-SKU", dec!(80.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "transition@test.com",
@@ -532,7 +530,9 @@ async fn test_order_refund_flow() {
     let app = TestApp::new().await;
 
     // Create and pay for order
-    let variant = app.seed_product_variant("LIFE-REFUND-SKU", dec!(90.00)).await;
+    let variant = app
+        .seed_product_variant("LIFE-REFUND-SKU", dec!(90.00))
+        .await;
 
     let order_payload = json!({
         "customer_email": "refund@test.com",
@@ -638,7 +638,9 @@ async fn test_order_add_notes() {
 
     // Notes endpoint may or may not exist
     assert!(
-        note_response.status() == 200 || note_response.status() == 201 || note_response.status() == 404,
+        note_response.status() == 200
+            || note_response.status() == 201
+            || note_response.status() == 404,
         "Note should be added or endpoint not found"
     );
 }
@@ -698,7 +700,9 @@ async fn test_order_list_with_filters() {
 async fn test_order_idempotency() {
     let app = TestApp::new().await;
 
-    let variant = app.seed_product_variant("LIFE-IDEMP-SKU", dec!(65.00)).await;
+    let variant = app
+        .seed_product_variant("LIFE-IDEMP-SKU", dec!(65.00))
+        .await;
     let idempotency_key = uuid::Uuid::new_v4().to_string();
 
     let order_payload = json!({

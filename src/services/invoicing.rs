@@ -33,10 +33,10 @@ impl InvoicingService {
 
 #[cfg(test)]
 mod tests {
-    use uuid::Uuid;
+    use chrono::{Duration, Utc};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
-    use chrono::{Duration, Utc};
+    use uuid::Uuid;
 
     // ========================================
     // Invoice ID Generation Tests
@@ -261,10 +261,7 @@ mod tests {
 
     #[test]
     fn test_collection_methods() {
-        let methods = vec![
-            "charge_automatically",
-            "send_invoice",
-        ];
+        let methods = vec!["charge_automatically", "send_invoice"];
 
         assert!(methods.len() >= 2);
     }

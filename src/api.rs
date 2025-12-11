@@ -164,7 +164,7 @@ fn balance_to_proto_item(
         item_number: item_number.to_string(),
         description: description.unwrap_or("").to_string(),
         primary_uom_code: "EA".to_string(), // Default to "Each"
-        organization_id: 1, // Default organization
+        organization_id: 1,                 // Default organization
         quantities: Some(InventoryQuantities {
             on_hand: balance.quantity_on_hand.to_string(),
             allocated: balance.quantity_allocated.to_string(),
@@ -434,37 +434,61 @@ impl inventory_service_server::InventoryService for StateSetApi {
         let req = request.into_inner();
 
         let identifier = match req.identifier {
-            Some(get_inventory_request::Identifier::InventoryItemId(id)) => InventoryIdentifier::Id(id),
-            Some(get_inventory_request::Identifier::ItemNumber(num)) => InventoryIdentifier::Number(num),
-            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+            Some(get_inventory_request::Identifier::InventoryItemId(id)) => {
+                InventoryIdentifier::Id(id)
+            }
+            Some(get_inventory_request::Identifier::ItemNumber(num)) => {
+                InventoryIdentifier::Number(num)
+            }
+            None => {
+                return Err(Status::invalid_argument(
+                    "Either inventory_item_id or item_number must be provided",
+                ))
+            }
         };
 
         let snapshot = fetch_inventory_snapshot(&self.inventory_service, identifier).await?;
 
         // Build the full item with all locations
-        let locations: Vec<InventoryLocation> = snapshot.locations.iter().map(|balance| {
-            InventoryLocation {
+        let locations: Vec<InventoryLocation> = snapshot
+            .locations
+            .iter()
+            .map(|balance| InventoryLocation {
                 location_id: balance.location_id,
-                location_name: balance.location_name.clone().unwrap_or_else(|| "unknown".to_string()),
+                location_name: balance
+                    .location_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
                 quantities: Some(InventoryQuantities {
                     on_hand: balance.quantity_on_hand.to_string(),
                     allocated: balance.quantity_allocated.to_string(),
                     available: balance.quantity_available.to_string(),
                 }),
                 updated_at: Some(timestamp_from(balance.updated_at)),
-            }
-        }).collect();
+            })
+            .collect();
 
         // Calculate total quantities across all locations
         let total_on_hand: Decimal = snapshot.locations.iter().map(|b| b.quantity_on_hand).sum();
-        let total_allocated: Decimal = snapshot.locations.iter().map(|b| b.quantity_allocated).sum();
-        let total_available: Decimal = snapshot.locations.iter().map(|b| b.quantity_available).sum();
+        let total_allocated: Decimal = snapshot
+            .locations
+            .iter()
+            .map(|b| b.quantity_allocated)
+            .sum();
+        let total_available: Decimal = snapshot
+            .locations
+            .iter()
+            .map(|b| b.quantity_available)
+            .sum();
 
         let item = InventoryItem {
             inventory_item_id: snapshot.inventory_item_id,
             item_number: snapshot.item_number.clone(),
             description: snapshot.description.clone().unwrap_or_default(),
-            primary_uom_code: snapshot.primary_uom_code.clone().unwrap_or_else(|| "EA".to_string()),
+            primary_uom_code: snapshot
+                .primary_uom_code
+                .clone()
+                .unwrap_or_else(|| "EA".to_string()),
             organization_id: snapshot.organization_id,
             quantities: Some(InventoryQuantities {
                 on_hand: total_on_hand.to_string(),
@@ -477,7 +501,10 @@ impl inventory_service_server::InventoryService for StateSetApi {
         Ok(Response::new(GetInventoryResponse { item: Some(item) }))
     }
 
-    #[instrument(skip(self, request), fields(inventory_item_id, location_id, quantity_delta))]
+    #[instrument(
+        skip(self, request),
+        fields(inventory_item_id, location_id, quantity_delta)
+    )]
     async fn adjust_inventory(
         &self,
         request: Request<AdjustInventoryRequest>,
@@ -487,13 +514,20 @@ impl inventory_service_server::InventoryService for StateSetApi {
         let (inventory_item_id, item_number) = match req.identifier {
             Some(adjust_inventory_request::Identifier::InventoryItemId(id)) => (Some(id), None),
             Some(adjust_inventory_request::Identifier::ItemNumber(num)) => (None, Some(num)),
-            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+            None => {
+                return Err(Status::invalid_argument(
+                    "Either inventory_item_id or item_number must be provided",
+                ))
+            }
         };
 
-        let quantity_delta = req.quantity_delta.parse::<rust_decimal::Decimal>()
+        let quantity_delta = req
+            .quantity_delta
+            .parse::<rust_decimal::Decimal>()
             .map_err(|_| Status::invalid_argument("Invalid quantity_delta"))?;
 
-        let balance = self.inventory_service
+        let balance = self
+            .inventory_service
             .adjust_inventory(AdjustInventoryCommand {
                 inventory_item_id,
                 item_number,
@@ -535,13 +569,20 @@ impl inventory_service_server::InventoryService for StateSetApi {
         let (inventory_item_id, item_number) = match req.identifier {
             Some(release_reservation_request::Identifier::InventoryItemId(id)) => (Some(id), None),
             Some(release_reservation_request::Identifier::ItemNumber(num)) => (None, Some(num)),
-            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+            None => {
+                return Err(Status::invalid_argument(
+                    "Either inventory_item_id or item_number must be provided",
+                ))
+            }
         };
 
-        let quantity = req.quantity.parse::<rust_decimal::Decimal>()
+        let quantity = req
+            .quantity
+            .parse::<rust_decimal::Decimal>()
             .map_err(|_| Status::invalid_argument("Invalid quantity"))?;
 
-        let balance = self.inventory_service
+        let balance = self
+            .inventory_service
             .release_reservation(crate::services::inventory::ReleaseReservationCommand {
                 inventory_item_id,
                 item_number,
@@ -571,17 +612,23 @@ impl inventory_service_server::InventoryService for StateSetApi {
         }))
     }
 
-    #[instrument(skip(self, request), fields(inventory_item_id, from_location_id, to_location_id))]
+    #[instrument(
+        skip(self, request),
+        fields(inventory_item_id, from_location_id, to_location_id)
+    )]
     async fn transfer_inventory(
         &self,
         request: Request<TransferInventoryRequest>,
     ) -> Result<Response<TransferInventoryResponse>, Status> {
         let req = request.into_inner();
 
-        let quantity = req.quantity.parse::<rust_decimal::Decimal>()
+        let quantity = req
+            .quantity
+            .parse::<rust_decimal::Decimal>()
             .map_err(|_| Status::invalid_argument("Invalid quantity"))?;
 
-        let _ = self.inventory_service
+        let _ = self
+            .inventory_service
             .transfer_inventory(
                 req.inventory_item_id,
                 req.from_location_id,
@@ -594,9 +641,7 @@ impl inventory_service_server::InventoryService for StateSetApi {
                 e.into_grpc_status()
             })?;
 
-        Ok(Response::new(TransferInventoryResponse {
-            success: true,
-        }))
+        Ok(Response::new(TransferInventoryResponse { success: true }))
     }
 
     async fn list_inventory(
@@ -667,7 +712,10 @@ impl inventory_service_server::InventoryService for StateSetApi {
 
             // Apply low stock filter if specified
             if let Some(threshold) = low_stock_threshold {
-                if filtered_locations.iter().all(|b| b.quantity_available >= threshold) {
+                if filtered_locations
+                    .iter()
+                    .all(|b| b.quantity_available >= threshold)
+                {
                     continue;
                 }
             }
@@ -677,28 +725,42 @@ impl inventory_service_server::InventoryService for StateSetApi {
             }
 
             // Build item with filtered locations
-            let locations: Vec<InventoryLocation> = filtered_locations.iter().map(|balance| {
-                InventoryLocation {
+            let locations: Vec<InventoryLocation> = filtered_locations
+                .iter()
+                .map(|balance| InventoryLocation {
                     location_id: balance.location_id,
-                    location_name: balance.location_name.clone().unwrap_or_else(|| "unknown".to_string()),
+                    location_name: balance
+                        .location_name
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
                     quantities: Some(InventoryQuantities {
                         on_hand: balance.quantity_on_hand.to_string(),
                         allocated: balance.quantity_allocated.to_string(),
                         available: balance.quantity_available.to_string(),
                     }),
                     updated_at: Some(timestamp_from(balance.updated_at)),
-                }
-            }).collect();
+                })
+                .collect();
 
-            let total_on_hand: Decimal = filtered_locations.iter().map(|b| b.quantity_on_hand).sum();
-            let total_allocated: Decimal = filtered_locations.iter().map(|b| b.quantity_allocated).sum();
-            let total_available: Decimal = filtered_locations.iter().map(|b| b.quantity_available).sum();
+            let total_on_hand: Decimal =
+                filtered_locations.iter().map(|b| b.quantity_on_hand).sum();
+            let total_allocated: Decimal = filtered_locations
+                .iter()
+                .map(|b| b.quantity_allocated)
+                .sum();
+            let total_available: Decimal = filtered_locations
+                .iter()
+                .map(|b| b.quantity_available)
+                .sum();
 
             items.push(InventoryItem {
                 inventory_item_id: snapshot.inventory_item_id,
                 item_number: snapshot.item_number.clone(),
                 description: snapshot.description.clone().unwrap_or_default(),
-                primary_uom_code: snapshot.primary_uom_code.clone().unwrap_or_else(|| "EA".to_string()),
+                primary_uom_code: snapshot
+                    .primary_uom_code
+                    .clone()
+                    .unwrap_or_else(|| "EA".to_string()),
                 organization_id: snapshot.organization_id,
                 quantities: Some(InventoryQuantities {
                     on_hand: total_on_hand.to_string(),
@@ -724,16 +786,26 @@ impl inventory_service_server::InventoryService for StateSetApi {
         let req = request.into_inner();
 
         let identifier = match req.identifier {
-            Some(reserve_inventory_request::Identifier::InventoryItemId(id)) => InventoryIdentifier::Id(id),
-            Some(reserve_inventory_request::Identifier::ItemNumber(num)) => InventoryIdentifier::Number(num),
-            None => return Err(Status::invalid_argument("Either inventory_item_id or item_number must be provided")),
+            Some(reserve_inventory_request::Identifier::InventoryItemId(id)) => {
+                InventoryIdentifier::Id(id)
+            }
+            Some(reserve_inventory_request::Identifier::ItemNumber(num)) => {
+                InventoryIdentifier::Number(num)
+            }
+            None => {
+                return Err(Status::invalid_argument(
+                    "Either inventory_item_id or item_number must be provided",
+                ))
+            }
         };
 
         let snapshot = fetch_inventory_snapshot(&self.inventory_service, identifier).await?;
 
         let location_id = req.location_id;
 
-        let quantity = req.quantity.parse::<Decimal>()
+        let quantity = req
+            .quantity
+            .parse::<Decimal>()
             .map_err(|_| Status::invalid_argument("Invalid quantity format"))?;
 
         let reference_id = if !req.reference_id.is_empty() {

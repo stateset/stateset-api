@@ -573,7 +573,10 @@ pub async fn update_asn(
         )
     });
 
-    let tracking_number = payload.carrier.as_ref().and_then(|c| c.tracking_number.clone());
+    let tracking_number = payload
+        .carrier
+        .as_ref()
+        .and_then(|c| c.tracking_number.clone());
 
     state
         .services
@@ -607,7 +610,11 @@ pub async fn update_asn(
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CancelAsnRequest {
     pub version: i32,
-    #[validate(length(min = 1, max = 500, message = "Reason must be between 1 and 500 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 500,
+        message = "Reason must be between 1 and 500 characters"
+    ))]
     pub reason: String,
     #[serde(default)]
     pub notify_supplier: bool,
@@ -678,7 +685,11 @@ pub async fn cancel_asn(
 #[derive(Debug, Serialize, Deserialize, Validate, ToSchema)]
 pub struct HoldAsnRequest {
     pub version: i32,
-    #[validate(length(min = 1, max = 500, message = "Reason must be between 1 and 500 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 500,
+        message = "Reason must be between 1 and 500 characters"
+    ))]
     pub reason: String,
 }
 

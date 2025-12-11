@@ -124,7 +124,9 @@ impl SubmitPurchaseOrderCommand {
             .one(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?
-            .ok_or_else(|| ServiceError::NotFound(format!("Purchase order {} not found", self.id)))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Purchase order {} not found", self.id))
+            })?;
 
         let mut po: purchase_order_entity::ActiveModel = po.into();
         po.status = Set(PurchaseOrderStatus::Submitted);

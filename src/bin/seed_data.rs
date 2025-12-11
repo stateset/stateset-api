@@ -78,9 +78,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn create_products(
-    db: &sea_orm::DatabaseConnection,
-) -> anyhow::Result<Vec<product::Model>> {
+async fn create_products(db: &sea_orm::DatabaseConnection) -> anyhow::Result<Vec<product::Model>> {
     let products_data = vec![
         // Electronics
         ("Wireless Bluetooth Headphones", "WBH-001", dec!(79.99), "High-quality over-ear headphones with 30-hour battery life and active noise cancellation.", "Electronics,Audio"),
@@ -143,7 +141,12 @@ async fn create_customers(
     let customers_data = vec![
         ("alice@example.com", "Alice", "Johnson", Some("+1-555-0101")),
         ("bob@example.com", "Bob", "Smith", Some("+1-555-0102")),
-        ("carol@example.com", "Carol", "Williams", Some("+1-555-0103")),
+        (
+            "carol@example.com",
+            "Carol",
+            "Williams",
+            Some("+1-555-0103"),
+        ),
         ("david@example.com", "David", "Brown", None),
         ("eva@example.com", "Eva", "Martinez", Some("+1-555-0105")),
     ];

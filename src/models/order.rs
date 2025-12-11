@@ -312,11 +312,11 @@ impl Model {
 #[cfg(all(test, feature = "mock-tests"))]
 mod tests {
     use super::*;
+    use crate::models::order_line_item::{Model as OrderLineItemModel, OrderLineItemStatus};
     use chrono::Duration;
     use sea_orm::Set;
     use sea_orm::{DbBackend, EntityTrait, QueryTrait};
     use validator::Validate;
-    use crate::models::order_line_item::{Model as OrderLineItemModel, OrderLineItemStatus};
 
     /// Helper function to create a valid order.
     fn create_valid_order() -> Model {

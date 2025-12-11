@@ -37,9 +37,9 @@ pub mod cash_sale;
 pub mod invoicing;
 pub mod payments;
 pub mod promotions;
-pub mod stablepay_service;
 pub mod stablepay_crypto_service;
 pub mod stablepay_reconciliation_service;
+pub mod stablepay_service;
 pub mod stateset_blockchain_service;
 
 // Analytics and Reporting

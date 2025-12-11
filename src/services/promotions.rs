@@ -1,6 +1,8 @@
 use crate::{
     errors::ServiceError,
-    models::promotion_entity::{Entity as Promotion, Model as PromotionModel, PromotionStatus, PromotionType},
+    models::promotion_entity::{
+        Entity as Promotion, Model as PromotionModel, PromotionStatus, PromotionType,
+    },
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
@@ -118,7 +120,9 @@ impl PromotionService {
         let promotion = Promotion::find_by_id(promotion_id)
             .one(&self.db)
             .await?
-            .ok_or_else(|| ServiceError::NotFound(format!("Promotion {} not found", promotion_id)))?;
+            .ok_or_else(|| {
+                ServiceError::NotFound(format!("Promotion {} not found", promotion_id))
+            })?;
 
         let current_usage_count = promotion.usage_count;
         let mut active_promotion: ActiveModel = promotion.into();

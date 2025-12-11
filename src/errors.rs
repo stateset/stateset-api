@@ -361,7 +361,9 @@ impl ServiceError {
             Self::Conflict(_) | Self::ConcurrentModification(_) => StatusCode::CONFLICT,
             Self::InsufficientStock(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::PaymentFailed(_) => StatusCode::PAYMENT_REQUIRED,
-            Self::CircuitBreakerOpen | Self::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::CircuitBreakerOpen | Self::ServiceUnavailable(_) => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
         }
     }
 
@@ -447,9 +449,10 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         // Delegate to ServiceError's unified status/message methods when applicable
         let (status, error_message) = match &self {
-            ApiError::ServiceError(service_error) => {
-                (service_error.status_code(), service_error.response_message())
-            }
+            ApiError::ServiceError(service_error) => (
+                service_error.status_code(),
+                service_error.response_message(),
+            ),
             ApiError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
@@ -548,17 +551,50 @@ mod tests {
     #[test]
     fn service_error_status_code_mapping() {
         // Test all major error variants map to correct status codes
-        assert_eq!(ServiceError::NotFound("x".into()).status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(ServiceError::ValidationError("x".into()).status_code(), StatusCode::BAD_REQUEST);
-        assert_eq!(ServiceError::Unauthorized("x".into()).status_code(), StatusCode::UNAUTHORIZED);
-        assert_eq!(ServiceError::Forbidden("x".into()).status_code(), StatusCode::FORBIDDEN);
-        assert_eq!(ServiceError::RateLimitExceeded.status_code(), StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(ServiceError::Conflict("x".into()).status_code(), StatusCode::CONFLICT);
-        assert_eq!(ServiceError::InsufficientStock("x".into()).status_code(), StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(ServiceError::PaymentFailed("x".into()).status_code(), StatusCode::PAYMENT_REQUIRED);
-        assert_eq!(ServiceError::CircuitBreakerOpen.status_code(), StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(ServiceError::ExternalServiceError("x".into()).status_code(), StatusCode::BAD_GATEWAY);
-        assert_eq!(ServiceError::InternalServerError.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            ServiceError::NotFound("x".into()).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::ValidationError("x".into()).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Unauthorized("x".into()).status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            ServiceError::Forbidden("x".into()).status_code(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ServiceError::RateLimitExceeded.status_code(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            ServiceError::Conflict("x".into()).status_code(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            ServiceError::InsufficientStock("x".into()).status_code(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            ServiceError::PaymentFailed("x".into()).status_code(),
+            StatusCode::PAYMENT_REQUIRED
+        );
+        assert_eq!(
+            ServiceError::CircuitBreakerOpen.status_code(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
+            ServiceError::ExternalServiceError("x".into()).status_code(),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            ServiceError::InternalServerError.status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 
     #[test]
@@ -610,14 +646,23 @@ mod tests {
         let acp_response = ACPErrorResponse::from(&validation_err);
 
         assert_eq!(acp_response.error.code, "validation_error");
-        assert!(matches!(acp_response.error.error_type, ACPErrorType::InvalidRequestError));
+        assert!(matches!(
+            acp_response.error.error_type,
+            ACPErrorType::InvalidRequestError
+        ));
 
         let auth_err = ServiceError::Unauthorized("invalid token".into());
         let acp_response = ACPErrorResponse::from(&auth_err);
-        assert!(matches!(acp_response.error.error_type, ACPErrorType::AuthenticationError));
+        assert!(matches!(
+            acp_response.error.error_type,
+            ACPErrorType::AuthenticationError
+        ));
 
         let rate_err = ServiceError::RateLimitExceeded;
         let acp_response = ACPErrorResponse::from(&rate_err);
-        assert!(matches!(acp_response.error.error_type, ACPErrorType::RateLimitError));
+        assert!(matches!(
+            acp_response.error.error_type,
+            ACPErrorType::RateLimitError
+        ));
     }
 }

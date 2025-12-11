@@ -146,7 +146,12 @@ impl Model {
     /// Format: NCR-{YEAR}{MONTH}-{SEQUENCE}
     pub fn generate_ncr_number(sequence: u32) -> String {
         let now = Utc::now();
-        format!("NCR-{:04}{:02}-{:05}", now.date_naive().year(), now.date_naive().month(), sequence)
+        format!(
+            "NCR-{:04}{:02}-{:05}",
+            now.date_naive().year(),
+            now.date_naive().month(),
+            sequence
+        )
     }
 
     /// Check if NCR is still open

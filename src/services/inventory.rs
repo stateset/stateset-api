@@ -210,7 +210,8 @@ impl InventoryService {
             if let Ok(id) = product_id_or_number.parse::<i64>() {
                 query = query.filter(item_master::Column::InventoryItemId.eq(id));
             } else {
-                query = query.filter(item_master::Column::ItemNumber.contains(product_id_or_number));
+                query =
+                    query.filter(item_master::Column::ItemNumber.contains(product_id_or_number));
             }
         }
 
@@ -239,9 +240,18 @@ impl InventoryService {
                     continue; // Skip items not in this location
                 }
                 // Recalculate totals for filtered location
-                snapshot.total_on_hand = snapshot.locations.iter().map(|l| l.quantity_on_hand).sum();
-                snapshot.total_allocated = snapshot.locations.iter().map(|l| l.quantity_allocated).sum();
-                snapshot.total_available = snapshot.locations.iter().map(|l| l.quantity_available).sum();
+                snapshot.total_on_hand =
+                    snapshot.locations.iter().map(|l| l.quantity_on_hand).sum();
+                snapshot.total_allocated = snapshot
+                    .locations
+                    .iter()
+                    .map(|l| l.quantity_allocated)
+                    .sum();
+                snapshot.total_available = snapshot
+                    .locations
+                    .iter()
+                    .map(|l| l.quantity_available)
+                    .sum();
             }
 
             // Apply low stock filter if specified
@@ -792,15 +802,20 @@ impl InventoryService {
                     return Err(ServiceError::ValidationError(format!(
                         "Insufficient stock at source location {} for item {}. \
                          Requested: {}, Available: {}, On-hand: {}, Allocated: {}",
-                        from_location, inventory_item_id, quantity, source.quantity_available,
-                        source.quantity_on_hand, source.quantity_allocated
+                        from_location,
+                        inventory_item_id,
+                        quantity,
+                        source.quantity_available,
+                        source.quantity_on_hand,
+                        source.quantity_allocated
                     )));
                 }
 
                 let mut source_active: inventory_balance::ActiveModel = source.clone().into();
                 let new_source_on_hand = source.quantity_on_hand - quantity;
                 source_active.quantity_on_hand = Set(new_source_on_hand);
-                source_active.quantity_available = Set(new_source_on_hand - source.quantity_allocated);
+                source_active.quantity_available =
+                    Set(new_source_on_hand - source.quantity_allocated);
                 // Increment version for optimistic locking
                 source_active.version = Set(source.version + 1);
                 source_active.updated_at = Set(now.into());
@@ -876,8 +891,10 @@ impl InventoryService {
             .map_err(ServiceError::db_error)?;
 
         // Group balances by inventory_item_id using a HashMap for O(1) lookup
-        let mut balances_by_item: std::collections::HashMap<i64, Vec<(inventory_balance::Model, Option<inventory_location::Model>)>> =
-            std::collections::HashMap::with_capacity(items.len());
+        let mut balances_by_item: std::collections::HashMap<
+            i64,
+            Vec<(inventory_balance::Model, Option<inventory_location::Model>)>,
+        > = std::collections::HashMap::with_capacity(items.len());
 
         for (balance, location) in all_balances {
             balances_by_item
@@ -1094,8 +1111,14 @@ mod unit_tests {
         assert_eq!(snapshot.inventory_item_id, 123);
         assert_eq!(snapshot.item_number, "ITEM-001");
         assert_eq!(snapshot.total_on_hand, Decimal::from_str("100.00").unwrap());
-        assert_eq!(snapshot.total_allocated, Decimal::from_str("20.00").unwrap());
-        assert_eq!(snapshot.total_available, Decimal::from_str("80.00").unwrap());
+        assert_eq!(
+            snapshot.total_allocated,
+            Decimal::from_str("20.00").unwrap()
+        );
+        assert_eq!(
+            snapshot.total_available,
+            Decimal::from_str("80.00").unwrap()
+        );
     }
 
     /// Test LocationBalance structure
@@ -1114,9 +1137,18 @@ mod unit_tests {
 
         assert_eq!(balance.location_id, 456);
         assert_eq!(balance.location_name, Some("Warehouse A".to_string()));
-        assert_eq!(balance.quantity_on_hand, Decimal::from_str("50.00").unwrap());
-        assert_eq!(balance.quantity_allocated, Decimal::from_str("10.00").unwrap());
-        assert_eq!(balance.quantity_available, Decimal::from_str("40.00").unwrap());
+        assert_eq!(
+            balance.quantity_on_hand,
+            Decimal::from_str("50.00").unwrap()
+        );
+        assert_eq!(
+            balance.quantity_allocated,
+            Decimal::from_str("10.00").unwrap()
+        );
+        assert_eq!(
+            balance.quantity_available,
+            Decimal::from_str("40.00").unwrap()
+        );
         assert_eq!(balance.version, 1);
     }
 
@@ -1183,7 +1215,10 @@ mod unit_tests {
 
         assert_eq!(outcome.reservation_id, res_id);
         assert_eq!(outcome.id_str(), res_id.to_string());
-        assert_eq!(outcome.balance.quantity_on_hand, Decimal::from_str("100.00").unwrap());
+        assert_eq!(
+            outcome.balance.quantity_on_hand,
+            Decimal::from_str("100.00").unwrap()
+        );
         assert_eq!(outcome.balance.version, 2);
     }
 

@@ -89,9 +89,7 @@ pub async fn login(
     // Validate input using derive-based validation
     if let Err(validation_errors) = payload.validate() {
         warn!(email = %payload.email, "Login validation failed");
-        return Err(ApiError::ValidationError(
-            validation_errors.to_string(),
-        ));
+        return Err(ApiError::ValidationError(validation_errors.to_string()));
     }
 
     // In a real implementation, you would:
@@ -196,9 +194,7 @@ pub async fn register(
     // Validate input using derive-based validation
     if let Err(validation_errors) = payload.validate() {
         warn!(email = %payload.email, "Registration validation failed");
-        return Err(ApiError::ValidationError(
-            validation_errors.to_string(),
-        ));
+        return Err(ApiError::ValidationError(validation_errors.to_string()));
     }
 
     // In a real implementation, you would:

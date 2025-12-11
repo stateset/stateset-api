@@ -63,7 +63,9 @@ impl Related<super::customer::Entity> for Entity {
 impl ActiveModelBehavior for ActiveModel {}
 
 /// Cart status enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum, ToSchema,
+)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(20))")]
 pub enum CartStatus {
     #[sea_orm(string_value = "active")]
