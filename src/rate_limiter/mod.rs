@@ -38,7 +38,7 @@
  */
 use axum::{
     extract::Request,
-    http::{Response, StatusCode},
+    http::{header, Response, StatusCode},
     middleware::Next,
     response::IntoResponse,
 };
@@ -52,7 +52,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tracing::{debug, warn};
 
-use crate::auth::AuthUser;
+use crate::auth::{AuthService, AuthUser};
 
 /// Helper function to convert a number to a HeaderValue.
 /// This is safe because numeric strings are always valid ASCII header values.
@@ -461,11 +461,27 @@ pub fn extract_ip_key(request: &Request) -> String {
 /// 1. AuthUser from request extensions (set by auth middleware after JWT validation)
 /// 2. x-user-id header (for internal/service-to-service calls)
 /// 3. None if no user context available
-pub fn extract_user_key(request: &Request) -> Option<String> {
+pub async fn extract_user_key(
+    request: &Request,
+    auth_service: Option<&Arc<AuthService>>,
+) -> Option<String> {
     // Primary: Get user ID from validated AuthUser in request extensions
     // This is populated by the auth middleware after JWT token validation
     if let Some(auth_user) = request.extensions().get::<AuthUser>() {
         return Some(format!("user:{}", auth_user.user_id));
+    }
+
+    // Try to resolve user from a Bearer token using the shared AuthService
+    if let Some(service) = auth_service {
+        if let Some(auth_header) = request.headers().get(header::AUTHORIZATION) {
+            if let Ok(raw) = auth_header.to_str() {
+                if let Some(token) = raw.strip_prefix("Bearer ").map(str::trim) {
+                    if let Ok(claims) = service.validate_token(token).await {
+                        return Some(format!("user:{}", claims.sub));
+                    }
+                }
+            }
+        }
     }
 
     // Fallback: x-user-id header for internal service-to-service calls
@@ -500,7 +516,7 @@ pub async fn rate_limit_middleware(
     // Extract key (prefer API key, then user, then IP)
     let key = if let Some(k) = extract_api_key(&request) {
         k
-    } else if let Some(u) = extract_user_key(&request) {
+    } else if let Some(u) = extract_user_key(&request, None).await {
         u
     } else {
         extract_ip_key(&request)
@@ -562,6 +578,7 @@ pub struct RateLimitLayer {
     path_policies: Arc<Vec<PathPolicy>>,
     api_key_policies: Arc<HashMap<String, (u32, Duration)>>,
     user_policies: Arc<HashMap<String, (u32, Duration)>>,
+    auth_service: Option<Arc<AuthService>>,
 }
 
 impl RateLimitLayer {
@@ -571,6 +588,7 @@ impl RateLimitLayer {
             path_policies: Arc::new(Vec::new()),
             api_key_policies: Arc::new(HashMap::new()),
             user_policies: Arc::new(HashMap::new()),
+            auth_service: None,
         }
     }
 
@@ -588,6 +606,11 @@ impl RateLimitLayer {
         self.user_policies = Arc::new(map);
         self
     }
+
+    pub fn with_auth_service(mut self, auth_service: Arc<AuthService>) -> Self {
+        self.auth_service = Some(auth_service);
+        self
+    }
 }
 
 impl<S> tower::Layer<S> for RateLimitLayer {
@@ -600,6 +623,7 @@ impl<S> tower::Layer<S> for RateLimitLayer {
             path_policies: self.path_policies.clone(),
             api_key_policies: self.api_key_policies.clone(),
             user_policies: self.user_policies.clone(),
+            auth_service: self.auth_service.clone(),
         }
     }
 }
@@ -611,6 +635,7 @@ pub struct RateLimitService<S> {
     path_policies: Arc<Vec<PathPolicy>>,
     api_key_policies: Arc<HashMap<String, (u32, Duration)>>,
     user_policies: Arc<HashMap<String, (u32, Duration)>>,
+    auth_service: Option<Arc<AuthService>>,
 }
 
 impl<S> tower::Service<Request> for RateLimitService<S>
@@ -637,8 +662,10 @@ where
         let policies = self.path_policies.clone();
         let api_key_map = self.api_key_policies.clone();
         let user_map = self.user_policies.clone();
+        let auth_service = self.auth_service.clone();
 
         Box::pin(async move {
+            let auth_service = auth_service.clone();
             // Skip certain paths entirely
             let path = request.uri().path().to_string();
             if path.starts_with("/health")
@@ -654,7 +681,7 @@ where
             // Extract key (prefer API key, then user, then IP)
             let key = if let Some(k) = extract_api_key(&request) {
                 k
-            } else if let Some(u) = extract_user_key(&request) {
+            } else if let Some(u) = extract_user_key(&request, auth_service.as_ref()).await {
                 u
             } else {
                 extract_ip_key(&request)

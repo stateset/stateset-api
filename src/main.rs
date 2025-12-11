@@ -73,7 +73,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cfg.api_key_prefix.clone(),
     )
     .context("failed to create auth config")?;
-    let auth_service = Arc::new(api::auth::AuthService::new(auth_cfg, db_arc.clone()));
+    let auth_service = Arc::new(api::auth::AuthService::with_redis_blacklist(
+        auth_cfg,
+        db_arc.clone(),
+        redis_client.clone(),
+        None,
+    ));
 
     // Prepare shared queue and logger infrastructure
     let base_logger = api::logging::setup_logger(api::logging::LoggerConfig::default());
@@ -273,6 +278,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         layer = layer.with_user_policies(parsed_policies.user_policies);
     }
+
+    layer = layer.with_auth_service(auth_service.clone());
 
     app = app.layer(layer);
 

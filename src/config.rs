@@ -21,6 +21,8 @@ const DEFAULT_MESSAGE_QUEUE_BACKEND: &str = "in-memory";
 const DEFAULT_MESSAGE_QUEUE_NAMESPACE: &str = "stateset:mq";
 const DEFAULT_MESSAGE_QUEUE_BLOCK_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_RATE_LIMIT_NAMESPACE: &str = "stateset:rl";
+const DEV_DEFAULT_JWT_SECRET: &str =
+    "this_is_a_development_secret_key_that_is_at_least_64_characters_long_for_testing";
 
 /// Cache configuration
 #[derive(Clone, Debug, Deserialize, Validate)]
@@ -516,6 +518,15 @@ impl AppConfig {
                 "Set APP__CORS_ALLOWED_ORIGINS for non-development environments or explicitly opt-in via APP__CORS_ALLOW_ANY_ORIGIN=true".into(),
             );
             errors.add("cors_allowed_origins", err);
+        }
+
+        if !self.is_development() && self.jwt_secret.trim() == DEV_DEFAULT_JWT_SECRET {
+            let mut err = ValidationError::new("jwt_secret_default_dev");
+            err.message = Some(
+                "The bundled development JWT secret must not be used outside development. Set APP__JWT_SECRET to a unique, secure value."
+                    .into(),
+            );
+            errors.add("jwt_secret", err);
         }
 
         if errors.errors().is_empty() {
