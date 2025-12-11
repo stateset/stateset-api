@@ -1,6 +1,6 @@
 # StateSet Rust API vs. Major Commerce Platforms
 
-This document provides a high‑level overview of the StateSet Rust API and compares it to commonly used commerce platforms: Shopify, Magento (Adobe Commerce), Medusa, commercetools, fabric, VTEX, and Commerce Cloud (Salesforce).
+This document provides a high‑level overview of the StateSet Rust API and compares it to commonly used commerce platforms, plus how it stacks up against major OMS and ERP systems.
 
 ---
 
@@ -145,11 +145,49 @@ The platforms below are compared along:
 
 ---
 
-## 5. Practical takeaways
+## 5. Comparison with OMS systems
+
+Order Management Systems (OMS) specialize in orchestrating order lifecycles across channels, warehouses, stores, and carriers. StateSet includes a native OMS as part of its broader operations backend, so the comparison is primarily about **scope, deployment model, and extensibility**.
+
+| OMS category / examples | What they are best at | How StateSet compares |
+|---|---|---|
+| **Enterprise “suite” OMS** (Manhattan Active OMS, Blue Yonder, IBM Sterling, Oracle OMS) | Distributed order orchestration, complex ATP/CTP, store fulfillment, BOPIS/ship‑from‑store, mature enterprise integrations | StateSet matches core OMS flows (order states, allocations/reservations, fulfillment, returns, shipments) and adds manufacturing/procurement, but may require custom work for highly specialized retail optimization or store‑centric orchestration. |
+| **Modern API‑first OMS** (Fluent Commerce, Salesforce Order Management, Shopify‑adjacent OMS apps) | Headless orchestration with strong APIs/eventing, faster implementations | StateSet is similarly API‑first and event‑driven, but is self‑hosted/open‑core and bundles more adjacent domains (inventory, RMS, warranties, work orders). |
+
+**Key contrasts:**
+- **Breadth vs depth:** Traditional OMS products go deepest on retail/omnichannel optimization; StateSet goes broader into supply chain + manufacturing while covering core OMS needs.
+- **Ownership:** OMS suites are almost always proprietary SaaS; StateSet can be deployed in your cloud/VPC, modified at the code level, and operated under your compliance regime.
+- **Integration style:** StateSet exposes REST + gRPC + webhooks/outbox; legacy OMS suites often require heavier middleware/ESB patterns.
+
+**When StateSet is a better OMS fit:** You want a single operational backbone for commerce + supply chain, need Rust‑level performance, and prefer to own/customize the core.  
+**When a dedicated OMS wins:** You need best‑in‑class retail order optimization, store fulfillment, or have a mandate to standardize on a specific enterprise suite.
+
+---
+
+## 6. Comparison with ERP systems
+
+ERP platforms are systems of record for **finance, procurement, manufacturing, and enterprise inventory**. StateSet overlaps with ERP in operational areas (orders, inventory, purchase orders, invoices) but is **not a full ERP** (no general ledger, AP/AR, HR, fixed assets, etc.). In most deployments, StateSet complements an ERP rather than replacing it.
+
+| ERP examples | What they are best at | How StateSet compares |
+|---|---|---|
+| **SAP S/4HANA / ECC, Oracle Fusion** | Enterprise finance, global procurement, manufacturing planning, mature compliance | StateSet is lighter, faster to extend, and purpose‑built for commerce execution; it typically feeds orders/returns/shipments/inventory events into SAP/Oracle for financial posting and planning. |
+| **NetSuite, Dynamics 365** | Mid‑market ERP with strong financials and native commerce connectors | StateSet provides a richer commerce/OMS/returns/manufacturing execution layer and can integrate via APIs/webhooks; ERP remains source of truth for accounting and corporate master data. |
+| **Odoo, Infor, Epicor (and similar)** | Flexible ERP for manufacturing/distribution, often on‑prem or hybrid | StateSet can replace or augment the commerce/OMS side and integrate to ERP for MRP, costing, and accounting. Code‑level customization in StateSet is usually simpler than deep ERP customization. |
+
+**Typical integration pattern:**
+1. **ERP is the financial + planning master** (costs, GL, AP/AR, MRP).
+2. **StateSet is the execution master** for orders, inventory movements, returns, warranties, and fulfillment.
+3. Events from StateSet (order created, shipment posted, return restocked, PO received) synchronize to ERP for accounting and planning.
+
+**When StateSet reduces ERP dependence:** You want to keep ERP focused on finance/planning while moving high‑velocity commerce operations to a specialized, API‑driven backend.  
+**When ERP remains central:** You rely on deep MRP, advanced costing, or enterprise finance workflows that StateSet intentionally does not replicate.
+
+---
+
+## 7. Practical takeaways
 
 - **Choose StateSet** when operations (OMS, inventory allocation, returns, manufacturing, procurement) are central, you want to self‑host, and you need high‑throughput APIs with deep customization.
 - **Choose Shopify or VTEX** for fastest hosted storefront + ecosystem leverage.
 - **Choose Magento** when you need a deeply customizable self‑hosted storefront monolith and are willing to run/maintain the platform.
 - **Choose Medusa** for open‑source headless retail commerce without heavy operational requirements.
 - **Choose commercetools or fabric** when you want enterprise SaaS composable commerce and can invest in integration across a multi‑vendor stack.
-
