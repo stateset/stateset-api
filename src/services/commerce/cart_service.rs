@@ -1,4 +1,5 @@
 use crate::{
+    config::AppConfig,
     entities::commerce::{cart, cart_item, Cart, CartItem, CartModel, ProductVariant},
     errors::ServiceError,
     events::{Event, EventSender},
@@ -29,7 +30,7 @@ use uuid::Uuid;
 /// use stateset_api::services::commerce::CartService;
 /// use stateset_api::services::commerce::CreateCartInput;
 ///
-/// let cart_service = CartService::new(db, event_sender);
+/// let cart_service = CartService::new(db, event_sender, config);
 ///
 /// // Create a new cart
 /// let input = CreateCartInput {
@@ -45,6 +46,7 @@ use uuid::Uuid;
 pub struct CartService {
     db: Arc<DatabaseConnection>,
     event_sender: Arc<EventSender>,
+    config: Arc<AppConfig>,
 }
 
 impl CartService {
@@ -54,8 +56,17 @@ impl CartService {
     ///
     /// * `db` - Database connection pool
     /// * `event_sender` - Event sender for publishing cart events
-    pub fn new(db: Arc<DatabaseConnection>, event_sender: Arc<EventSender>) -> Self {
-        Self { db, event_sender }
+    /// * `config` - Application configuration (for tax/shipping defaults)
+    pub fn new(
+        db: Arc<DatabaseConnection>,
+        event_sender: Arc<EventSender>,
+        config: Arc<AppConfig>,
+    ) -> Self {
+        Self {
+            db,
+            event_sender,
+            config,
+        }
     }
 
     /// Creates a new shopping cart.
@@ -499,8 +510,9 @@ impl CartService {
 
         let subtotal: Decimal = items.iter().map(|item| item.line_total).sum();
 
-        // Calculate tax (8% standard rate - could be made configurable or address-based)
-        let tax_rate = Decimal::from_f32_retain(0.08).unwrap_or(Decimal::ZERO);
+        // Calculate tax using configurable default rate
+        let tax_rate =
+            Decimal::from_f64_retain(self.config.default_tax_rate).unwrap_or(Decimal::ZERO);
         let tax_total = subtotal * tax_rate;
 
         // Calculate shipping

@@ -46,11 +46,12 @@ Before deploying to production, ensure you have:
 APP__DATABASE_URL=postgres://user:password@localhost:5432/stateset
 
 # JWT Authentication
-APP__JWT_SECRET=your-secure-random-secret-min-32-chars
+APP__JWT_SECRET=your-secure-random-secret-min-64-chars
 APP__JWT_ACCESS_EXPIRATION=900        # 15 minutes in seconds
 APP__JWT_REFRESH_EXPIRATION=604800    # 7 days in seconds
 
 # Redis Configuration
+# Use `rediss://` for TLS-enabled Redis.
 APP__REDIS_URL=redis://localhost:6379/0
 
 # Server Configuration
@@ -618,7 +619,7 @@ ufw enable
 ### Application Security
 
 1. **Enable all security headers** (done in Nginx config above)
-2. **Use strong JWT secrets** (min 32 characters)
+2. **Use strong JWT secrets** (min 64 characters)
 3. **Enable rate limiting** (configured in env vars)
 4. **Restrict metrics endpoint** (Nginx config)
 5. **Use separate database user** with limited privileges

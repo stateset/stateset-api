@@ -30,6 +30,7 @@ use crate::events::EventSender;
 use crate::message_queue::MessageQueue;
 use crate::{
     circuit_breaker::{CircuitBreaker, CircuitBreakerRegistry},
+    config::AppConfig,
     db::DbPool,
 };
 use slog::Logger;
@@ -65,6 +66,7 @@ impl AppServices {
     /// Build a default AppServices container with in-memory queue and basic logger.
     pub fn new(
         db_pool: Arc<DbPool>,
+        config: Arc<AppConfig>,
         event_sender: Arc<EventSender>,
         redis_client: Arc<redis::Client>,
         auth_service: Arc<crate::auth::AuthService>,
@@ -86,6 +88,7 @@ impl AppServices {
         let cart = Arc::new(crate::services::commerce::CartService::new(
             db_pool.clone(),
             event_sender.clone(),
+            config.clone(),
         ));
         let order_service = Arc::new(crate::services::orders::OrderService::new(
             db_pool.clone(),

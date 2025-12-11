@@ -194,7 +194,8 @@ impl AuthConfig {
         }
 
         // Ensure JWT secret meets minimum security requirements
-        const MIN_SECRET_LENGTH: usize = 32;
+        // Align with AppConfig validation (HS256 secrets should be 64+ chars).
+        const MIN_SECRET_LENGTH: usize = 64;
         if self.jwt_secret.len() < MIN_SECRET_LENGTH {
             return Err(AuthError::ConfigurationError(format!(
                 "JWT secret must be at least {} characters long for security. Current length: {}",
@@ -207,7 +208,7 @@ impl AuthConfig {
         if self.is_weak_secret() {
             warn!(
                 "JWT secret appears weak. Use a cryptographically secure random string. \
-                Generate with: openssl rand -base64 48"
+                Generate with: openssl rand -base64 64"
             );
         }
 
@@ -889,9 +890,12 @@ impl AuthService {
         let owner_id =
             Uuid::parse_str(&owner.user_id).map_err(|_| AuthError::InvalidCredentials)?;
 
-        // Generate a random string for the key
-        let key_bytes: Vec<u8> = thread_rng().sample_iter(&Alphanumeric).take(32).collect();
-        let key = String::from_utf8(key_bytes).unwrap();
+        // Generate a random string for the key (Alphanumeric yields valid UTF-8)
+        let key: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect();
 
         // Prefix the key
         let api_key = format!("{}{}", self.config.api_key_prefix, key);

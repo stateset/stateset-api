@@ -55,7 +55,7 @@ impl IntoResponse for CachedResponse {
             Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(Body::empty())
-                .expect("building error response should never fail")
+                .unwrap_or_else(|_| Response::new(Body::empty()))
         })
     }
 }

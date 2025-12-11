@@ -332,7 +332,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize event system
-    let (tx, rx) = tokio::sync::mpsc::channel(1000);
+    let (tx, rx) = tokio::sync::mpsc::channel(config.event_channel_capacity);
     let event_sender = EventSender::new(tx);
 
     // Start event processing in background (no webhooks for gRPC server)
@@ -386,6 +386,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let services = AppServices::new(
         db_arc.clone(),
+        Arc::new(config.clone()),
         event_sender_arc.clone(),
         redis_client.clone(),
         auth_service,

@@ -76,7 +76,7 @@ jobs:
           REDIS_URL: redis://localhost:6379
           APP__DATABASE_URL: postgres://stateset:stateset@localhost:5432/stateset_test
           APP__REDIS_URL: redis://localhost:6379
-          APP__JWT_SECRET: test-secret-key-min-32-characters-long
+          APP__JWT_SECRET: ci_jwt_secret_for_tests_only_please_change_me_to_secure_value_2025!
           APP__SERVER__PORT: 8080
         run: |
           ./target/release/stateset-api &

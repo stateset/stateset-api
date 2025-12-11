@@ -167,8 +167,13 @@ impl RoutingModel {
         // Sort by score and return the best option
         candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Safe: we checked candidates.is_empty() above
-        Ok(candidates.into_iter().next().expect("candidates is non-empty"))
+        let best = candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                ServiceError::InternalError("No valid routing candidates found".to_string())
+            })?;
+        Ok(best)
     }
 
     /// Score a facility for a routing request

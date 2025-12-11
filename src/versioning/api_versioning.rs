@@ -170,7 +170,8 @@ impl ApiVersioningService {
         if let Some(accept_header) = headers.get(header::ACCEPT) {
             if let Ok(accept_str) = accept_header.to_str() {
                 static ACCEPT_REGEX: Lazy<Regex> = Lazy::new(|| {
-                    Regex::new(r"application/vnd\.stateset\.(\w+)").unwrap()
+                    Regex::new(r"application/vnd\.stateset\.(\w+)")
+                        .unwrap_or_else(|_| Regex::new("$^").expect("valid fallback regex"))
                 });
                 
                 if let Some(captures) = ACCEPT_REGEX.captures(accept_str) {

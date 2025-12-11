@@ -127,18 +127,6 @@ impl ProductFeedService {
         let generated_at = Utc::now();
         let product_count = feed_items.len();
 
-        let csv_payload = if request.format == ProductFeedFormat::Csv {
-            Some(build_delimited_payload(&feed_items, ',')?)
-        } else {
-            None
-        };
-
-        let tsv_payload = if request.format == ProductFeedFormat::Tsv {
-            Some(build_delimited_payload(&feed_items, '\t')?)
-        } else {
-            None
-        };
-
         let payload = match request.format {
             ProductFeedFormat::Json => FeedPayload::Json(ProductFeedEnvelope {
                 feed_metadata: FeedMetadata {
@@ -151,11 +139,11 @@ impl ProductFeedService {
                 products: feed_items,
             }),
             ProductFeedFormat::Csv => {
-                let (body, content_type) = csv_payload.expect("computed for CSV format");
+                let (body, content_type) = build_delimited_payload(&feed_items, ',')?;
                 FeedPayload::Text { body, content_type }
             }
             ProductFeedFormat::Tsv => {
-                let (body, content_type) = tsv_payload.expect("computed for TSV format");
+                let (body, content_type) = build_delimited_payload(&feed_items, '\t')?;
                 FeedPayload::Text { body, content_type }
             }
         };
@@ -415,18 +403,6 @@ impl CatalogProductFeedService {
     ) -> Result<GeneratedFeed> {
         let product_count = feed_items.len();
 
-        let csv_payload = if request.format == ProductFeedFormat::Csv {
-            Some(build_delimited_payload(&feed_items, ',')?)
-        } else {
-            None
-        };
-
-        let tsv_payload = if request.format == ProductFeedFormat::Tsv {
-            Some(build_delimited_payload(&feed_items, '\t')?)
-        } else {
-            None
-        };
-
         let payload = match request.format {
             ProductFeedFormat::Json => FeedPayload::Json(ProductFeedEnvelope {
                 feed_metadata: FeedMetadata {
@@ -439,11 +415,11 @@ impl CatalogProductFeedService {
                 products: feed_items,
             }),
             ProductFeedFormat::Csv => {
-                let (body, content_type) = csv_payload.expect("computed for CSV format");
+                let (body, content_type) = build_delimited_payload(&feed_items, ',')?;
                 FeedPayload::Text { body, content_type }
             }
             ProductFeedFormat::Tsv => {
-                let (body, content_type) = tsv_payload.expect("computed for TSV format");
+                let (body, content_type) = build_delimited_payload(&feed_items, '\t')?;
                 FeedPayload::Text { body, content_type }
             }
         };

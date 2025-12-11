@@ -129,6 +129,7 @@ impl AgentsHandlerState for AppState {
         crate::services::commerce::CartService::new(
             self.db.clone(),
             Arc::new(self.event_sender.clone()),
+            Arc::new(self.config.clone()),
         )
     }
     fn product_catalog_service(&self) -> ProductCatalogService {

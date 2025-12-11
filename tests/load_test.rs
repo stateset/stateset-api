@@ -60,6 +60,7 @@ async fn create_benchmark_app_state() -> AppState {
     let base_logger = slog::Logger::root(drain.fuse(), slog::o!());
     let services = AppServices::new(
         db_arc.clone(),
+        Arc::new(config.clone()),
         event_sender_arc.clone(),
         redis_client.clone(),
         auth_service,

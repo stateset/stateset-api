@@ -281,14 +281,16 @@ impl StablePayReconciliationService {
     ) -> Result<Vec<stablepay_transaction::Model>, ServiceError> {
         let start_datetime = period_start
             .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_local_timezone(Utc)
-            .unwrap();
+            .ok_or_else(|| {
+                ServiceError::InternalError("invalid reconciliation period_start".to_string())
+            })?
+            .and_utc();
         let end_datetime = period_end
             .and_hms_opt(23, 59, 59)
-            .unwrap()
-            .and_local_timezone(Utc)
-            .unwrap();
+            .ok_or_else(|| {
+                ServiceError::InternalError("invalid reconciliation period_end".to_string())
+            })?
+            .and_utc();
 
         stablepay_transaction::Entity::find()
             .filter(stablepay_transaction::Column::ProviderId.eq(*provider_id))
@@ -430,10 +432,11 @@ impl StablePayReconciliationService {
     async fn generate_reconciliation_number(&self) -> Result<String, ServiceError> {
         let timestamp = Utc::now().format("%Y%m%d");
         let random = Uuid::new_v4()
+            .simple()
             .to_string()
-            .split('-')
-            .next()
-            .unwrap()
+            .chars()
+            .take(8)
+            .collect::<String>()
             .to_uppercase();
         Ok(format!("REC-{}-{}", timestamp, random))
     }

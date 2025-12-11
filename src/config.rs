@@ -199,10 +199,12 @@ pub struct AppConfig {
 
     /// Default tax rate (as decimal, e.g., 0.08 for 8%)
     #[serde(default = "default_tax_rate")]
+    #[validate(custom = "validate_tax_rate")]
     pub default_tax_rate: f64,
 
     /// Event channel capacity for async event processing
     #[serde(default = "default_event_channel_capacity")]
+    #[validate(custom = "validate_event_channel_capacity")]
     pub event_channel_capacity: usize,
 
     /// Webhook secret for verifying payment gateway callbacks
@@ -762,6 +764,24 @@ fn validate_jwt_secret(secret: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
+fn validate_tax_rate(rate: &f64) -> Result<(), ValidationError> {
+    if !rate.is_finite() || *rate < 0.0 || *rate > 1.0 {
+        let mut err = ValidationError::new("default_tax_rate");
+        err.message = Some("default_tax_rate must be a finite value between 0.0 and 1.0".into());
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn validate_event_channel_capacity(capacity: &usize) -> Result<(), ValidationError> {
+    if *capacity == 0 {
+        let mut err = ValidationError::new("event_channel_capacity");
+        err.message = Some("event_channel_capacity must be greater than 0".into());
+        return Err(err);
+    }
+    Ok(())
+}
+
 /// Initializes tracing using the provided log level as the default filter
 pub fn init_tracing(level: &str, json: bool) {
     use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -790,7 +810,7 @@ pub fn init_tracing(level: &str, json: bool) {
             std_env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "stateset-api".to_string());
 
         let resource = Resource::new(vec![KeyValue::new("service.name", service_name.clone())]);
-        let tracer = opentelemetry_otlp::new_pipeline()
+        let tracer = match opentelemetry_otlp::new_pipeline()
             .tracing()
             .with_exporter(
                 opentelemetry_otlp::new_exporter()
@@ -799,7 +819,18 @@ pub fn init_tracing(level: &str, json: bool) {
             )
             .with_trace_config(sdktrace::config().with_resource(resource))
             .install_batch(opentelemetry_sdk::runtime::Tokio)
-            .expect("failed to install OTLP pipeline");
+        {
+            Ok(tracer) => tracer,
+            Err(err) => {
+                error!("Failed to install OTLP pipeline: {}", err);
+                if json {
+                    let _ = fmt().with_env_filter(filter_directive).json().try_init();
+                } else {
+                    let _ = fmt().with_env_filter(filter_directive).try_init();
+                }
+                return;
+            }
+        };
 
         let base = tracing_subscriber::registry()
             .with(tracing_opentelemetry::layer().with_tracer(tracer))

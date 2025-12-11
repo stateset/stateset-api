@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build services
     let db_arc = Arc::new(db_pool);
     // Init events
-    let (event_tx, event_rx) = mpsc::channel(1024);
+    let (event_tx, event_rx) = mpsc::channel(cfg.event_channel_capacity);
     let event_sender = api::events::EventSender::new(event_tx);
 
     // Initialize Agentic Commerce webhook service
@@ -106,6 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Aggregate app services used by HTTP handlers
     let services = api::handlers::AppServices::new(
         db_arc.clone(),
+        Arc::new(cfg.clone()),
         Arc::new(event_sender.clone()),
         redis_client.clone(),
         auth_service.clone(),

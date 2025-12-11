@@ -114,23 +114,23 @@ impl AnalyticsService {
     pub async fn get_sales_metrics(&self) -> Result<SalesMetrics, ServiceError> {
         let db = &*self.db;
         let now = Utc::now();
-        let today_start = Utc.from_utc_datetime(
-            &now.date_naive()
-                .and_hms_opt(0, 0, 0)
-                .expect("valid start of day"),
-        );
-        let week_start = Utc.from_utc_datetime(
-            &(now - Duration::days(7))
-                .date_naive()
-                .and_hms_opt(0, 0, 0)
-                .expect("valid start of day"),
-        );
-        let month_start = Utc.from_utc_datetime(
-            &(now - Duration::days(30))
-                .date_naive()
-                .and_hms_opt(0, 0, 0)
-                .expect("valid start of day"),
-        );
+        let today_start_naive = now
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| ServiceError::InternalError("invalid start of day".into()))?;
+        let today_start = Utc.from_utc_datetime(&today_start_naive);
+
+        let week_start_naive = (now - Duration::days(7))
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| ServiceError::InternalError("invalid start of week".into()))?;
+        let week_start = Utc.from_utc_datetime(&week_start_naive);
+
+        let month_start_naive = (now - Duration::days(30))
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| ServiceError::InternalError("invalid start of month".into()))?;
+        let month_start = Utc.from_utc_datetime(&month_start_naive);
 
         // Total metrics
         let total_orders = OrderEntity::find()
@@ -273,11 +273,11 @@ impl AnalyticsService {
         let db = &*self.db;
         let today_start = {
             let now = Utc::now();
-            Utc.from_utc_datetime(
-                &now.date_naive()
-                    .and_hms_opt(0, 0, 0)
-                    .expect("valid start of day"),
-            )
+            let naive = now
+                .date_naive()
+                .and_hms_opt(0, 0, 0)
+                .ok_or_else(|| ServiceError::InternalError("invalid start of day".into()))?;
+            Utc.from_utc_datetime(&naive)
         };
 
         let total_shipments = ShipmentEntity::find()

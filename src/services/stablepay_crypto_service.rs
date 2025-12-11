@@ -478,10 +478,11 @@ impl StablePayCryptoService {
     async fn generate_transaction_number(&self) -> Result<String, ServiceError> {
         let timestamp = Utc::now().format("%Y%m%d");
         let random = Uuid::new_v4()
+            .simple()
             .to_string()
-            .split('-')
-            .next()
-            .unwrap()
+            .chars()
+            .take(8)
+            .collect::<String>()
             .to_uppercase();
         Ok(format!("CRYPTO-{}-{}", timestamp, random))
     }

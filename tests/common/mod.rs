@@ -159,6 +159,7 @@ impl TestApp {
             stateset_api::logging::setup_logger(stateset_api::logging::LoggerConfig::default());
         let services = AppServices::new(
             db_arc.clone(),
+            Arc::new(cfg.clone()),
             Arc::new(event_sender.clone()),
             redis_client.clone(),
             auth_service.clone(),

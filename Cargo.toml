@@ -30,8 +30,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 prost = "0.13"
 prost-types = "0.13"
-# Temporarily disabled due to TLS issues
-redis = { version = "0.21.7", features = ["aio", "tokio-comp", "connection-manager"], default-features = false }
+redis = { version = "0.21.7", features = ["aio", "tokio-comp", "connection-manager", "tokio-native-tls-comp"], default-features = false }
 lazy_static = "1.5"
 tonic = "0.13"
 tonic-web = "0.13"

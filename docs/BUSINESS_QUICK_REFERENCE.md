@@ -469,7 +469,7 @@ SERVER_HOST=0.0.0.0
 SERVER_PORT=8080
 
 # Security
-JWT_SECRET=your-secret-key-min-32-chars
+JWT_SECRET=your-secret-key-min-64-chars
 JWT_EXPIRATION=3600
 ALLOWED_ORIGINS=https://yourstore.com
 

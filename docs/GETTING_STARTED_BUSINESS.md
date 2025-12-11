@@ -958,7 +958,7 @@ SERVER_PORT=8080
 SERVER_WORKERS=4
 
 # Security
-JWT_SECRET=your-secret-key-min-32-chars
+JWT_SECRET=your-secret-key-min-64-chars
 JWT_EXPIRATION=3600
 ALLOWED_ORIGINS=https://yourstore.com,https://admin.yourstore.com
 
@@ -995,7 +995,7 @@ cargo run --bin migration -- up
 ### Security Checklist
 
 - [ ] Use HTTPS (TLS certificate via Let's Encrypt)
-- [ ] Set strong `JWT_SECRET` (minimum 32 characters)
+- [ ] Set strong `JWT_SECRET` (minimum 64 characters)
 - [ ] Enable rate limiting in config
 - [ ] Configure CORS for your domains only
 - [ ] Use environment variables (never commit secrets)
