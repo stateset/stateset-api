@@ -72,7 +72,7 @@ opentelemetry = { version = "0.21", features = ["trace", "metrics"] }
 opentelemetry-stdout = { version = "0.3", features = ["trace"] }
 opentelemetry_sdk = { version = "0.21.2", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.14", features = ["tonic"] }
-tracing-opentelemetry = "0.22"
+tracing-opentelemetry = "0.32"
 pin-project-lite = "0.2"
 hyper = { version = "1.0", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "gzip", "rustls-tls"] }
