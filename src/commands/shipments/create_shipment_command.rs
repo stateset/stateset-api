@@ -9,9 +9,7 @@ use crate::{
     },
 };
 use chrono::Utc;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, TransactionError, TransactionTrait,
-};
+use sea_orm::{ActiveValue::Set, EntityTrait, TransactionError, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};

@@ -7,7 +7,7 @@ use crate::{
     errors::ServiceError,
     models::shipment::{self, ShipmentStatus},
 };
-use sea_orm::{entity::*, query::*, ActiveValue, EntityTrait};
+use sea_orm::{entity::*, ActiveValue, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -73,7 +73,7 @@ impl HoldShipmentCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &shipment::Model,
+        _shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment ID: {} placed on hold. Reason: {}",

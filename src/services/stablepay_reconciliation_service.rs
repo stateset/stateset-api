@@ -152,7 +152,7 @@ impl StablePayReconciliationService {
             created_by: Set(None),
         };
 
-        let reconciliation = reconciliation_model
+        let _reconciliation = reconciliation_model
             .insert(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;

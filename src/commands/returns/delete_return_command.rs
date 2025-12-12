@@ -87,7 +87,7 @@ impl DeleteReturnCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        deleted_return: &return_entity::Model,
+        _deleted_return: &return_entity::Model,
     ) -> Result<(), ServiceError> {
         info!("Return request deleted for return ID: {}", self.return_id);
         event_sender

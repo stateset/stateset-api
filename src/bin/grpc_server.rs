@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use tokio::signal;
 use tonic::transport::Server;
@@ -32,8 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_processor_handle = tokio::spawn(process_events(rx, None, None));
 
     let db_access = Arc::new(DatabaseAccess::new(db_pool.clone()));
-    let grpc_api =
-        StateSetApi::with_event_sender(db_access, db_pool.clone(), event_sender.clone());
+    let grpc_api = StateSetApi::with_event_sender(db_access, db_pool.clone(), event_sender.clone());
 
     let grpc_port = config.grpc_port.unwrap_or(config.port + 1);
     let grpc_addr = format!("{}:{}", config.host, grpc_port).parse()?;
@@ -59,15 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_service(
             shipment::shipment_service_server::ShipmentServiceServer::new(grpc_api.clone()),
         )
-        .add_service(work_order::work_order_service_server::WorkOrderServiceServer::new(
-            grpc_api,
-        ))
+        .add_service(work_order::work_order_service_server::WorkOrderServiceServer::new(grpc_api))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
-    if let Err(e) = grpc_server.await {
+    grpc_server.await.map_err(|e| {
         tracing::error!("gRPC server stopped: {:?}", e);
-        return Err(Box::new(e));
-    }
+        e
+    })?;
 
     event_processor_handle.abort();
     let _ = event_processor_handle.await;

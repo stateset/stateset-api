@@ -1,8 +1,5 @@
 use super::{CacheError, InMemoryCache};
-use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryTrait, Select,
-};
+use sea_orm::{DatabaseConnection, EntityTrait, Select};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -43,7 +40,7 @@ where
         self
     }
 
-    fn generate_key(&self, query: &Select<E>) -> String {
+    fn generate_key(&self, _query: &Select<E>) -> String {
         // For now, just generate a simple key based on entity name
         // In a real implementation, you'd want to include query parameters
         format!("query:{}:simple", self.entity_name)
@@ -297,7 +294,7 @@ where
 
 // Generic cache invalidation helpers
 pub async fn invalidate_entity_cache(
-    cache: &InMemoryCache,
+    _cache: &InMemoryCache,
     entity_name: &str,
 ) -> Result<(), CacheError> {
     let _prefix = format!("entity:{}:", entity_name);
@@ -312,7 +309,7 @@ pub async fn invalidate_entity_cache(
 }
 
 pub async fn invalidate_query_cache(
-    cache: &InMemoryCache,
+    _cache: &InMemoryCache,
     query_pattern: &str,
 ) -> Result<(), CacheError> {
     warn!(

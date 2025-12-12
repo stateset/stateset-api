@@ -150,7 +150,7 @@ impl CancelOrderCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        updated_order: &order_entity::Model,
+        _updated_order: &order_entity::Model,
     ) -> Result<(), OrderError> {
         info!(
             order_id = %self.order_id,

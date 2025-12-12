@@ -241,10 +241,6 @@ mod tests {
 
     #[test]
     fn test_pending_transitions() {
-        let db = Arc::new(sea_orm::Database::connect("sqlite::memory:"));
-        // We can't create a real db connection in unit tests, but we can test the transition logic
-        // by making is_valid_transition public for testing or using a helper
-
         // Test pending -> processing (valid)
         assert!(matches!(
             ("pending", "processing"),

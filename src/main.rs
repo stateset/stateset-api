@@ -198,7 +198,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(api::openapi::swagger_ui())
         // HTTP tracing layer for consistent request/response telemetry
         .layer(api::tracing::configure_http_tracing())
-        // Apply compression and timeouts
+        // Apply compression
         .layer(CompressionLayer::new())
         // Apply CORS
         .layer(cors_layer)
@@ -216,6 +216,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 req.extensions_mut().insert(auth);
                 next.run(req).await
             },
+        ))
+        // Input sanitization and basic request validation
+        .layer(axum::middleware::from_fn(
+            api::middleware_helpers::sanitize_middleware,
+        ))
+        // Audit logging (compliance/security)
+        .layer(axum::middleware::from_fn(
+            api::middleware_helpers::audit_middleware,
+        ))
+        // Security headers (OWASP recommendations)
+        .layer(axum::middleware::from_fn(
+            api::middleware_helpers::security_headers::security_headers_middleware,
         ))
         // Ensure every request carries a request id for traceability
         .layer(axum::middleware::from_fn(
@@ -298,18 +310,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        match signal::ctrl_c().await {
+            Ok(()) => {}
+            Err(err) => {
+                error!("Failed to install Ctrl+C handler: {}", err);
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
         use tokio::signal::unix::{signal, SignalKind};
 
-        let mut sigterm =
-            signal(SignalKind::terminate()).expect("failed to install signal handler");
-        sigterm.recv().await;
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                sigterm.recv().await;
+            }
+            Err(err) => {
+                error!("Failed to install SIGTERM handler: {}", err);
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]

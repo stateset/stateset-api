@@ -205,7 +205,7 @@ impl StablePayCryptoService {
             idempotency_key: Set(None),
         };
 
-        let payment = payment_model
+        let _payment = payment_model
             .insert(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;
@@ -245,7 +245,7 @@ impl StablePayCryptoService {
             updated_at: Set(Some(now)),
         };
 
-        let crypto_tx = crypto_tx_model
+        let _crypto_tx = crypto_tx_model
             .insert(&*self.db)
             .await
             .map_err(ServiceError::db_error)?;
@@ -448,7 +448,7 @@ impl StablePayCryptoService {
             })
     }
 
-    async fn get_payment_address(&self, network_id: Uuid) -> Result<String, ServiceError> {
+    async fn get_payment_address(&self, _network_id: Uuid) -> Result<String, ServiceError> {
         // In production, this would return a unique payment address per transaction
         // For demo, return a static merchant address
         Ok("0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb".to_string())

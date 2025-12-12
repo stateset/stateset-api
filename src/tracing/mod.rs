@@ -3,7 +3,7 @@ use axum::{
     http::{HeaderMap, Request, Response, StatusCode},
     BoxError,
 };
-use futures::{future::BoxFuture, Future, FutureExt, StreamExt};
+use futures::{future::BoxFuture, Future, FutureExt};
 use metrics::{counter, histogram};
 use opentelemetry::{
     global,
@@ -33,7 +33,6 @@ use tower_http::{classify::StatusInRangeAsFailures, trace::TraceLayer};
 use tracing::instrument;
 
 // Re-export tracing macros for use in lib.rs
-use http_body_util::BodyExt;
 use tower_http::trace::{
     DefaultOnBodyChunk, DefaultOnEos, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse,
     MakeSpan,

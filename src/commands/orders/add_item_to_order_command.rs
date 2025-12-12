@@ -125,7 +125,7 @@ impl AddItemToOrderCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        saved_item: &order_item_entity::Model,
+        _saved_item: &order_item_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             order_id = %self.order_id,

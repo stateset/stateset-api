@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use chrono::Utc;
-use sea_orm::{entity::*, query::*, DatabaseTransaction, Set, TransactionError, TransactionTrait};
+use sea_orm::{entity::*, DatabaseTransaction, Set, TransactionError, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
@@ -178,7 +178,7 @@ impl CloseReturnCommand {
 
     async fn close_return_static(
         return_id: Uuid,
-        reason: Option<&String>,
+        _reason: Option<&String>,
         _closed_by: Option<&String>,
         _metadata: Option<&serde_json::Value>,
         db: &DatabaseTransaction,

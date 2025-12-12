@@ -19,20 +19,16 @@
  */
 
 use oauth2::{
-    basic::{BasicClient, BasicErrorResponseType, BasicTokenType},
-    reqwest::async_http_client,
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, RevocationUrl, Scope, StandardErrorResponse,
-    StandardRevocableToken, StandardTokenIntrospectionResponse, StandardTokenResponse,
-    TokenResponse, TokenUrl,
+    basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
+    ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RevocationUrl,
+    Scope, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
-use url::Url;
+use tracing::{error, info, warn};
 
 /// OAuth2 error types
 #[derive(Error, Debug)]
@@ -347,7 +343,7 @@ impl OAuth2StateStore {
     }
 
     /// Clean up expired state tokens (call periodically)
-    pub async fn cleanup_expired(&self, max_age_secs: u64) {
+    pub async fn cleanup_expired(&self, _max_age_secs: u64) {
         // In a production implementation, you'd track creation time
         // and remove entries older than max_age_secs
         let mut store = self.verifiers.write().await;

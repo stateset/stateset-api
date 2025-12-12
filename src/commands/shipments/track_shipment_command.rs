@@ -107,7 +107,7 @@ impl TrackShipmentCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &shipment::Model,
+        _shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         event_sender
             .send(Event::ShipmentTracked(self.shipment_id))

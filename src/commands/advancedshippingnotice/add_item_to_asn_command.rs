@@ -98,7 +98,7 @@ impl Command for AddItemToASNCommand {
 impl AddItemToASNCommand {
     async fn validate_purchase_order_item(
         &self,
-        db: &DatabaseConnection,
+        _db: &DatabaseConnection,
     ) -> Result<(), ServiceError> {
         // Implementation to validate purchase order item exists and has sufficient quantity
         // This would query the purchase_order_items table and verify quantities
@@ -137,7 +137,7 @@ impl AddItemToASNCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        saved_item: &asn_items::Model,
+        _saved_item: &asn_items::Model,
     ) -> Result<(), ServiceError> {
         info!(
             asn_id = %self.asn_id,

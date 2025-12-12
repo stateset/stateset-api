@@ -138,7 +138,7 @@ impl Command for CreatePurchaseOrderCommand {
 }
 
 impl CreatePurchaseOrderCommand {
-    async fn validate_supplier(&self, db: &DatabaseConnection) -> Result<(), ServiceError> {
+    async fn validate_supplier(&self, _db: &DatabaseConnection) -> Result<(), ServiceError> {
         // Implementation to validate supplier exists and is active
         Ok(()) // Simplified for example
     }

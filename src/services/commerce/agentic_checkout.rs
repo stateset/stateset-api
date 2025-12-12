@@ -1082,7 +1082,7 @@ impl AgenticCheckoutService {
     fn calculate_totals_with_promotion(
         &self,
         line_items: &[LineItem],
-        address: Option<&Address>,
+        _address: Option<&Address>,
         fulfillment_option_id: Option<&str>,
         promotion: Option<&crate::models::promotion_entity::Model>,
     ) -> Result<Vec<Total>, ServiceError> {
@@ -1443,7 +1443,7 @@ impl AgenticCheckoutService {
 
         let normalized_payment_status = Self::normalize_payment_status(&payment_response.status);
 
-        order_response = self
+        let _ = self
             .order_service
             .update_payment_status(
                 order_id,
@@ -1712,9 +1712,7 @@ impl AgenticCheckoutService {
                     "standard_shipping" => shipment::ShippingMethod::Standard,
                     "express_shipping" => shipment::ShippingMethod::Express,
                     "overnight_shipping" => shipment::ShippingMethod::Overnight,
-                    "two_day_shipping" | "two_day" | "two_day_shipping" => {
-                        shipment::ShippingMethod::TwoDay
-                    }
+                    "two_day_shipping" | "two_day" => shipment::ShippingMethod::TwoDay,
                     "international_shipping" => shipment::ShippingMethod::International,
                     _ => shipment::ShippingMethod::Standard,
                 };

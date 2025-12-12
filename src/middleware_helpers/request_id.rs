@@ -9,21 +9,33 @@ use axum::{
 /// Header name for the request ID
 pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
+const MAX_REQUEST_ID_LEN: usize = 128;
+
 /// Middleware to add request ID to every request
 pub async fn request_id_middleware(mut request: Request, next: Next) -> Response {
     // Check if request already has an ID
-    let request_id = request
+    let mut request_id = request
         .headers()
         .get(REQUEST_ID_HEADER)
         .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty() && s.len() <= MAX_REQUEST_ID_LEN)
         .map(RequestId::new)
         .unwrap_or_else(RequestId::default);
 
-    // Add request ID to headers (request IDs are validated ASCII, so this won't fail)
+    let request_id_header_value = match HeaderValue::from_str(request_id.as_str()) {
+        Ok(value) => value,
+        Err(_) => {
+            request_id = RequestId::default();
+            HeaderValue::from_str(request_id.as_str())
+                .unwrap_or_else(|_| HeaderValue::from_static("unknown"))
+        }
+    };
+
+    // Add request ID to headers
     request.headers_mut().insert(
         HeaderName::from_static(REQUEST_ID_HEADER),
-        HeaderValue::from_str(request_id.as_str())
-            .expect("request ID contains only valid header characters"),
+        request_id_header_value.clone(),
     );
 
     // Make request id available to handlers
@@ -48,8 +60,7 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     // Add request ID to response headers
     response.headers_mut().insert(
         HeaderName::from_static(REQUEST_ID_HEADER),
-        HeaderValue::from_str(request_id.as_str())
-            .expect("request ID contains only valid header characters"),
+        request_id_header_value,
     );
 
     response

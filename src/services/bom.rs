@@ -128,14 +128,14 @@ impl BomService {
         let db = &*self.db;
 
         // Verify BOM exists
-        let bom = BomHeaderEntity::find_by_id(bom_id)
+        let _bom = BomHeaderEntity::find_by_id(bom_id)
             .one(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?
             .ok_or_else(|| ServiceError::NotFound(format!("BOM {} not found", bom_id)))?;
 
         // Verify component item exists
-        let component = ItemMasterEntity::find_by_id(component_item_id)
+        let _component = ItemMasterEntity::find_by_id(component_item_id)
             .one(db)
             .await
             .map_err(|e| ServiceError::db_error(e))?

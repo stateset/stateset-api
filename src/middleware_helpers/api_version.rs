@@ -13,7 +13,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use tracing::{info, warn};
+use tracing::warn;
 
 /// Current API version
 pub const CURRENT_API_VERSION: &str = "1.0.0";

@@ -33,11 +33,11 @@ pub struct AddReturnNoteResult {
 impl Command for AddReturnNoteCommand {
     type Result = AddReturnNoteResult;
 
-    #[instrument(skip(self, db_pool, event_sender))]
+    #[instrument(skip(self, db_pool, _event_sender))]
     async fn execute(
         &self,
         db_pool: Arc<DbPool>,
-        event_sender: Arc<EventSender>,
+        _event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         self.validate()
             .map_err(|e| ServiceError::ValidationError(e.to_string()))?;

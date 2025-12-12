@@ -173,7 +173,7 @@ impl RejectPurchaseOrderCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        updated_po: &purchase_order_entity::Model,
+        _updated_po: &purchase_order_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             purchase_order_id = %self.id,

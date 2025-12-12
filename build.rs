@@ -1,4 +1,3 @@
-use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -6,9 +5,6 @@ use std::process::Command;
 use chrono::Utc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-    println!("cargo:warning=OUT_DIR: {}", out_dir.display());
-
     // Discover and compile all .proto files in the proto directory
     let proto_dir = PathBuf::from("proto");
     let mut proto_files: Vec<PathBuf> = Vec::new();
@@ -17,25 +13,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let entry = entry?;
         let path = entry.path();
         if path.extension().map(|ext| ext == "proto").unwrap_or(false) {
-            println!("cargo:warning=Found proto: {}", path.display());
+            println!("cargo:rerun-if-changed={}", path.display());
             proto_files.push(path);
         }
     }
 
-    if proto_files.is_empty() {
-        println!(
-            "cargo:warning=No .proto files found in {}",
-            proto_dir.display()
-        );
-    } else {
+    if !proto_files.is_empty() {
         tonic_build::configure().compile_protos(&proto_files, &["proto"])?;
-        println!(
-            "cargo:warning=Successfully compiled {} proto files",
-            proto_files.len()
-        );
     }
 
-    println!("cargo:warning=Proto compilation completed");
     println!("cargo:rerun-if-changed=proto");
 
     // Generate build-time metadata

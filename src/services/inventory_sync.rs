@@ -2,7 +2,7 @@ use chrono::Utc;
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    TransactionTrait,
+    QuerySelect, TransactionTrait,
 };
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -161,7 +161,8 @@ impl InventorySyncService {
                     let new_version = existing.version + 1;
                     let mut active: inventory_balance::ActiveModel = existing.into();
                     active.quantity_on_hand = Set(new_quantity);
-                    active.quantity_available = Set(new_quantity - active.quantity_allocated.as_ref());
+                    active.quantity_available =
+                        Set(new_quantity - active.quantity_allocated.as_ref());
                     active.version = Set(new_version);
                     active.updated_at = Set(Utc::now().into());
 

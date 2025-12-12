@@ -243,25 +243,25 @@ impl RbacService {
     }
 
     /// Get users with a specific role (in a real implementation, this would query the database)
-    pub async fn get_users_with_role(&self, role_name: &str) -> Vec<Uuid> {
+    pub async fn get_users_with_role(&self, _role_name: &str) -> Vec<Uuid> {
         // Mock implementation - in a real system, this would query the database
         vec![]
     }
 
     /// Check if a user has a specific role (in a real implementation, this would query the database)
-    pub async fn user_has_role(&self, user_id: Uuid, role_name: &str) -> bool {
+    pub async fn user_has_role(&self, _user_id: Uuid, _role_name: &str) -> bool {
         // Mock implementation - in a real system, this would query the database
         false
     }
 
     /// Assign a role to a user (in a real implementation, this would modify the database)
-    pub async fn assign_role_to_user(&self, user_id: Uuid, role_name: &str) -> bool {
+    pub async fn assign_role_to_user(&self, _user_id: Uuid, _role_name: &str) -> bool {
         // Mock implementation - in a real system, this would modify the database
         true
     }
 
     /// Remove a role from a user (in a real implementation, this would modify the database)
-    pub async fn remove_role_from_user(&self, user_id: Uuid, role_name: &str) -> bool {
+    pub async fn remove_role_from_user(&self, _user_id: Uuid, _role_name: &str) -> bool {
         // Mock implementation - in a real system, this would modify the database
         true
     }

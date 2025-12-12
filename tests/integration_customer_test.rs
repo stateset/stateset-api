@@ -1,15 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-        routing::post,
-        Router,
-    };
     use serde_json::json;
-    use stateset_api::{handlers::customers::*, services::commerce::customer_service::*, AppState};
-    use std::sync::Arc;
-    use tower::ServiceExt;
+    use stateset_api::handlers::customers::RegisterCustomerRequest;
     use validator::Validate;
 
     #[tokio::test]

@@ -179,7 +179,7 @@ impl CancelASNCommand {
     async fn log_and_trigger_events(
         &self,
         event_sender: &EventSender,
-        updated_asn: &asn_entity::Model,
+        _updated_asn: &asn_entity::Model,
     ) -> Result<(), ASNError> {
         info!(
             asn_id = %self.asn_id,

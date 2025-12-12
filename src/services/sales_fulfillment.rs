@@ -242,7 +242,7 @@ impl SalesFulfillmentService {
 
         let total_fulfilled: Decimal = existing_fulfillments
             .iter()
-            .filter_map(|f| {
+            .filter_map(|_fulfillment| {
                 // Parse quantity from a field if it exists in your entity
                 // For now, assuming full quantity per fulfillment
                 Some(ordered_quantity)

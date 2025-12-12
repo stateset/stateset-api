@@ -5,7 +5,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dashmap::DashMap;
-use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -298,7 +297,7 @@ where
     }
 
     fn call(&mut self, request: Request<Body>) -> Self::Future {
-        let cache = self.http_cache.clone();
+        let _cache = self.http_cache.clone();
         let mut inner = self.inner.clone();
 
         Box::pin(async move {

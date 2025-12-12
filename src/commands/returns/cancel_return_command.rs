@@ -88,7 +88,7 @@ impl CancelReturnCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        cancelled_return: &return_entity::Model,
+        _cancelled_return: &return_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Return request cancelled for return ID: {}. Reason: {}",

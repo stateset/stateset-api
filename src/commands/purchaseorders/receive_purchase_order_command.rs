@@ -24,11 +24,11 @@ pub struct ReceivePurchaseOrderResult {
 impl Command for ReceivePurchaseOrderCommand {
     type Result = ReceivePurchaseOrderResult;
 
-    #[instrument(skip(self, _db_pool, event_sender))]
+    #[instrument(skip(self, _db_pool, _event_sender))]
     async fn execute(
         &self,
         _db_pool: Arc<DbPool>,
-        event_sender: Arc<EventSender>,
+        _event_sender: Arc<EventSender>,
     ) -> Result<Self::Result, ServiceError> {
         self.validate()
             .map_err(|e| ServiceError::ValidationError(e.to_string()))?;

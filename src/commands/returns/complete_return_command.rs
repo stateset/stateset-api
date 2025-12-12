@@ -10,7 +10,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{entity::*, query::*, DatabaseTransaction, Set, TransactionError, TransactionTrait};
+use sea_orm::{entity::*, DatabaseTransaction, Set, TransactionError, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::error;

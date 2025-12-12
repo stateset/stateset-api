@@ -105,7 +105,7 @@ impl ManufacturingService {
         let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Verify item exists and has a BOM
-        let item = ItemMasterEntity::find_by_id(item_id)
+        let _item = ItemMasterEntity::find_by_id(item_id)
             .one(&txn)
             .await
             .map_err(|e| ServiceError::db_error(e))?

@@ -1,7 +1,6 @@
 # Rust build artifacts
 /target/
 target/
-Cargo.lock
 
 # Database files
 *.db
@@ -29,6 +28,9 @@ cargo_check*.log
 server.out
 logs/
 log/
+
+# PID files
+*.pid
 
 # IDE and editor files
 .idea/
@@ -79,6 +81,7 @@ coverage/
 
 # Temporary files
 tmp/
+tmp2/
 temp/
 *.temp
 
@@ -101,6 +104,7 @@ data/
 
 # Misc binaries
 protoc.zip
+advanced_caching_demo
 
 # Config directory (if it contains sensitive data)
 # Uncomment if needed:

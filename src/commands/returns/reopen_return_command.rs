@@ -87,7 +87,7 @@ impl ReopenReturnCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        reopened_return: &return_entity::Model,
+        _reopened_return: &return_entity::Model,
     ) -> Result<(), ServiceError> {
         info!("Return request reopened for return ID: {}", self.return_id);
         event_sender

@@ -424,7 +424,6 @@ impl InventoryService {
         let expected_version = command.expected_version;
         let (old_on_hand, updated_balance) = db
             .transaction::<_, (Decimal, inventory_balance::Model), ServiceError>(|txn| {
-                let reason_clone = reason.clone();
                 Box::pin(async move {
                     let now = Utc::now();
                     // Use FOR UPDATE to prevent concurrent modifications (pessimistic locking)

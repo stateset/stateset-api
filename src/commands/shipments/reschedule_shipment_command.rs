@@ -4,7 +4,7 @@ use crate::{
 };
 use crate::{db::DbPool, errors::ServiceError, models::shipment};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use sea_orm::{entity::*, query::*, ActiveValue, EntityTrait};
+use sea_orm::{entity::*, ActiveValue, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -60,7 +60,8 @@ impl RescheduleShipmentCommand {
             })?
             .into();
 
-        let rescheduled_at = DateTime::<Utc>::from_utc(self.new_scheduled_date, Utc);
+        let rescheduled_at =
+            DateTime::<Utc>::from_naive_utc_and_offset(self.new_scheduled_date, Utc);
         shipment.estimated_delivery = ActiveValue::Set(Some(rescheduled_at));
         shipment.updated_at = ActiveValue::Set(Utc::now());
 
@@ -76,13 +77,14 @@ impl RescheduleShipmentCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &shipment::Model,
+        _shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment ID: {} rescheduled to: {}",
             self.shipment_id, self.new_scheduled_date
         );
-        let rescheduled_at = DateTime::<Utc>::from_utc(self.new_scheduled_date, Utc);
+        let rescheduled_at =
+            DateTime::<Utc>::from_naive_utc_and_offset(self.new_scheduled_date, Utc);
         event_sender
             .send(Event::ShipmentRescheduled(self.shipment_id, rescheduled_at))
             .await

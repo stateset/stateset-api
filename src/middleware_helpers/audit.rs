@@ -6,13 +6,7 @@
 //! - Security event logging (auth failures, suspicious activity)
 //! - Immutable audit trail with timestamps and request IDs
 
-use axum::{
-    body::Body,
-    extract::Request,
-    http::{Method, StatusCode},
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::Method, middleware::Next, response::Response};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;

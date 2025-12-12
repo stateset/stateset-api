@@ -1,20 +1,17 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    query::QueryOrder, ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait,
-    QueryFilter, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, Set,
+    TransactionTrait,
 };
 use stateset_api::{
     db::{create_db_pool, run_migrations},
     entities::{
         inventory_balance::{self, Entity as InventoryBalance},
-        inventory_location::{self, Entity as InventoryLocation},
-        inventory_transaction::{self, Entity as InventoryTransaction},
-        item_master::{self, Entity as ItemMaster},
-        purchase_order_headers::{self, Entity as PurchaseOrderHeader},
-        purchase_order_lines::{self, Entity as PurchaseOrderLine},
-        sales_order_header::{self, Entity as SalesOrderHeader},
-        sales_order_line::{self, Entity as SalesOrderLine},
+        inventory_location,
+        inventory_transaction::Entity as InventoryTransaction,
+        item_master, purchase_order_headers, purchase_order_lines, sales_order_header,
+        sales_order_line,
     },
     events::EventSender,
     services::inventory_adjustment_service::{
@@ -64,7 +61,7 @@ async fn test_inventory_adjustments_with_item_master() {
     // Step 2: Create warehouse locations
     println!("Creating warehouse locations...");
     let location1 = create_test_location(&txn, "MAIN-WH", "Main Warehouse").await;
-    let location2 = create_test_location(&txn, "SECONDARY-WH", "Secondary Warehouse").await;
+    let _location2 = create_test_location(&txn, "SECONDARY-WH", "Secondary Warehouse").await;
 
     // Step 3: Initialize inventory balances
     println!("Initializing inventory balances...");
@@ -75,7 +72,7 @@ async fn test_inventory_adjustments_with_item_master() {
     // Step 4: Test Sales Order Allocation
     println!("\n=== Testing Sales Order Allocation ===");
     let sales_order = create_test_sales_order(&txn).await;
-    let so_line1 = create_sales_order_line(
+    let _so_line1 = create_sales_order_line(
         &txn,
         sales_order.header_id,
         item1.inventory_item_id,
@@ -83,7 +80,7 @@ async fn test_inventory_adjustments_with_item_master() {
         2,
     )
     .await;
-    let so_line2 = create_sales_order_line(
+    let _so_line2 = create_sales_order_line(
         &txn,
         sales_order.header_id,
         item2.inventory_item_id,
@@ -182,7 +179,7 @@ async fn test_inventory_adjustments_with_item_master() {
     // Step 7: Test Order Cancellation (Deallocation)
     println!("\n=== Testing Order Cancellation ===");
     let cancel_order = create_test_sales_order(&txn).await;
-    let cancel_line = create_sales_order_line(
+    let _cancel_line = create_sales_order_line(
         &txn,
         cancel_order.header_id,
         item2.inventory_item_id,
@@ -322,7 +319,6 @@ async fn create_initial_inventory(
     location_id: i32,
     quantity: i32,
 ) {
-    let now = Utc::now().to_rfc3339();
     let inventory = inventory_balance::ActiveModel {
         inventory_item_id: Set(item_id),
         location_id: Set(location_id),

@@ -176,7 +176,6 @@ impl ReturnService {
             .one(db)
             .await
             .map_err(|e| {
-                let msg = format!("Failed to get return: {}", e);
                 error!(return_id = %return_id, error = %e, "Database error when fetching return");
                 ServiceError::db_error(e)
             })?;
@@ -441,7 +440,7 @@ mod tests {
     #[test]
     fn test_not_found_error_message() {
         let return_id = Uuid::new_v4();
-        let error_msg = format!("Return not found after approval");
+        let error_msg = format!("Return {} not found after approval", return_id);
 
         assert!(error_msg.contains("not found"));
     }

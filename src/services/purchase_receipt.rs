@@ -83,7 +83,7 @@ impl PurchaseReceiptService {
         let txn = db.begin().await.map_err(|e| ServiceError::db_error(e))?;
 
         // Verify receipt header exists
-        let header = ReceiptHeaderEntity::find_by_id(shipment_header_id)
+        let _header = ReceiptHeaderEntity::find_by_id(shipment_header_id)
             .one(&txn)
             .await
             .map_err(|e| ServiceError::db_error(e))?

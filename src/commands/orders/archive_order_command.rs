@@ -78,7 +78,7 @@ impl Command for ArchiveOrderCommand {
 async fn archive_order_in_db(
     db: &DatabaseConnection,
     order_id: uuid::Uuid,
-    reason: &str,
+    _reason: &str,
     version: i32,
 ) -> Result<order_entity::Model, OrderError> {
     let transaction_result = db

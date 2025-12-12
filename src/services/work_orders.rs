@@ -23,8 +23,8 @@ use crate::{
 use chrono::{DateTime, NaiveDateTime, Utc};
 use redis::Client as RedisClient;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde_json::{json, Value};
 use slog::Logger;

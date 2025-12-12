@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use futures::TryFutureExt;
 use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

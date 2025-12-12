@@ -730,9 +730,7 @@ impl InventoryAdjustmentService {
 
                 info!(
                     "Returned {} units of item {} from order line {}",
-                    return_qty,
-                    item_id,
-                    order_line.line_id
+                    return_qty, item_id, order_line.line_id
                 );
 
                 Ok(InventoryAdjustmentResult {

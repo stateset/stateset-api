@@ -11,7 +11,7 @@ use prometheus::{IntCounter, IntCounterVec};
 use sea_orm::{Set, *};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, instrument};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -161,7 +161,7 @@ impl SubmitPurchaseOrderCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        updated_po: &purchase_order_entity::Model,
+        _updated_po: &purchase_order_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             purchase_order_id = %self.id,

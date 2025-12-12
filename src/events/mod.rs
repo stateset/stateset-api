@@ -703,8 +703,14 @@ async fn handle_inventory_adjustment(
     reference_number: Option<&str>,
 ) -> Result<(), String> {
     info!(
-        "Processing inventory adjustment: product={}, warehouse={}, old_quantity={}, new_total={}, reason={}",
-        product_id, warehouse_id, old_quantity, new_quantity, reason_code
+        "Processing inventory adjustment: product={}, warehouse={}, old_quantity={}, new_total={}, reason={}, transaction_id={}, reference_number={:?}",
+        product_id,
+        warehouse_id,
+        old_quantity,
+        new_quantity,
+        reason_code,
+        transaction_id,
+        reference_number
     );
 
     // Business logic based on reason code

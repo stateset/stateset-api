@@ -14,16 +14,15 @@ const MAX_BODY_SIZE: usize = 10 * 1024 * 1024;
 const MAX_STRING_LENGTH: usize = 10000;
 
 /// Middleware to sanitize and validate input
-pub async fn sanitize_middleware(request: Request, next: Next) -> Result<Response, Response> {
+pub async fn sanitize_middleware(request: Request, next: Next) -> Response {
     // Check content length
     if let Some(content_length) = request.headers().get("content-length") {
         if let Ok(length_str) = content_length.to_str() {
             if let Ok(length) = length_str.parse::<usize>() {
                 if length > MAX_BODY_SIZE {
                     warn!("Request body too large: {} bytes", length);
-                    return Err(
-                        (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large").into_response()
-                    );
+                    return (StatusCode::PAYLOAD_TOO_LARGE, "Request body too large")
+                        .into_response();
                 }
             }
         }
@@ -43,10 +42,10 @@ pub async fn sanitize_middleware(request: Request, next: Next) -> Result<Respons
     let path = request.uri().path();
     if contains_path_traversal(path) {
         warn!("Path traversal attempt detected: {}", path);
-        return Err((StatusCode::BAD_REQUEST, "Invalid request path").into_response());
+        return (StatusCode::BAD_REQUEST, "Invalid request path").into_response();
     }
 
-    Ok(next.run(request).await)
+    next.run(request).await
 }
 
 /// Check if user agent appears suspicious

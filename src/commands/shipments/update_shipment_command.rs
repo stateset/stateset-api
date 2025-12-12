@@ -5,7 +5,7 @@ use crate::{
     events::{Event, EventSender},
     models::shipment::{self, ShipmentStatus},
 };
-use sea_orm::{entity::*, query::*, ActiveValue, EntityTrait};
+use sea_orm::{entity::*, ActiveValue, EntityTrait};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -75,7 +75,7 @@ impl UpdateShipmentStatusCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        updated_shipment: &shipment::Model,
+        _updated_shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment status updated for shipment ID: {}",

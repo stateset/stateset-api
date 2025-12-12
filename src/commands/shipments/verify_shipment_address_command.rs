@@ -3,7 +3,7 @@ use crate::{
     events::{Event, EventSender},
 };
 use crate::{db::DbPool, errors::ServiceError, models::shipment};
-use sea_orm::{entity::*, query::*, EntityTrait};
+use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -60,7 +60,7 @@ impl VerifyShipmentAddressCommand {
             })
     }
 
-    async fn verify_address(&self, shipment: &shipment::Model) -> Result<bool, ServiceError> {
+    async fn verify_address(&self, _shipment: &shipment::Model) -> Result<bool, ServiceError> {
         // Simulate address verification
         // In real-world scenarios, this could involve making an HTTP request to an address verification service
         let is_valid = true; // Placeholder for actual verification logic
@@ -77,10 +77,9 @@ impl VerifyShipmentAddressCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &shipment::Model,
-        is_valid: bool,
+        _shipment: &shipment::Model,
+        _is_valid: bool,
     ) -> Result<(), ServiceError> {
-        let _ = is_valid;
         event_sender
             .send(Event::ShipmentUpdated(self.shipment_id))
             .await

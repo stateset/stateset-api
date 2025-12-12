@@ -2,7 +2,6 @@ mod common;
 
 use axum::http::{Method, StatusCode};
 use chrono::Utc;
-use serde_json::json;
 use stateset_api::auth::{Claims, User};
 use uuid::Uuid;
 

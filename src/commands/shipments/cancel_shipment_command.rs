@@ -140,7 +140,7 @@ impl CancelShipmentCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        updated_shipment: &shipment::Model,
+        _updated_shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Shipment cancelled for shipment ID: {}. Reason: {}",

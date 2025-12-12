@@ -697,9 +697,13 @@ where
             let (auth_user, bearer_token, header_user_id) = extract_auth_context(&request);
             let key = if let Some(k) = extract_api_key(&request) {
                 k
-            } else if let Some(u) =
-                extract_user_key(auth_user, bearer_token, header_user_id, auth_service.as_ref())
-                    .await
+            } else if let Some(u) = extract_user_key(
+                auth_user,
+                bearer_token,
+                header_user_id,
+                auth_service.as_ref(),
+            )
+            .await
             {
                 u
             } else {

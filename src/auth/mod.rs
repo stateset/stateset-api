@@ -1360,7 +1360,7 @@ pub async fn refresh_token_handler(
 /// Logout handler
 async fn logout_handler(
     State(auth_service): State<Arc<AuthService>>,
-    auth_user: AuthUser,
+    _auth_user: AuthUser,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AuthError> {
     // Extract the token from headers
@@ -1724,6 +1724,7 @@ mod tests {
     fn test_create_api_key_request() {
         let request = CreateApiKeyRequest {
             name: "Production API Key".to_string(),
+            expires_in_days: None,
         };
 
         assert_eq!(request.name, "Production API Key");

@@ -55,5 +55,4 @@ upper-case-acronyms-aggressive = false
 # Enum variant name prefix/suffix to lint
 enum-variant-name-threshold = 3
 
-# Future incompatibility lints - be warned about upcoming changes
-future-incompat-report = true
+## NOTE: keep this file compatible with stable clippy (older keys cause hard errors).

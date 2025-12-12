@@ -81,7 +81,6 @@ fn format_uptime(secs: u64) -> String {
 // Import handler traits
 use crate::auth::consts as perm;
 use crate::auth::AuthRouterExt;
-use handlers::inventory::InventoryHandlerState;
 
 // App state definition
 #[derive(Clone)]

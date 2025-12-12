@@ -58,7 +58,7 @@ impl ApiKeyService {
     }
 
     /// Validate an API key
-    pub async fn validate_api_key(&self, api_key: &str) -> Option<ApiKey> {
+    pub async fn validate_api_key(&self, _api_key: &str) -> Option<ApiKey> {
         // In a real implementation, this would query the database
         // For now, we'll return None
         None
@@ -94,13 +94,13 @@ impl ApiKeyService {
     }
 
     /// Delete an API key
-    pub async fn delete_api_key(&self, api_key_id: Uuid) -> bool {
+    pub async fn delete_api_key(&self, _api_key_id: Uuid) -> bool {
         // In a real implementation, this would delete from the database
         true
     }
 
     /// List API keys for a user
-    pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Vec<ApiKey> {
+    pub async fn list_api_keys_for_user(&self, _user_id: Uuid) -> Vec<ApiKey> {
         // In a real implementation, this would query the database
         vec![]
     }

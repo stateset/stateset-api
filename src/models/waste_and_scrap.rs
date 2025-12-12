@@ -108,7 +108,7 @@ impl Model {
         &self,
         db: &DatabaseConnection,
     ) -> Result<Option<crate::models::work_order::Model>, DbErr> {
-        if let Some(work_order_id) = self.work_order_id {
+        if self.work_order_id.is_some() {
             self.find_related(crate::models::work_order::Entity)
                 .one(db)
                 .await
@@ -121,7 +121,7 @@ impl Model {
         &self,
         db: &DatabaseConnection,
     ) -> Result<Option<crate::models::part::Model>, DbErr> {
-        if let Some(part_number) = self.part_number {
+        if self.part_number.is_some() {
             self.find_related(crate::models::part::Entity).one(db).await
         } else {
             Ok(None)

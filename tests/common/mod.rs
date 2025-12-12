@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,7 +12,7 @@ use axum::{
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
-use sea_orm::{ConnectionTrait, DatabaseBackend as DbBackend, Set, Statement};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend as DbBackend, Set, Statement};
 use serde_json::{json, Value};
 use stateset_api::entities::commerce::product_variant;
 use stateset_api::{
@@ -177,12 +179,22 @@ impl TestApp {
         };
 
         let now = Utc::now();
+        let test_user = User {
+            id: Uuid::new_v4(),
+            name: "Test User".to_string(),
+            email: "test@example.com".to_string(),
+            password_hash: "".to_string(),
+            tenant_id: None,
+            active: true,
+            created_at: now,
+            updated_at: now,
+        };
 
         // Seed a minimal admin user record so auth-dependent flows do not hit missing tables.
         let user_model = user::ActiveModel {
-            id: Set(user.id),
-            name: Set(user.name.clone()),
-            email: Set(user.email.clone()),
+            id: Set(test_user.id),
+            name: Set(test_user.name.clone()),
+            email: Set(test_user.email.clone()),
             password_hash: Set("hashed_test_password".to_string()),
             tenant_id: Set(None),
             active: Set(true),
@@ -196,7 +208,7 @@ impl TestApp {
 
         let user_role_model = user_role::ActiveModel {
             id: Set(Uuid::new_v4()),
-            user_id: Set(user.id),
+            user_id: Set(test_user.id),
             role_name: Set("admin".to_string()),
             created_at: Set(now),
         };
@@ -213,28 +225,17 @@ impl TestApp {
             "orders:read,orders:create,orders:update,orders:delete,purchaseorders:manage,asns:manage,carts:access,inventory:read,inventory:write,inventory:adjust,payments:access,payments:read,payments:write,returns:read,returns:write,shipments:read,shipments:write,warranties:read,warranties:write",
         );
 
-        let user = User {
-            id: Uuid::new_v4(),
-            name: "Test User".to_string(),
-            email: "test@example.com".to_string(),
-            password_hash: "".to_string(),
-            tenant_id: None,
-            active: true,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
         let access_claims = Claims {
-            sub: user.id.to_string(),
-            name: Some(user.name.clone()),
-            email: Some(user.email.clone()),
+            sub: test_user.id.to_string(),
+            name: Some(test_user.name.clone()),
+            email: Some(test_user.email.clone()),
             roles: vec!["admin".to_string()],
             permissions: std::env::var("AUTH_DEFAULT_PERMISSIONS")
                 .unwrap_or_else(|_| "orders:read,orders:create,orders:update,payments:access,payments:write,payments:read,inventory:read,inventory:write,carts:access,returns:read,returns:write,purchase_orders:manage,asn:manage".to_string())
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect(),
-            tenant_id: user.tenant_id.clone(),
+            tenant_id: test_user.tenant_id.clone(),
             jti: Uuid::new_v4().to_string(),
             iat: now.timestamp(),
             exp: (now + chrono::Duration::hours(1)).timestamp(),

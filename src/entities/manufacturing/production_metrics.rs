@@ -96,7 +96,7 @@ impl Model {
     /// Calculate OEE (Overall Equipment Effectiveness)
     /// OEE = Availability × Performance × Quality
     pub fn calculate_oee(&self) -> Option<Decimal> {
-        if let (Some(planned_hrs), Some(actual_hrs), Some(downtime)) =
+        if let (Some(planned_hrs), Some(_actual_hrs), Some(downtime)) =
             (self.planned_hours, self.actual_hours, self.downtime_hours)
         {
             if planned_hrs > Decimal::ZERO {

@@ -130,7 +130,7 @@ impl ShipOrderCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: Arc<EventSender>,
-        shipment: &shipment::Model,
+        _shipment: &shipment::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Order ID: {} shipped with tracking number: {}",

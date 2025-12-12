@@ -4,16 +4,12 @@
 //! that have higher resource costs than regular API requests.
 
 use axum::{
-    extract::Request,
     http::StatusCode,
-    middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
-use std::sync::Arc;
 use std::time::Duration;
-use tracing::warn;
 
 use crate::rate_limiter::{RateLimitBackend, RateLimitConfig, RateLimiter};
 

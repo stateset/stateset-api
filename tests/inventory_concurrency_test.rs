@@ -9,7 +9,6 @@ use tokio::sync::mpsc;
 // Run with: cargo test -- --ignored inventory_concurrency
 #[tokio::test]
 #[ignore = "requires SQLite and Redis integration environment"]
-#[ignore]
 async fn inventory_concurrency() {
     // Set up DB (use SQLite memory or configured DB)
     let cfg = stateset_api::config::AppConfig::new(

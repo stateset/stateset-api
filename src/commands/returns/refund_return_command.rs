@@ -100,7 +100,7 @@ impl RefundReturnCommand {
     async fn log_and_trigger_event(
         &self,
         event_sender: &EventSender,
-        refunded_return: &return_entity::Model,
+        _refunded_return: &return_entity::Model,
     ) -> Result<(), ServiceError> {
         info!(
             "Return refunded for return ID: {}. Amount: {}",
