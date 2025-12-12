@@ -5,6 +5,7 @@ FROM rust:${RUST_VERSION} AS builder
 ARG API_BIN=stateset-api
 ARG MIGRATION_BIN=migration
 ARG SEED_BIN=seed-data
+ARG GRPC_BIN=grpc-server
 ENV CARGO_TERM_COLOR=always
 
 # Install protobuf compiler for proto files
@@ -37,14 +38,14 @@ COPY build.rs ./
 COPY include/ ./include/
 
 # Build dependencies (this layer will be cached)
-RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN}
+RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN} --bin ${GRPC_BIN}
 RUN rm -rf src migrations/src
 
 # Copy the actual source code
 COPY . .
 
 # Build the application
-RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN} --bin ${SEED_BIN}
+RUN cargo build --locked --release --bin ${API_BIN} --bin ${MIGRATION_BIN} --bin ${SEED_BIN} --bin ${GRPC_BIN}
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -52,6 +53,7 @@ FROM debian:bookworm-slim
 ARG API_BIN=stateset-api
 ARG MIGRATION_BIN=migration
 ARG SEED_BIN=seed-data
+ARG GRPC_BIN=grpc-server
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -69,6 +71,7 @@ WORKDIR /app
 COPY --from=builder /usr/src/app/target/release/${API_BIN} /app/${API_BIN}
 COPY --from=builder /usr/src/app/target/release/${MIGRATION_BIN} /app/${MIGRATION_BIN}
 COPY --from=builder /usr/src/app/target/release/${SEED_BIN} /app/${SEED_BIN}
+COPY --from=builder /usr/src/app/target/release/${GRPC_BIN} /app/${GRPC_BIN}
 
 # Copy migrations if needed at runtime
 COPY --from=builder /usr/src/app/migrations /app/migrations
@@ -89,7 +92,7 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Expose the port your app runs on
-EXPOSE 8080
+EXPOSE 8080 8081
 
 # Set environment variables
 ENV RUST_LOG=info \

@@ -99,6 +99,26 @@ pub struct AppConfig {
     /// gRPC server port (optional, defaults to port + 1)
     pub grpc_port: Option<u16>,
 
+    /// gRPC per-connection concurrency limit (in-flight RPCs per HTTP/2 connection)
+    #[serde(default = "default_grpc_concurrency_limit_per_connection")]
+    pub grpc_concurrency_limit_per_connection: usize,
+
+    /// gRPC request timeout in seconds (0 = disabled)
+    #[serde(default = "default_grpc_timeout_secs")]
+    pub grpc_timeout_secs: u64,
+
+    /// gRPC HTTP/2 keepalive interval in seconds (0 = disabled)
+    #[serde(default = "default_grpc_http2_keepalive_interval_secs")]
+    pub grpc_http2_keepalive_interval_secs: u64,
+
+    /// gRPC HTTP/2 keepalive timeout in seconds
+    #[serde(default = "default_grpc_http2_keepalive_timeout_secs")]
+    pub grpc_http2_keepalive_timeout_secs: u64,
+
+    /// TCP keepalive idle time in seconds (0 = disabled)
+    #[serde(default = "default_grpc_tcp_keepalive_secs")]
+    pub grpc_tcp_keepalive_secs: u64,
+
     /// Application environment
     pub environment: String,
 
@@ -355,6 +375,11 @@ impl AppConfig {
             host,
             port,
             grpc_port: None,
+            grpc_concurrency_limit_per_connection: default_grpc_concurrency_limit_per_connection(),
+            grpc_timeout_secs: default_grpc_timeout_secs(),
+            grpc_http2_keepalive_interval_secs: default_grpc_http2_keepalive_interval_secs(),
+            grpc_http2_keepalive_timeout_secs: default_grpc_http2_keepalive_timeout_secs(),
+            grpc_tcp_keepalive_secs: default_grpc_tcp_keepalive_secs(),
             environment,
             log_level: default_log_level(),
             log_json: false,
@@ -576,6 +601,26 @@ fn default_log_level() -> String {
 
 fn default_port() -> u16 {
     DEFAULT_PORT
+}
+
+fn default_grpc_concurrency_limit_per_connection() -> usize {
+    256
+}
+
+fn default_grpc_timeout_secs() -> u64 {
+    30
+}
+
+fn default_grpc_http2_keepalive_interval_secs() -> u64 {
+    60
+}
+
+fn default_grpc_http2_keepalive_timeout_secs() -> u64 {
+    20
+}
+
+fn default_grpc_tcp_keepalive_secs() -> u64 {
+    60
 }
 
 fn default_cache_type() -> String {

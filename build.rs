@@ -19,6 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !proto_files.is_empty() {
+        proto_files.sort();
         tonic_build::configure().compile_protos(&proto_files, &["proto"])?;
     }
 

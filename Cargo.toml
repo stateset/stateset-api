@@ -24,7 +24,7 @@ axum = "0.7.9"
 chrono = { version = "0.4", features = ["serde"] }
 rust_decimal = { version = "1.36", features = ["serde"] }
 tower = { version = "0.5.2", features = ["util"] }
-tower-http = { version = "0.5.2", features = ["fs", "trace", "cors", "timeout", "compression-full"] }
+tower-http = { version = "0.5.2", features = ["fs", "trace", "cors", "timeout", "compression-full", "request-id"] }
 jsonwebtoken = "8.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -32,7 +32,7 @@ prost = "0.13"
 prost-types = "0.13"
 redis = { version = "0.21.7", features = ["aio", "tokio-comp", "connection-manager", "tokio-native-tls-comp"], default-features = false }
 lazy_static = "1.5"
-tonic = "0.13"
+tonic = { version = "0.13", features = ["gzip"] }
 tonic-web = "0.13"
 validator = { version = "0.14", features = ["derive"] }
 thiserror = "1.0"

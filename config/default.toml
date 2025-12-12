@@ -16,6 +16,14 @@ refresh_token_expiration = 604800
 host = "0.0.0.0"
 port = 8080
 
+# gRPC configuration (service-to-service)
+# grpc_port defaults to `port + 1`
+grpc_concurrency_limit_per_connection = 256
+grpc_timeout_secs = 30
+grpc_http2_keepalive_interval_secs = 60
+grpc_http2_keepalive_timeout_secs = 20
+grpc_tcp_keepalive_secs = 60
+
 # Environment
 environment = "development"
 log_level = "info"

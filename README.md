@@ -214,7 +214,9 @@ Note: The app defaults to SQLite for local development (via SeaORM). PostgreSQL 
 The API will be available at `http://localhost:8080`.
 Requests to unknown routes return a JSON 404 response.
 
-Docker: `docker-compose up -d` starts the API and Redis. Compose reads values from `.env` for container env, which is separate from the app's `APP__*` variables used by the config system.
+Docker: `docker-compose up -d` starts the HTTP API (`stateset-api`) and gRPC (`stateset-grpc`) plus Redis/Postgres. Compose reads values from `.env` for container env, which is separate from the app's `APP__*` variables used by the config system.
+
+gRPC defaults to `APP__PORT + 1` (so `8081` when HTTP is `8080`).
 
 ### Multiple Binary Targets
 

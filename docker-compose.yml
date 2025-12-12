@@ -27,6 +27,31 @@ services:
       - stateset-network
     restart: unless-stopped
 
+  stateset-grpc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - DOCKER=1
+      # Avoid competing migration runs (use the migrate job or stateset-api auto_migrate instead)
+      - APP__AUTO_MIGRATE=false
+      - APP_ENV=${APP_ENV:-development}
+    volumes:
+      - ./data:/app/data
+      - ./migrations:/app/migrations:ro
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - stateset-network
+    command: ["/app/grpc-server"]
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     ports:
