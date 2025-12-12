@@ -133,13 +133,17 @@ async fn worker_grpc(target: String, end_time: Instant, metrics: Arc<Mutex<Metri
         Ok(ep) => match ep.connect().await {
             Ok(ch) => ch,
             Err(_) => {
-                let mut m = metrics.lock().unwrap();
+                let mut m = metrics
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner());
                 m.failures += 1;
                 return;
             }
         },
         Err(_) => {
-            let mut m = metrics.lock().unwrap();
+            let mut m = metrics
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner());
             m.failures += 1;
             return;
         }
@@ -153,7 +157,9 @@ async fn worker_grpc(target: String, end_time: Instant, metrics: Arc<Mutex<Metri
         let start = Instant::now();
         let res = client.create_order(req).await;
         let elapsed = start.elapsed();
-        let mut m = metrics.lock().unwrap();
+        let mut m = metrics
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
         match res {
             Ok(_) => {
                 m.successes += 1;
@@ -213,7 +219,10 @@ async fn main() {
     while let Some(_) = tasks.join_next().await {}
 
     // Aggregate and report
-    let final_metrics = metrics.lock().unwrap().clone();
+    let final_metrics = metrics
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .clone();
 
     let successes = final_metrics.successes;
     let failures = final_metrics.failures;

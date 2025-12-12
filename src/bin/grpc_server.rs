@@ -1,410 +1,40 @@
-use anyhow::Context;
 use std::{sync::Arc, time::Duration};
+
 use tokio::signal;
 use tonic::transport::Server;
 
 use stateset_api::{
-    config, db,
+    api::StateSetApi,
+    config,
+    db::{self, DatabaseAccess},
     events::{process_events, EventSender},
-    handlers::AppServices,
-    message_queue::{InMemoryMessageQueue, MessageQueue, RedisMessageQueue},
-    proto::*,
-    services, AppState,
+    proto::{inventory, order, return_order, shipment, warranty, work_order},
 };
-
-use stateset_api::proto::work_order;
-// Import work order service
-use stateset_api::proto::work_order::work_order_service_server::{
-    WorkOrderService, WorkOrderServiceServer,
-};
-
-// Simple placeholder implementation for work orders
-pub struct PlaceholderWorkOrderService;
-
-#[tonic::async_trait]
-impl WorkOrderService for PlaceholderWorkOrderService {
-    async fn create_work_order(
-        &self,
-        _request: tonic::Request<work_order::CreateWorkOrderRequest>,
-    ) -> Result<tonic::Response<work_order::CreateWorkOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-
-    async fn get_work_order(
-        &self,
-        _request: tonic::Request<work_order::GetWorkOrderRequest>,
-    ) -> Result<tonic::Response<work_order::GetWorkOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-
-    async fn update_work_order(
-        &self,
-        _request: tonic::Request<work_order::UpdateWorkOrderRequest>,
-    ) -> Result<tonic::Response<work_order::UpdateWorkOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-
-    async fn list_work_orders(
-        &self,
-        _request: tonic::Request<work_order::ListWorkOrdersRequest>,
-    ) -> Result<tonic::Response<work_order::ListWorkOrdersResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-
-    async fn delete_work_order(
-        &self,
-        _request: tonic::Request<work_order::DeleteWorkOrderRequest>,
-    ) -> Result<tonic::Response<work_order::DeleteWorkOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-
-    async fn assign_work_order(
-        &self,
-        _request: tonic::Request<work_order::AssignWorkOrderRequest>,
-    ) -> Result<tonic::Response<work_order::AssignWorkOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-
-    async fn complete_work_order(
-        &self,
-        _request: tonic::Request<work_order::CompleteWorkOrderRequest>,
-    ) -> Result<tonic::Response<work_order::CompleteWorkOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Work order service not yet implemented",
-        ))
-    }
-}
-
-struct OrderGrpcService;
-
-#[tonic::async_trait]
-impl order::order_service_server::OrderService for OrderGrpcService {
-    async fn create_order(
-        &self,
-        _request: tonic::Request<order::CreateOrderRequest>,
-    ) -> Result<tonic::Response<order::CreateOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Order gRPC not yet implemented",
-        ))
-    }
-
-    async fn get_order(
-        &self,
-        _request: tonic::Request<order::GetOrderRequest>,
-    ) -> Result<tonic::Response<order::GetOrderResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Order gRPC not yet implemented",
-        ))
-    }
-
-    async fn update_order_status(
-        &self,
-        _request: tonic::Request<order::UpdateOrderStatusRequest>,
-    ) -> Result<tonic::Response<order::UpdateOrderStatusResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Order gRPC not yet implemented",
-        ))
-    }
-
-    async fn list_orders(
-        &self,
-        _request: tonic::Request<order::ListOrdersRequest>,
-    ) -> Result<tonic::Response<order::ListOrdersResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Order gRPC not yet implemented",
-        ))
-    }
-}
-
-struct InventoryGrpcService;
-
-#[tonic::async_trait]
-impl inventory::inventory_service_server::InventoryService for InventoryGrpcService {
-    async fn adjust_inventory(
-        &self,
-        _request: tonic::Request<inventory::AdjustInventoryRequest>,
-    ) -> Result<tonic::Response<inventory::AdjustInventoryResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Inventory gRPC not yet implemented",
-        ))
-    }
-
-    async fn get_inventory(
-        &self,
-        _request: tonic::Request<inventory::GetInventoryRequest>,
-    ) -> Result<tonic::Response<inventory::GetInventoryResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Inventory gRPC not yet implemented",
-        ))
-    }
-
-    async fn list_inventory(
-        &self,
-        _request: tonic::Request<inventory::ListInventoryRequest>,
-    ) -> Result<tonic::Response<inventory::ListInventoryResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Inventory gRPC not yet implemented",
-        ))
-    }
-
-    async fn reserve_inventory(
-        &self,
-        _request: tonic::Request<inventory::ReserveInventoryRequest>,
-    ) -> Result<tonic::Response<inventory::ReserveInventoryResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Inventory gRPC not yet implemented",
-        ))
-    }
-
-    async fn release_reservation(
-        &self,
-        _request: tonic::Request<inventory::ReleaseReservationRequest>,
-    ) -> Result<tonic::Response<inventory::ReleaseReservationResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Inventory gRPC not yet implemented",
-        ))
-    }
-
-    async fn transfer_inventory(
-        &self,
-        _request: tonic::Request<inventory::TransferInventoryRequest>,
-    ) -> Result<tonic::Response<inventory::TransferInventoryResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Inventory gRPC not yet implemented",
-        ))
-    }
-}
-
-struct ReturnGrpcService;
-
-#[tonic::async_trait]
-impl return_order::return_service_server::ReturnService for ReturnGrpcService {
-    async fn create_return(
-        &self,
-        _request: tonic::Request<return_order::CreateReturnRequest>,
-    ) -> Result<tonic::Response<return_order::CreateReturnResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Return gRPC not yet implemented",
-        ))
-    }
-
-    async fn get_return(
-        &self,
-        _request: tonic::Request<return_order::GetReturnRequest>,
-    ) -> Result<tonic::Response<return_order::GetReturnResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Return gRPC not yet implemented",
-        ))
-    }
-
-    async fn update_return_status(
-        &self,
-        _request: tonic::Request<return_order::UpdateReturnStatusRequest>,
-    ) -> Result<tonic::Response<return_order::UpdateReturnStatusResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Return gRPC not yet implemented",
-        ))
-    }
-
-    async fn list_returns(
-        &self,
-        _request: tonic::Request<return_order::ListReturnsRequest>,
-    ) -> Result<tonic::Response<return_order::ListReturnsResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Return gRPC not yet implemented",
-        ))
-    }
-}
-
-struct WarrantyGrpcService;
-
-#[tonic::async_trait]
-impl warranty::warranty_service_server::WarrantyService for WarrantyGrpcService {
-    async fn create_warranty(
-        &self,
-        _request: tonic::Request<warranty::CreateWarrantyRequest>,
-    ) -> Result<tonic::Response<warranty::CreateWarrantyResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Warranty gRPC not yet implemented",
-        ))
-    }
-
-    async fn get_warranty(
-        &self,
-        _request: tonic::Request<warranty::GetWarrantyRequest>,
-    ) -> Result<tonic::Response<warranty::GetWarrantyResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Warranty gRPC not yet implemented",
-        ))
-    }
-
-    async fn update_warranty(
-        &self,
-        _request: tonic::Request<warranty::UpdateWarrantyRequest>,
-    ) -> Result<tonic::Response<warranty::UpdateWarrantyResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Warranty gRPC not yet implemented",
-        ))
-    }
-
-    async fn list_warranties(
-        &self,
-        _request: tonic::Request<warranty::ListWarrantiesRequest>,
-    ) -> Result<tonic::Response<warranty::ListWarrantiesResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Warranty gRPC not yet implemented",
-        ))
-    }
-}
-
-struct ShipmentGrpcService;
-
-#[tonic::async_trait]
-impl shipment::shipment_service_server::ShipmentService for ShipmentGrpcService {
-    async fn create_shipment(
-        &self,
-        _request: tonic::Request<shipment::CreateShipmentRequest>,
-    ) -> Result<tonic::Response<shipment::CreateShipmentResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Shipment gRPC not yet implemented",
-        ))
-    }
-
-    async fn get_shipment(
-        &self,
-        _request: tonic::Request<shipment::GetShipmentRequest>,
-    ) -> Result<tonic::Response<shipment::GetShipmentResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Shipment gRPC not yet implemented",
-        ))
-    }
-
-    async fn update_shipment_status(
-        &self,
-        _request: tonic::Request<shipment::UpdateShipmentStatusRequest>,
-    ) -> Result<tonic::Response<shipment::UpdateShipmentStatusResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Shipment gRPC not yet implemented",
-        ))
-    }
-
-    async fn list_shipments(
-        &self,
-        _request: tonic::Request<shipment::ListShipmentsRequest>,
-    ) -> Result<tonic::Response<shipment::ListShipmentsResponse>, tonic::Status> {
-        Err(tonic::Status::unimplemented(
-            "Shipment gRPC not yet implemented",
-        ))
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
     tracing_subscriber::fmt::init();
-
     tracing::info!("Starting StateSet gRPC server...");
 
-    // Load configuration
     let config = config::load_config()?;
 
-    // Initialize database connection
-    let db_arc = Arc::new(db::establish_connection_from_app_config(&config).await?);
+    let db_pool = Arc::new(db::establish_connection_from_app_config(&config).await?);
     tracing::info!("Database connection established");
 
-    // Run database migrations in development
     if config.auto_migrate || !config.is_production() {
-        if let Err(e) = db::run_migrations(&db_arc).await {
+        if let Err(e) = db::run_migrations(&db_pool).await {
             tracing::warn!("Migration warning: {}", e);
         }
     }
 
-    // Initialize event system
     let (tx, rx) = tokio::sync::mpsc::channel(config.event_channel_capacity);
     let event_sender = EventSender::new(tx);
-
-    // Start event processing in background (no webhooks for gRPC server)
     let event_processor_handle = tokio::spawn(process_events(rx, None, None));
 
-    // Shared Redis client
-    let redis_client = Arc::new(redis::Client::open(config.redis_url.clone())?);
+    let db_access = Arc::new(DatabaseAccess::new(db_pool.clone()));
+    let grpc_api =
+        StateSetApi::with_event_sender(db_access, db_pool.clone(), event_sender.clone());
 
-    // Core services
-    let inventory_service =
-        services::inventory::InventoryService::new(db_arc.clone(), event_sender.clone());
-    let event_sender_arc = Arc::new(event_sender.clone());
-
-    let auth_config = stateset_api::auth::AuthConfig::new(
-        config.jwt_secret.clone(),
-        "stateset-api".to_string(),
-        "stateset-auth".to_string(),
-        Duration::from_secs(config.jwt_expiration as u64),
-        Duration::from_secs(config.refresh_token_expiration as u64),
-        "sk_".to_string(),
-    )
-    .context("failed to create auth config")?;
-
-    let auth_service = Arc::new(stateset_api::auth::AuthService::new(
-        auth_config,
-        db_arc.clone(),
-    ));
-
-    let base_logger =
-        stateset_api::logging::setup_logger(stateset_api::logging::LoggerConfig::default());
-    let message_queue: Arc<dyn MessageQueue> =
-        match config.message_queue_backend.to_ascii_lowercase().as_str() {
-            "redis" => match RedisMessageQueue::new(
-                redis_client.clone(),
-                config.message_queue_namespace.clone(),
-                Duration::from_secs(config.message_queue_block_timeout_secs),
-            )
-            .await
-            {
-                Ok(queue) => Arc::new(queue),
-                Err(err) => {
-                    tracing::error!(
-                        "Failed to initialize Redis message queue (falling back to in-memory): {}",
-                        err
-                    );
-                    Arc::new(InMemoryMessageQueue::new())
-                }
-            },
-            _ => Arc::new(InMemoryMessageQueue::new()),
-        };
-
-    let services = AppServices::new(
-        db_arc.clone(),
-        Arc::new(config.clone()),
-        event_sender_arc.clone(),
-        redis_client.clone(),
-        auth_service,
-        message_queue,
-        base_logger,
-    );
-
-    // Create app state
-    let _state = AppState {
-        db: db_arc.clone(),
-        config: config.clone(),
-        event_sender: event_sender.clone(),
-        inventory_service,
-        services,
-        redis: redis_client.clone(),
-    };
-
-    // Get gRPC port
     let grpc_port = config.grpc_port.unwrap_or(config.port + 1);
     let grpc_addr = format!("{}:{}", config.host, grpc_port).parse()?;
 
@@ -413,39 +43,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         grpc_addr
     );
 
-    // Start gRPC server
     let grpc_server = Server::builder()
         .add_service(order::order_service_server::OrderServiceServer::new(
-            OrderGrpcService,
+            grpc_api.clone(),
         ))
         .add_service(
-            inventory::inventory_service_server::InventoryServiceServer::new(InventoryGrpcService),
+            inventory::inventory_service_server::InventoryServiceServer::new(grpc_api.clone()),
         )
         .add_service(
-            return_order::return_service_server::ReturnServiceServer::new(ReturnGrpcService),
+            return_order::return_service_server::ReturnServiceServer::new(grpc_api.clone()),
         )
         .add_service(
-            warranty::warranty_service_server::WarrantyServiceServer::new(WarrantyGrpcService),
+            warranty::warranty_service_server::WarrantyServiceServer::new(grpc_api.clone()),
         )
         .add_service(
-            shipment::shipment_service_server::ShipmentServiceServer::new(ShipmentGrpcService),
+            shipment::shipment_service_server::ShipmentServiceServer::new(grpc_api.clone()),
         )
-        .add_service(WorkOrderServiceServer::new(PlaceholderWorkOrderService))
+        .add_service(work_order::work_order_service_server::WorkOrderServiceServer::new(
+            grpc_api,
+        ))
         .serve_with_shutdown(grpc_addr, shutdown_signal());
 
-    // Handle shutdown
-    tokio::select! {
-        res = grpc_server => {
-            tracing::error!("gRPC server stopped: {:?}", res);
-            res.map_err(anyhow::Error::from)
-        }
-        _ = shutdown_signal() => {
-            tracing::info!("Graceful shutdown initiated");
-            Ok(())
-        }
-    }?;
+    if let Err(e) = grpc_server.await {
+        tracing::error!("gRPC server stopped: {:?}", e);
+        return Err(Box::new(e));
+    }
 
-    // Clean up
     event_processor_handle.abort();
     let _ = event_processor_handle.await;
     tracing::info!("✅ StateSet gRPC server shutdown complete");
@@ -455,17 +78,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        if let Err(err) = signal::ctrl_c().await {
+            tracing::warn!("Failed to install Ctrl+C handler: {}", err);
+            std::future::pending::<()>().await;
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
+        match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(err) => {
+                tracing::warn!("Failed to install terminate signal handler: {}", err);
+                std::future::pending::<()>().await;
+            }
+        }
     };
 
     #[cfg(not(unix))]

@@ -72,7 +72,7 @@ async fn increment_counter(
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing subscriber
     tracing_subscriber::fmt::init();
 
@@ -102,9 +102,7 @@ async fn main() {
     let address = "127.0.0.1:3000";
     info!("Listening on {}", address);
 
-    let listener = tokio::net::TcpListener::bind(address)
-        .await
-        .expect("Failed to bind server to address");
+    let listener = tokio::net::TcpListener::bind(address).await?;
 
     // Started message
     info!("Stateset API is running at http://{}", address);
@@ -115,7 +113,7 @@ async fn main() {
     info!("  POST /counter - Increment counter");
 
     // Start server
-    axum::serve(listener, app)
-        .await
-        .expect("Failed to start server");
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }

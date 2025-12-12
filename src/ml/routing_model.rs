@@ -119,6 +119,26 @@ pub struct FacilityInfo {
     pub shipping_zones: Vec<String>,
 }
 
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    let radius_km = 6371.0_f64;
+    let (lat1_rad, lon1_rad) = (lat1.to_radians(), lon1.to_radians());
+    let (lat2_rad, lon2_rad) = (lat2.to_radians(), lon2.to_radians());
+    let dlat = lat2_rad - lat1_rad;
+    let dlon = lon2_rad - lon1_rad;
+    let a = (dlat / 2.0).sin().powi(2)
+        + lat1_rad.cos() * lat2_rad.cos() * (dlon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().asin();
+    radius_km * c
+}
+
+fn maybe_distance_km(request: &RoutingRequest, facility: &FacilityInfo) -> Option<f64> {
+    let lat1 = request.delivery_address.latitude?;
+    let lon1 = request.delivery_address.longitude?;
+    let lat2 = facility.address.latitude?;
+    let lon2 = facility.address.longitude?;
+    Some(haversine_km(lat1, lon1, lat2, lon2))
+}
+
 /// Main routing model
 pub struct RoutingModel {
     config: RoutingModelConfig,
@@ -194,16 +214,24 @@ impl RoutingModel {
             + (inventory_score * self.config.inventory_weight)
             + (capacity_score * self.config.capacity_weight);
 
-        // Estimate cost and delivery time (placeholder calculations)
-        let estimated_cost = 10.0 + (1.0 - cost_score) * 50.0;
-        let estimated_delivery_hours = 24 + ((1.0 - time_score) * 120.0) as u32;
+        let (estimated_cost, estimated_delivery_hours) =
+            if let Some(distance_km) = maybe_distance_km(request, facility) {
+                let transit_hours = (distance_km / 60.0).ceil() as u32;
+                let estimated_cost = 5.0 + distance_km * 0.12;
+                let estimated_delivery_hours = facility.processing_time_hours + transit_hours;
+                (estimated_cost, estimated_delivery_hours)
+            } else {
+                let estimated_cost = 10.0 + (1.0 - cost_score) * 50.0;
+                let estimated_delivery_hours = 24 + ((1.0 - time_score) * 120.0) as u32;
+                (estimated_cost, estimated_delivery_hours)
+            };
 
         Ok(RoutingDecision {
             facility_id: facility.id,
             score: overall_score,
             estimated_cost,
             estimated_delivery_hours,
-            confidence: 0.8, // Placeholder confidence
+            confidence: (0.5 + overall_score / 2.0).clamp(0.0, 1.0),
             scoring_details: RoutingScoreDetails {
                 cost_score,
                 time_score,
@@ -216,30 +244,31 @@ impl RoutingModel {
     /// Calculate cost score for a facility (0.0 to 1.0, higher is better)
     async fn calculate_cost_score(
         &self,
-        _request: &RoutingRequest,
-        _facility: &FacilityInfo,
+        request: &RoutingRequest,
+        facility: &FacilityInfo,
     ) -> Result<f64, ServiceError> {
-        // Placeholder implementation
-        // In real implementation, this would calculate shipping costs based on:
-        // - Distance from facility to delivery address
-        // - Shipping method preferences
-        // - Package dimensions and weight
-        Ok(0.7)
+        if let Some(distance_km) = maybe_distance_km(request, facility) {
+            let score = 1.0 / (1.0 + distance_km / 500.0);
+            Ok(score.clamp(0.0, 1.0))
+        } else {
+            Ok(0.7)
+        }
     }
 
     /// Calculate time score for a facility (0.0 to 1.0, higher is better)
     async fn calculate_time_score(
         &self,
-        _request: &RoutingRequest,
+        request: &RoutingRequest,
         facility: &FacilityInfo,
     ) -> Result<f64, ServiceError> {
-        // Placeholder implementation
-        // In real implementation, this would calculate delivery time based on:
-        // - Distance and shipping method
-        // - Facility processing time
-        // - Required delivery date
         let processing_factor = 1.0 - (facility.processing_time_hours as f64 / 72.0).min(1.0);
-        Ok(processing_factor * 0.8)
+        let transit_factor = if let Some(distance_km) = maybe_distance_km(request, facility) {
+            let transit_hours = distance_km / 60.0;
+            (1.0 / (1.0 + transit_hours / 48.0)).clamp(0.0, 1.0)
+        } else {
+            0.8
+        };
+        Ok((processing_factor * transit_factor).clamp(0.0, 1.0))
     }
 
     /// Calculate inventory score for a facility (0.0 to 1.0, higher is better)

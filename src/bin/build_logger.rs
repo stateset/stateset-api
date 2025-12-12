@@ -5,22 +5,30 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn main() {
+    match run() {
+        Ok(code) => std::process::exit(code),
+        Err(err) => {
+            eprintln!("build-logger error: {err}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
 
     // Open or create the build log file
     let mut log_file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open("build_errors.log")
-        .expect("Failed to open build_errors.log");
+        .open("build_errors.log")?;
 
     // Write build start timestamp
     writeln!(
         log_file,
         "\n[{}] ===== Build started =====",
         Local::now().format("%Y-%m-%d %H:%M:%S")
-    )
-    .unwrap();
+    )?;
 
     // Determine the cargo command to run
     let cargo_cmd = if args.is_empty() {
@@ -35,23 +43,18 @@ fn main() {
         "[{}] Running: cargo {}",
         Local::now().format("%Y-%m-%d %H:%M:%S"),
         cargo_cmd.join(" ")
-    )
-    .unwrap();
+    )?;
 
     // Execute cargo with the provided arguments
-    let child = Command::new("cargo")
+    let output = Command::new("cargo")
         .args(&cargo_cmd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-        .expect("Failed to execute cargo");
-
-    // Capture and log output
-    let output = child.wait_with_output().expect("Failed to wait on cargo");
+        .output()?;
 
     // Write stdout to log
     if !output.stdout.is_empty() {
-        log_file.write_all(&output.stdout).unwrap();
+        log_file.write_all(&output.stdout)?;
     }
 
     // Write stderr to log (this is where errors typically appear)
@@ -60,9 +63,8 @@ fn main() {
             log_file,
             "[{}] ===== Build Errors =====",
             Local::now().format("%Y-%m-%d %H:%M:%S")
-        )
-        .unwrap();
-        log_file.write_all(&output.stderr).unwrap();
+        )?;
+        log_file.write_all(&output.stderr)?;
     }
 
     // Write build completion status
@@ -78,12 +80,12 @@ fn main() {
             output.status.code().unwrap_or(-1)
         )
     };
-    writeln!(log_file, "{}", status_msg).unwrap();
+    writeln!(log_file, "{}", status_msg)?;
 
     // Also print to console
     print!("{}", String::from_utf8_lossy(&output.stdout));
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
 
     // Exit with the same status as cargo
-    std::process::exit(output.status.code().unwrap_or(1));
+    Ok(output.status.code().unwrap_or(1))
 }
