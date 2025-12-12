@@ -450,7 +450,9 @@ impl InventoryService {
                         }
 
                         let new_on_hand = existing.quantity_on_hand + delta;
-                        let new_available = existing.quantity_available + delta;
+                        // Always recompute available from on_hand - allocated to enforce invariants,
+                        // even if legacy data drifted.
+                        let new_available = new_on_hand - existing.quantity_allocated;
                         if new_on_hand < Decimal::ZERO {
                             return Err(ServiceError::ValidationError(
                                 "Adjustment would result in negative on-hand quantity".to_string(),
