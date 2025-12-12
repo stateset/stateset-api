@@ -95,7 +95,7 @@ mock-tests = []
 ml-experimental = []
 
 [build-dependencies]
-tonic-build = "0.13"
+tonic-build = "0.14"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
